@@ -16,6 +16,7 @@ import { ChestMenu } from './ui/chest/ChestMenu';
 import { PlayerInventoryPanel } from './ui/inventory/PlayerInventoryPanel';
 import { BazaarProductPanel } from './ui/bazaar/BazaarProductPanel';
 import { BazaarManageOrdersPanel } from './ui/bazaar/BazaarManageOrdersPanel';
+import { HotbarHud } from './ui/hotbar/HotbarHud';
 import { gameSocket } from './api/socket';
 import { WorldCanvas } from './world/WorldCanvas';
 
@@ -144,6 +145,13 @@ export function App() {
         if (menuVisible && menu?.id === 'inventory') closeMenu();
         else openInventory();
       }
+      if (!menuVisible && !event.key.startsWith('F')) {
+        const num = Number(event.key);
+        if (num >= 1 && num <= 9) {
+          event.preventDefault();
+          gameSocket.send({ type: 'setHotbar', slot: num - 1 });
+        }
+      }
       if (event.key.toLowerCase() === 't' && !menuVisible) {
         event.preventDefault();
         setChatOpen(true);
@@ -222,6 +230,14 @@ export function App() {
         <span className="defense">{Math.round(player.stats.defense)} ❈</span>
         <span className="mana">{Math.floor(player.mana)}/{Math.round(player.maxMana)} ✎ Mana</span>
       </div>
+
+      <HotbarHud
+        player={player}
+        disabled={menuVisible || chatFocused}
+        touchMode={touchMode}
+        onSelectSlot={(slot) => gameSocket.send({ type: 'setHotbar', slot })}
+        onUseSlot={(inventoryIndex) => gameSocket.send({ type: 'useItem', slot: inventoryIndex })}
+      />
 
       {player.dungeonRun ? (
         <div className="dungeon-hud">

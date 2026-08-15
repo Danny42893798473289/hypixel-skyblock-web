@@ -20,6 +20,8 @@ import {
   initRoomMobs,
   DUNGEON_ZONE,
   accessoryBagSlots,
+  addItem,
+  type ItemStack,
   type PlayerState,
 } from '@aether/shared';
 import {
@@ -100,10 +102,27 @@ export function verifyToken(token: string | undefined): string | null {
 
 export function revokeToken(_token: string): void {}
 
+function migratePlayerSave(user: StoredUser): { equipment: PlayerState['equipment']; inventory: PlayerState['inventory'] } {
+  const equipment = emptyEquipment();
+  const legacy = user.equipment as Record<string, ItemStack | null> | undefined;
+  if (legacy) {
+    for (const key of ['helmet', 'chestplate', 'leggings', 'boots'] as const) {
+      equipment[key] = legacy[key] ?? null;
+    }
+  }
+  let inventory = user.inventory;
+  const legacyWeapon = legacy?.weapon;
+  if (legacyWeapon) {
+    const next = addItem(inventory, legacyWeapon.itemId, legacyWeapon.qty);
+    if (next) inventory = next;
+  }
+  return { equipment, inventory };
+}
+
 function toPlayer(user: StoredUser): PlayerState {
   // Saves from older layouts can point at zones that no longer exist.
   const zoneId = user.zoneId && ZONES[user.zoneId] ? user.zoneId : DEFAULT_ZONE;
-  const equipment = user.equipment ?? emptyEquipment();
+  const { equipment, inventory } = migratePlayerSave(user);
   const accessories = user.accessories ?? [];
   const bank = user.bank ?? { balance: 0, tier: 'starter' as const, lastInterestAt: Date.now() };
   const map = islandMapForZone(zoneId);
@@ -120,7 +139,7 @@ function toPlayer(user: StoredUser): PlayerState {
     maxHp: MAX_HP,
     stats: { ...BASE_STATS },
     hotbarSlot: user.hotbarSlot,
-    inventory: user.inventory,
+    inventory,
     skills: { ...emptySkills(), ...user.skills },
     collections: user.collections,
     minions: user.minions,

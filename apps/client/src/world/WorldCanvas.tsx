@@ -198,7 +198,7 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, touchMode, onO
           disabled={inputDisabled}
         />
       ) : (
-        <div className="movement-hint">WASD · E interact · R / right-click ability · I inventory · M menu</div>
+        <div className="movement-hint">WASD · E interact · R ability · 1–9 hotbar · I inventory · M menu</div>
       )}
     </>
   );

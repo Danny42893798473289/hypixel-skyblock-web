@@ -17,12 +17,11 @@ import {
   MenuOverlay,
 } from '../chest/slotUtils';
 
-/** Hypixel-style 3×3 equipment grid (helmet top, armor middle, weapon/legs/boots bottom). */
+/** Armor-only 3×3 equipment grid (no weapon slot — weapons live in the hotbar). */
 const EQUIP_GRID: Array<{ key: EquipmentSlot; label: string; icon: string; previewItemId?: string } | null> = [
   null, { key: 'helmet', label: 'Helmet', icon: 'helmet', previewItemId: 'diamond_helmet' }, null,
   null, { key: 'chestplate', label: 'Chestplate', icon: 'chestplate', previewItemId: 'diamond_chestplate' }, null,
-  { key: 'weapon', label: 'Weapon', icon: 'sword', previewItemId: 'diamond_sword' },
-  { key: 'leggings', label: 'Leggings', icon: 'leggings', previewItemId: 'diamond_leggings' },
+  { key: 'leggings', label: 'Leggings', icon: 'leggings', previewItemId: 'diamond_leggings' }, null,
   { key: 'boots', label: 'Boots', icon: 'boots', previewItemId: 'diamond_boots' },
 ];
 
@@ -110,7 +109,7 @@ export function PlayerInventoryPanel({ player, touchMode = false, onMenuClick, o
                     icon={entry.icon}
                     itemId={entry.previewItemId}
                     name={`${entry.label} Slot`}
-                    lore={[{ text: 'Shift-click an item to equip.', color: 'gray' }]}
+                    lore={[{ text: 'Shift-click armor to equip.', color: 'gray' }]}
                     className="equipment-preview-slot"
                   />
                 );
@@ -268,8 +267,8 @@ export function PlayerInventoryPanel({ player, touchMode = false, onMenuClick, o
       </div>
       <div className="menu-hint inventory-menu-hint">
         {touchMode
-          ? 'Tap slots to pick up/place · Right-click/long-press held item to use · Double-tap to quick-equip'
-          : 'Left-click pick up/place · Right-click half stack · Right-click held item to use/eat · Shift-click quick-equip'}
+          ? 'Tap slots to pick up/place · Double-tap hotbar slot to use · Long-press to use'
+          : 'Left-click pick up/place · Shift-click armor to equip · Shift-click weapons to hotbar · 1–9 select hotbar'}
       </div>
     </MenuOverlay>
   );

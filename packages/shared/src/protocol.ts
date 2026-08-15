@@ -8,7 +8,7 @@ import type { LoreLine } from './lore.js';
 import type { StatBlock } from './stats.js';
 import type { Facing } from './world.js';
 
-export type EquipmentSlot = 'helmet' | 'chestplate' | 'leggings' | 'boots' | 'weapon';
+export type EquipmentSlot = 'helmet' | 'chestplate' | 'leggings' | 'boots';
 export type DungeonClass = 'berserk' | 'archer' | 'mage' | 'tank' | 'healer';
 
 export interface BankState {

@@ -269,7 +269,10 @@ function travelMenu(player: PlayerState): MenuView {
 
 function inventoryMenu(player: PlayerState): MenuView {
   const equipmentSlots: Array<[keyof PlayerState['equipment'], number, string]> = [
-    ['helmet', 10, 'helmet'], ['chestplate', 19, 'chestplate'], ['leggings', 28, 'leggings'], ['boots', 37, 'boots'], ['weapon', 22, 'sword'],
+    ['helmet', 10, 'helmet'],
+    ['chestplate', 19, 'chestplate'],
+    ['leggings', 28, 'leggings'],
+    ['boots', 37, 'boots'],
   ];
   const slots = equipmentSlots.map(([key, pos, icon]) => {
     const stack = player.equipment[key];

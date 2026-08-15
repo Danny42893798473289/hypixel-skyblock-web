@@ -26,6 +26,9 @@ import {
   minionStorageCap,
   MINIONS,
   HOTBAR_SIZE,
+  hotbarInventoryIndex,
+  hotbarStack,
+  isWeaponLikeType,
   zone,
   ZONES,
   ISLANDS,
@@ -275,12 +278,20 @@ function bestTool(
 }
 
 function playerWeaponDamage(player: PlayerState): number {
-  const weapon = player.equipment.weapon;
-  if (weapon) {
-    const def = ITEMS[weapon.itemId];
+  const stack = hotbarStack(player.inventory, player.hotbarSlot);
+  if (stack) {
+    const def = ITEMS[stack.itemId];
     if (def?.damage) return def.damage;
   }
   return bestTool(player, 'sword').damage ?? 5;
+}
+
+function swapInventoryWithHotbar(session: Session, inventoryIndex: number, hotbarSlot = session.player.hotbarSlot): void {
+  const hbIndex = hotbarInventoryIndex(hotbarSlot);
+  const inv = [...session.player.inventory];
+  [inv[inventoryIndex], inv[hbIndex]] = [inv[hbIndex], inv[inventoryIndex]];
+  session.player.inventory = inv;
+  pushState(session);
 }
 
 function catchUpMinions(player: PlayerState): void {
@@ -982,10 +993,24 @@ function useHeldItem(session: Session): void {
 
   const slotByType: Partial<Record<string, keyof PlayerState['equipment']>> = {
     HELMET: 'helmet', CHESTPLATE: 'chestplate', LEGGINGS: 'leggings', BOOTS: 'boots',
-    SWORD: 'weapon', BOW: 'weapon', PICKAXE: 'weapon', AXE: 'weapon', HOE: 'weapon', FISHING_ROD: 'weapon',
   };
   const equipmentSlot = slotByType[def.type ?? ''];
   if (!equipmentSlot) {
+    if (isWeaponLikeType(def.type)) {
+      const hbIndex = hotbarInventoryIndex(session.player.hotbarSlot);
+      const old = session.player.inventory[hbIndex];
+      session.player.inventory[hbIndex] = { ...held, qty: 1 };
+      held.qty -= 1;
+      session.inventoryCursor = held.qty > 0 ? { ...held } : null;
+      if (old) {
+        const next = addItem(session.player.inventory, old.itemId, old.qty);
+        if (next) session.player.inventory = next;
+        else session.inventoryCursor = old;
+      }
+      pushState(session);
+      toast(session, `Moved ${def.name} to hotbar`, 'success');
+      return;
+    }
     toast(session, 'This item cannot be used from your hand here.', 'info');
     return;
   }
@@ -1110,10 +1135,14 @@ function useInventorySlot(session: Session, index: number, button = 'left'): voi
 
   const slotByType: Partial<Record<string, keyof PlayerState['equipment']>> = {
     HELMET: 'helmet', CHESTPLATE: 'chestplate', LEGGINGS: 'leggings', BOOTS: 'boots',
-    SWORD: 'weapon', BOW: 'weapon', PICKAXE: 'weapon', AXE: 'weapon', HOE: 'weapon', FISHING_ROD: 'weapon',
   };
   const equipmentSlot = slotByType[def.type ?? ''];
   if (!equipmentSlot) {
+    if (isWeaponLikeType(def.type)) {
+      swapInventoryWithHotbar(session, index);
+      toast(session, `Moved ${def.name} to hotbar`, 'success');
+      return;
+    }
     if (def.heal) doUseItem(session, index);
     else throw new Error('Open the relevant menu to use this item');
     return;
@@ -1132,7 +1161,7 @@ function attackSlayerBoss(session: Session): void {
   const tier = slayer?.tiers.find((entry) => entry.tier === quest.tier);
   if (!slayer || !tier) return;
   if (!quest.bossHp) throw new Error('Kill target mobs to spawn the boss');
-  const weapon = session.player.equipment.weapon;
+  const weapon = hotbarStack(session.player.inventory, session.player.hotbarSlot);
   const weaponDamage = weapon ? ITEMS[weapon.itemId]?.damage ?? 5 : 5;
   const critical = rollCrit(session.player.stats.critChance);
   const damage = Math.round(meleeDamage(weaponDamage, session.player.stats.strength, session.player.stats.critDamage, critical));
@@ -1362,8 +1391,8 @@ function doDungeonBossCombat(session: Session): void {
   if (dungeonPhase(run) !== 'boss') throw new Error('No boss here');
 
   if (run.bossHp == null) run.bossHp = floor.boss.health;
-  const weapon = session.player.equipment.weapon;
-  const weaponDamage = weapon ? ITEMS[weapon.itemId]?.damage ?? 5 : 5;
+  const hotbar = hotbarStack(session.player.inventory, session.player.hotbarSlot);
+  const weaponDamage = hotbar ? ITEMS[hotbar.itemId]?.damage ?? 5 : playerWeaponDamage(session.player);
   const critical = rollCrit(session.player.stats.critChance);
   const damage = Math.round(meleeDamage(
     weaponDamage,
@@ -1628,8 +1657,8 @@ function damageAllDungeonMobs(session: Session, damage: number): number {
 
 function doUseAbility(session: Session): void {
   if (session.menuOpen) throw new Error('Close menus before using abilities');
-  const weapon = session.player.equipment.weapon;
-  if (!weapon) throw new Error('Equip a weapon to use its ability');
+  const weapon = hotbarStack(session.player.inventory, session.player.hotbarSlot);
+  if (!weapon) throw new Error('Select a weapon in your hotbar to use its ability');
   const def = ITEMS[weapon.itemId];
   const ability = def?.ability;
   if (!ability) throw new Error(`${def?.name ?? 'This item'} has no ability`);
@@ -1748,7 +1777,7 @@ function runCompletesDungeon(session: Session): boolean {
 }
 
 function doUseItem(session: Session, slot?: number): void {
-  const idx = slot ?? session.player.hotbarSlot;
+  const idx = slot ?? hotbarInventoryIndex(session.player.hotbarSlot);
   const stack = session.player.inventory[idx];
   if (!stack) return;
   const def = ITEMS[stack.itemId];

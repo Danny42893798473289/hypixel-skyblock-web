@@ -15,7 +15,7 @@ import {
 } from '@aether/shared';
 
 export function emptyEquipment(): Record<EquipmentSlot, ItemStack | null> {
-  return { helmet: null, chestplate: null, leggings: null, boots: null, weapon: null };
+  return { helmet: null, chestplate: null, leggings: null, boots: null };
 }
 
 function stackStats(stack: ItemStack | null | undefined): Partial<StatBlock> {

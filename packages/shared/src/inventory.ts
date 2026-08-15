@@ -20,6 +20,19 @@ export function emptyInventory(): Inventory {
   return Array.from({ length: INVENTORY_SIZE }, () => null);
 }
 
+/** Inventory index for a hotbar slot (0–8). */
+export function hotbarInventoryIndex(hotbarSlot: number): number {
+  return INVENTORY_SIZE - HOTBAR_SIZE + hotbarSlot;
+}
+
+export function hotbarStack(inventory: Inventory, hotbarSlot: number): ItemStack | null {
+  return inventory[hotbarInventoryIndex(hotbarSlot)] ?? null;
+}
+
+export function isWeaponLikeType(type?: string): boolean {
+  return type === 'SWORD' || type === 'BOW' || type === 'PICKAXE' || type === 'AXE' || type === 'HOE' || type === 'FISHING_ROD';
+}
+
 export function countItem(inv: Inventory, itemId: ItemId): number {
   return inv.reduce((sum, s) => (s?.itemId === itemId ? sum + s.qty : sum), 0);
 }
