@@ -1,0 +1,9 @@
+node_modules
+dist
+*.db
+*.db-*
+.DS_Store
+.env
+apps/server/data/users.json
+apps/server/data/*.tmp
+apps/server/data/*.db*

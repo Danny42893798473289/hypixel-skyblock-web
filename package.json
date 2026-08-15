@@ -1,0 +1,24 @@
+{
+  "name": "aether-isles",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run build -w @aether/shared && concurrently -n server,client -c blue,green \"npm run dev -w @aether/server\" \"npm run dev -w @aether/client\"",
+    "build": "npm run build -w @aether/shared && node scripts/generateHypixelTextureMap.mjs && npm run build -w @aether/server && npm run build -w @aether/client",
+    "admin:bootstrap": "node scripts/adminBootstrap.mjs",
+    "start": "npm run start -w @aether/server",
+    "verify": "node scripts/verify-world.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "smoke:offline": "node scripts/smoke-offline.mjs",
+    "smoke:fixes": "node scripts/smoke-fixes.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "playwright-core": "^1.62.1"
+  }
+}

@@ -1,0 +1,412 @@
+{
+  "users": [
+    {
+      "id": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "username": "MarketBot",
+      "passwordHash": "$2b$08$.4rFU.12S2Um6Yb2jPja5u9ok.N4NLKpny1aN4toY6k91mNSGdVo.",
+      "createdAt": 1786699262530,
+      "updatedAt": 1786699262530,
+      "coins": 997337.6,
+      "zoneId": "hub_plaza",
+      "hp": 100,
+      "hotbarSlot": 0,
+      "inventory": [
+        {
+          "itemId": "wooden_pickaxe",
+          "qty": 1
+        },
+        {
+          "itemId": "wooden_axe",
+          "qty": 1
+        },
+        {
+          "itemId": "wooden_hoe",
+          "qty": 1
+        },
+        {
+          "itemId": "wooden_sword",
+          "qty": 1
+        },
+        {
+          "itemId": "bread",
+          "qty": 8
+        },
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "skills": {
+        "mining": 0,
+        "farming": 0,
+        "combat": 0,
+        "foraging": 0,
+        "fishing": 0
+      },
+      "collections": {},
+      "minions": []
+    },
+    {
+      "id": "450db7da-7ed9-4606-9910-d4fdf99d5cb5",
+      "username": "Danny",
+      "passwordHash": "$2b$10$dzRB/Uf/GWsSfnbXRt/KTOCwT30rZH4zYfCY6pdK2MbAp1H/MC0.q",
+      "createdAt": 1786699417422,
+      "updatedAt": 1786699437453,
+      "coins": 100,
+      "zoneId": "island_home",
+      "hp": 100,
+      "hotbarSlot": 0,
+      "inventory": [
+        {
+          "itemId": "wooden_pickaxe",
+          "qty": 1
+        },
+        {
+          "itemId": "wooden_axe",
+          "qty": 1
+        },
+        {
+          "itemId": "wooden_hoe",
+          "qty": 1
+        },
+        {
+          "itemId": "wooden_sword",
+          "qty": 1
+        },
+        {
+          "itemId": "bread",
+          "qty": 8
+        },
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "skills": {
+        "mining": 0,
+        "farming": 0,
+        "combat": 0,
+        "foraging": 0,
+        "fishing": 0
+      },
+      "collections": {},
+      "minions": []
+    }
+  ],
+  "bazaarOrders": [
+    {
+      "id": "f803807d-df64-4840-aee3-6a5b173d5c83",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "cobble",
+      "side": "sell",
+      "price": 1.2,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262555
+    },
+    {
+      "id": "84ece27d-5519-4fd2-9f68-7341d1b2d0da",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "cobble",
+      "side": "buy",
+      "price": 0.8,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262555
+    },
+    {
+      "id": "32e1f8e9-b61a-4b58-875f-2012606e7537",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "coal",
+      "side": "sell",
+      "price": 4.8,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262555
+    },
+    {
+      "id": "608b38d9-3284-4927-af1a-2798876662c0",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "coal",
+      "side": "buy",
+      "price": 3.2,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262555
+    },
+    {
+      "id": "8893cf63-277a-44a5-b0f8-3b51f9726990",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "iron_ore",
+      "side": "sell",
+      "price": 9.6,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262555
+    },
+    {
+      "id": "d65771fe-06fe-4ebd-afb9-e337d43dee38",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "iron_ore",
+      "side": "buy",
+      "price": 6.4,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262555
+    },
+    {
+      "id": "1df004e6-cc73-494e-b618-650802e58ef8",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "iron_ingot",
+      "side": "sell",
+      "price": 14.4,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262555
+    },
+    {
+      "id": "1801da0a-3f82-4cb8-acad-bf7b31d63361",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "iron_ingot",
+      "side": "buy",
+      "price": 9.6,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262556
+    },
+    {
+      "id": "46b9c986-48dc-4765-b897-ef9e150dad46",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "wheat",
+      "side": "sell",
+      "price": 2.4,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262556
+    },
+    {
+      "id": "6e6f0435-c2c2-4221-8b64-b09286b9b6b3",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "wheat",
+      "side": "buy",
+      "price": 1.6,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262556
+    },
+    {
+      "id": "9ed0893e-8d0f-4e4d-b1ff-cca7d929b928",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "bread",
+      "side": "sell",
+      "price": 7.2,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262556
+    },
+    {
+      "id": "84080cb6-316a-403d-9893-60fbf57c1933",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "bread",
+      "side": "buy",
+      "price": 4.8,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262556
+    },
+    {
+      "id": "806bbb1e-deab-4022-b0a6-3136c18f1174",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "oak_log",
+      "side": "sell",
+      "price": 2.4,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262556
+    },
+    {
+      "id": "cde6b9d5-69c1-4d62-8a39-62cde836176e",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "oak_log",
+      "side": "buy",
+      "price": 1.6,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262556
+    },
+    {
+      "id": "9e7b5620-ac45-4f1d-9261-6191b435bf1f",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "oak_plank",
+      "side": "sell",
+      "price": 1.2,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262556
+    },
+    {
+      "id": "6a2afa28-f0e8-4fc7-b647-0993b20b3a2d",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "oak_plank",
+      "side": "buy",
+      "price": 0.8,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262557
+    },
+    {
+      "id": "55863a25-2db2-44e5-b4b8-d37e34428781",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "string",
+      "side": "sell",
+      "price": 3.6,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262557
+    },
+    {
+      "id": "097e427f-6510-4889-8861-548a051ab340",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "string",
+      "side": "buy",
+      "price": 2.4,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262557
+    },
+    {
+      "id": "05159cd6-9ed1-4084-aff6-bc53f051f8cb",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "rotten_flesh",
+      "side": "sell",
+      "price": 2.4,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262557
+    },
+    {
+      "id": "256fe5fd-afa3-4587-81a9-722b36d350ff",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "rotten_flesh",
+      "side": "buy",
+      "price": 1.6,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262557
+    },
+    {
+      "id": "7042632d-b3f4-4262-b7b4-41630d2acf1d",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "raw_fish",
+      "side": "sell",
+      "price": 3.6,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262557
+    },
+    {
+      "id": "ec6b98c1-ad8f-4370-aedf-c473262dd6aa",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "raw_fish",
+      "side": "buy",
+      "price": 2.4,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262557
+    },
+    {
+      "id": "e0e48d1e-c39a-4da0-9fa9-69d75718635f",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "cooked_fish",
+      "side": "sell",
+      "price": 8.4,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262558
+    },
+    {
+      "id": "5cd39fa1-24b0-4fce-a73e-c9c84e5f2101",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "cooked_fish",
+      "side": "buy",
+      "price": 5.6,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262558
+    },
+    {
+      "id": "8b424ff4-b807-49ae-95cb-8c3243e8c83a",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "stick",
+      "side": "sell",
+      "price": 1.2,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262558
+    },
+    {
+      "id": "4eec0785-1b86-48b6-b61a-befd6053a8fa",
+      "playerId": "f8e71df1-dcad-49a0-85df-d21b6bcd86df",
+      "itemId": "stick",
+      "side": "buy",
+      "price": 0.8,
+      "qty": 64,
+      "filled": 0,
+      "createdAt": 1786699262558
+    }
+  ]
+}
