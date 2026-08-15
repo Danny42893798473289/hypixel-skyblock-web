@@ -17,6 +17,7 @@ export * from './dungeonMap.js';
 export * from './accessories.js';
 import './registerCatalog.js';
 import './registerGear.js';
+import './registerSkyblockRecipes.js';
 
 export const GAME_NAME = 'Aether Isles';
 export const TICK_MS = 100;

@@ -311,6 +311,8 @@ export function applySkyblockRecipes(): void {
     ['golden_pickaxe', 'gold_ingot', 250],
     ['golden_axe', 'gold_ingot', 250],
     ['golden_sword', 'gold_ingot', 250],
+    ['diamond_sword', 'diamond', 250],
+    ['diamond_axe', 'diamond', 250],
   ];
 
   for (const [toolId, mat, unlock] of toolSets) {
