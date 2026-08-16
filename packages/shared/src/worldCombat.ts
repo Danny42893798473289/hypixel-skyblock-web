@@ -133,6 +133,7 @@ export const SLAYER_DROPS: Record<string, DropDef[]> = {
     { itemId: 'rev_flesh' as ItemId, chance: 1, min: 1, max: 3 },
     { itemId: 'rotten_flesh' as ItemId, chance: 1, min: 2, max: 5 },
     { itemId: 'revenant_catalyst' as ItemId, chance: 0.08, min: 1, max: 1 },
+    { itemId: 'undead_catalyst' as ItemId, chance: 0.05, min: 1, max: 1 },
   ],
   tarantula: [
     { itemId: 'tarantula_web' as ItemId, chance: 1, min: 1, max: 3 },
@@ -143,6 +144,7 @@ export const SLAYER_DROPS: Record<string, DropDef[]> = {
     { itemId: 'wolf_tooth' as ItemId, chance: 1, min: 1, max: 3 },
     { itemId: 'mutton' as ItemId, chance: 0.6, min: 1, max: 2 },
     { itemId: 'wolf_catalyst' as ItemId, chance: 0.08, min: 1, max: 1 },
+    { itemId: 'golden_teeth' as ItemId, chance: 0.06, min: 1, max: 1 },
   ],
   voidgloom: [
     { itemId: 'null_sphere' as ItemId, chance: 1, min: 1, max: 2 },
@@ -153,12 +155,13 @@ export const SLAYER_DROPS: Record<string, DropDef[]> = {
     { itemId: 'derelict_ashe' as ItemId, chance: 1, min: 1, max: 2 },
     { itemId: 'blaze_rod' as ItemId, chance: 0.8, min: 1, max: 3 },
     { itemId: 'blaze_ashes' as ItemId, chance: 0.12, min: 1, max: 1 },
+    { itemId: 'match_sticks' as ItemId, chance: 0.1, min: 1, max: 2 },
   ],
 };
 
 export function slayerMatchesMob(targetMob: string, mobId: string): boolean {
   if (targetMob === mobId) return true;
-  if (targetMob === 'zombie' && ['zombie', 'graveyard_zombie', 'lapis_zombie', 'husk'].includes(mobId)) return true;
+  if (targetMob === 'zombie' && ['zombie', 'graveyard_zombie', 'lapis_zombie', 'husk', 'pigman'].includes(mobId)) return true;
   if (targetMob === 'spider' && ['spider', 'dasher_spider', 'weaver', 'crawler'].includes(mobId)) return true;
   if (targetMob === 'wolf' && mobId === 'wolf') return true;
   if (targetMob === 'enderman' && ['enderman', 'zealot'].includes(mobId)) return true;

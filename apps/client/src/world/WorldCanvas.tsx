@@ -22,6 +22,7 @@ interface Props {
   player: PlayerState;
   zonePlayers: PlayerPublic[];
   inputDisabled: boolean;
+  chatFocused: boolean;
   touchMode: boolean;
   onOpenMenu: () => void;
   onOpenInventory: () => void;
@@ -56,7 +57,7 @@ function liveWorldKey(player: PlayerState): string {
   return `${mobs}|${minions}|${dungeon}`;
 }
 
-export function WorldCanvas({ player, zonePlayers, inputDisabled, touchMode, onOpenMenu, onOpenInventory }: Props) {
+export function WorldCanvas({ player, zonePlayers, inputDisabled, chatFocused, touchMode, onOpenMenu, onOpenInventory }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const collisionKey = player.zoneId === DUNGEON_ZONE ? dungeonCollisionKey(player) : player.islandId;
   // collisionKey covers island + dungeon floor/phase/room, not object identity.
@@ -72,10 +73,15 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, touchMode, onO
     () => (player.dungeonRun && player.zoneId === DUNGEON_ZONE ? playerWorldMap(player) : overlayLiveWorld(collisionMap, player)),
     [collisionMap, overlayKey],
   );
-  const { positionRef, movingRef, setTouchDirection } = useMovement(player, collisionMap, inputDisabled);
+  const { positionRef, movingRef, setTouchAnalog, setTouchSprint } = useMovement(
+    player,
+    collisionMap,
+    inputDisabled || (chatFocused && !touchMode),
+  );
   const remotesRef = useRef(new Map<string, RemotePosition>());
   const [nearby, setNearby] = useState<WorldEntity | null>(null);
   const nearbyIdRef = useRef<string | null>(null);
+  const nearbyRef = useRef<WorldEntity | null>(null);
   const foundFairies = useMemo(() => new Set(player.visitedZones.filter((entry) => entry.startsWith('fairy:'))), [player.visitedZones]);
   const liveMapRef = useRef(liveMap);
   const foundFairiesRef = useRef(foundFairies);
@@ -83,6 +89,20 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, touchMode, onO
   liveMapRef.current = liveMap;
   foundFairiesRef.current = foundFairies;
   usernameRef.current = player.username;
+  nearbyRef.current = nearby;
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.matches('input, textarea, [contenteditable="true"]')) return;
+      if (event.key.toLowerCase() !== 'e' || event.repeat || inputDisabled || chatFocused) return;
+      event.preventDefault();
+      if (nearbyRef.current) gameSocket.send({ type: 'interact' });
+      else onOpenInventory();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [chatFocused, inputDisabled, onOpenInventory]);
 
   useEffect(() => {
     const seen = new Set<string>();
@@ -160,6 +180,7 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, touchMode, onO
       }
 
       const nearest = nearestEntity(map, local.x, local.y);
+      nearbyRef.current = nearest;
       if ((nearest?.id ?? null) !== nearbyIdRef.current) {
         nearbyIdRef.current = nearest?.id ?? null;
         setNearby(nearest);
@@ -221,12 +242,21 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, touchMode, onO
         aria-label={`Island: ${player.islandId}`}
         onContextMenu={(event) => {
           event.preventDefault();
-          if (!inputDisabled) gameSocket.send({ type: 'useAbility' });
+          if (!inputDisabled && !chatFocused) gameSocket.send({ type: 'useAbility' });
+        }}
+        onClick={(event) => {
+          if (event.button !== 0 || inputDisabled || chatFocused || touchMode) return;
+          const target = nearbyRef.current;
+          if (target && target.kind !== 'mob' && target.kind !== 'sign' && target.kind !== 'decor') {
+            gameSocket.send({ type: 'interact' });
+            return;
+          }
+          gameSocket.send({ type: 'attack' });
         }}
       />
       {!inputDisabled && nearby ? (
         <div className="interact-prompt">
-          <kbd>{touchMode ? 'TAP' : 'E'}</kbd>
+          <kbd>{touchMode ? (nearby.kind === 'mob' ? 'ATK' : 'USE') : nearby.kind === 'mob' ? 'CLICK' : 'E'}</kbd>
           <span>{interactionText(nearby, player)}</span>
         </div>
       ) : null}
@@ -237,15 +267,17 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, touchMode, onO
       ) : null}
       {touchMode ? (
         <TouchControls
-          onDirection={setTouchDirection}
+          onAnalog={setTouchAnalog}
+          onSprint={setTouchSprint}
           onInteract={() => gameSocket.send({ type: 'interact' })}
+          onAttack={() => gameSocket.send({ type: 'attack' })}
           onAbility={() => gameSocket.send({ type: 'useAbility' })}
           onMenu={onOpenMenu}
           onInventory={onOpenInventory}
           disabled={inputDisabled}
         />
       ) : (
-        <div className="movement-hint">WASD · E interact · R ability · 1–9 hotbar · I inventory · M menu</div>
+        <div className="movement-hint">WASD · Shift sprint · click attack · E interact / inventory · R ability · wheel hotbar · Q drop · I inventory · M menu</div>
       )}
     </>
   );

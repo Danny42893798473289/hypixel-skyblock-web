@@ -34,7 +34,7 @@ export function handleFeatureEvent(
   sessions: Map<string, { socket: Socket; player: PlayerState }>,
   helpers: {
     toast: (s: { player: PlayerState }, msg: string, kind?: string) => void;
-    pushState: (s: { player: PlayerState }) => void;
+    pushState: (s: { player: PlayerState }, opts?: { resetPosition?: boolean }) => void;
     warpPrivateIsland: (s: { player: PlayerState }, host: PlayerState) => void;
     leaveVisit: (s: { player: PlayerState }) => void;
   },
@@ -60,7 +60,7 @@ export function handleFeatureEvent(
       if (!host) throw new Error('Player not found or offline');
       helpers.warpPrivateIsland(session, host.player);
       session.player.skills.social += socialXpForVisit();
-      helpers.pushState(session);
+      helpers.pushState(session, { resetPosition: true });
       helpers.toast(session, `Visiting ${host.player.username}'s island!`, 'success');
       return true;
     }
@@ -126,7 +126,7 @@ export function handleFeatureChat(
   session: { socket: Socket; player: PlayerState },
   text: string,
   sessions: Map<string, { socket: Socket; player: PlayerState }>,
-  helpers: { toast: (s: { player: PlayerState }, msg: string, kind?: string) => void; pushState: (s: { player: PlayerState }) => void },
+  helpers: { toast: (s: { player: PlayerState }, msg: string, kind?: string) => void; pushState: (s: { player: PlayerState }, opts?: { resetPosition?: boolean }) => void },
 ): boolean {
   const parsed = parseChatCommand(text);
   if (!parsed) return false;
@@ -177,7 +177,7 @@ export function afterFishCatch(
   session: { socket: Socket; player: PlayerState },
   fishingSpotId: string,
   fishingLevel: number,
-  helpers: { toast: (s: { player: PlayerState }, msg: string, kind?: string) => void; pushState: (s: { player: PlayerState }) => void },
+  helpers: { toast: (s: { player: PlayerState }, msg: string, kind?: string) => void; pushState: (s: { player: PlayerState }, opts?: { resetPosition?: boolean }) => void },
 ): void {
   const spawn = trySpawnSeaCreature(session.player, fishingSpotId, fishingLevel);
   if (!spawn) return;

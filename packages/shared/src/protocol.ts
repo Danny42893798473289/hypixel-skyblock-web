@@ -124,6 +124,8 @@ export interface PlayerState extends PlayerPublic {
   gatherChannel?: GatherChannel | null;
   /** Transient — only set while inventory menu is open (not persisted). */
   inventoryCursor?: ItemStack | null;
+  /** Transient — snap the local camera to x/y (warps, death). Not persisted. */
+  resetPosition?: boolean;
 }
 
 export type MenuId =
@@ -226,11 +228,13 @@ export type ClientEvent =
   | { type: 'menuClick'; menu: MenuId; slot: number; button: 'left' | 'right' | 'shift_left' | 'shift_right'; action?: string }
   | { type: 'move'; x: number; y: number; facing: Facing }
   | { type: 'interact' }
+  | { type: 'attack' }
   | { type: 'useAbility' }
   | { type: 'travel'; zoneId: string }
   | { type: 'warpIsland'; islandId: IslandId }
   | { type: 'doAction'; actionId: string; times?: number }
   | { type: 'setHotbar'; slot: number }
+  | { type: 'dropHotbar'; all?: boolean }
   | { type: 'useItem'; slot?: number }
   | { type: 'craft'; recipeId: string }
   | { type: 'placeMinion'; minionType: string }
@@ -274,8 +278,9 @@ export type ServerEvent =
   | { type: 'damageNumber'; x: number; y: number; amount: number; critical?: boolean }
   | { type: 'seaCreatureSpawn'; name: string; mobId: string }
   | { type: 'actionResult'; actionId: string; success: boolean; message: string }
+  | { type: 'actionBar'; text: string }
   /** Lightweight position fix — avoids a full state sync that would rubber-band the client. */
-  | { type: 'moveCorrection'; x: number; y: number; facing: Facing };
+  | { type: 'moveCorrection'; x: number; y: number; facing: Facing; reason?: 'blocked' | 'gate' | 'teleport' };
 
 export interface AuthResponse {
   token: string;

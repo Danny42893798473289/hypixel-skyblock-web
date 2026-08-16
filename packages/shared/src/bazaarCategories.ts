@@ -44,6 +44,36 @@ export function bazaarItemsInSection(section: BazaarSection): ItemId[] {
     .sort((a, b) => (ITEMS[a]?.name ?? a).localeCompare(ITEMS[b]?.name ?? b));
 }
 
+function compactKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+/** Match bazaar products by display name or item id (spaces, underscores, and punctuation ignored). */
+export function searchBazaarItems(query: string): ItemId[] {
+  const raw = query.trim().toLowerCase();
+  if (!raw) return [];
+  const compact = compactKey(raw);
+  const hits: Array<{ id: ItemId; rank: number; name: string }> = [];
+  for (const id of BAZAAR_ITEMS) {
+    const name = (ITEMS[id]?.name ?? id).toLowerCase();
+    const idWords = id.toLowerCase().replace(/_/g, ' ');
+    const nameCompact = compactKey(name);
+    const idCompact = compactKey(id);
+    if (
+      !name.includes(raw)
+      && !idWords.includes(raw)
+      && !nameCompact.includes(compact)
+      && !idCompact.includes(compact)
+    ) {
+      continue;
+    }
+    const starts = name.startsWith(raw) || idWords.startsWith(raw) || nameCompact.startsWith(compact);
+    hits.push({ id, rank: starts ? 0 : 1, name });
+  }
+  hits.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
+  return hits.map((hit) => hit.id);
+}
+
 export function bazaarSectionCounts(): Record<BazaarSection, number> {
   const counts: Record<BazaarSection, number> = {
     farming: 0, mining: 0, combat: 0, woods: 0, oddities: 0,

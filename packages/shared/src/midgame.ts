@@ -141,6 +141,7 @@ export const PET_EGGS: Array<{ egg: ItemId; pet: ItemId; fromMob?: string }> = [
   { egg: 'tiger_pet_egg', pet: 'tiger_pet', fromMob: 'dasher_spider' },
   { egg: 'silverfish_pet_egg', pet: 'silverfish_pet', fromMob: 'zombie' },
   { egg: 'elephant_pet_egg', pet: 'elephant_pet' },
+  { egg: 'sheep_pet', pet: 'sheep_pet', fromMob: 'sheep' },
 ];
 
 export function currentJacobCrop(now = Date.now()): ItemId {

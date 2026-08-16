@@ -36,6 +36,7 @@ export function App() {
   const [player, setPlayer] = useState<PlayerState | null>(null);
   const [menu, setMenu] = useState<MenuView | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [menuPending, setMenuPending] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [chats, setChats] = useState<ChatMessage[]>([]);
   const [zonePlayers, setZonePlayers] = useState<PlayerPublic[]>([]);
@@ -48,8 +49,11 @@ export function App() {
   const [chatFocused, setChatFocused] = useState(false);
   const [touchMode, setTouchMode] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [actionBar, setActionBar] = useState('');
   const toastId = useRef(0);
   const chatInputRef = useRef<HTMLInputElement>(null);
+  const actionBarTimer = useRef(0);
+  const playerRef = useRef<PlayerState | null>(null);
 
   useEffect(() => {
     const query = window.matchMedia('(pointer: coarse)');
@@ -71,11 +75,14 @@ export function App() {
     const off = gameSocket.on((event: ServerEvent) => {
       switch (event.type) {
         case 'welcome':
-        case 'state':
           setPlayer(event.player);
+          break;
+        case 'state':
+          setPlayer((prev) => mergeLivePlayer(prev, event.player));
           break;
         case 'menu':
           setMenu(event.menu);
+          setMenuPending(false);
           setMenuVisible(true);
           if (event.menu.id === 'bazaar_item' && event.menu.context?.itemId) {
             gameSocket.send({ type: 'bazaarSubscribe', itemId: String(event.menu.context.itemId) });
@@ -108,6 +115,11 @@ export function App() {
         case 'toast':
           addToast(event.message, event.kind);
           break;
+        case 'actionBar':
+          setActionBar(event.text);
+          window.clearTimeout(actionBarTimer.current);
+          actionBarTimer.current = window.setTimeout(() => setActionBar(''), 2500);
+          break;
         case 'chat':
           setChats((current) => [...current.slice(-60), event.message]);
           break;
@@ -116,21 +128,27 @@ export function App() {
     return () => {
       off();
       gameSocket.disconnect();
+      window.clearTimeout(actionBarTimer.current);
     };
   }, [addToast, token]);
 
   const openMenu = useCallback((id: MenuId, context?: Record<string, string | number | boolean>) => {
     gameSocket.send({ type: 'openMenu', menu: id, context });
+    setMenu(null);
+    setMenuPending(true);
     setMenuVisible(true);
   }, []);
 
   const openInventory = useCallback(() => {
     gameSocket.send({ type: 'openMenu', menu: 'inventory' });
+    setMenu(null);
+    setMenuPending(true);
     setMenuVisible(true);
   }, []);
 
   const closeMenu = useCallback(() => {
     setMenuVisible(false);
+    setMenuPending(false);
     gameSocket.send({ type: 'closeMenu' });
     gameSocket.send({ type: 'bazaarSubscribe', itemId: null });
     setBazaarBook(null);
@@ -143,6 +161,47 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    playerRef.current = player;
+  }, [player]);
+
+  useEffect(() => {
+    if (!touchMode || !chatFocused) {
+      document.documentElement.style.setProperty('--chat-keyboard-inset', '0px');
+      return;
+    }
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const update = () => {
+      const inset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+      document.documentElement.style.setProperty('--chat-keyboard-inset', `${Math.round(inset)}px`);
+    };
+    update();
+    viewport.addEventListener('resize', update);
+    viewport.addEventListener('scroll', update);
+    return () => {
+      viewport.removeEventListener('resize', update);
+      viewport.removeEventListener('scroll', update);
+      document.documentElement.style.setProperty('--chat-keyboard-inset', '0px');
+    };
+  }, [chatFocused, touchMode]);
+
+  useEffect(() => {
+    const onWheel = (event: WheelEvent) => {
+      if (menuVisible || chatFocused) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, .chest-overlay, .lore-tooltip')) return;
+      const current = playerRef.current;
+      if (!current) return;
+      event.preventDefault();
+      const dir = event.deltaY > 0 ? 1 : -1;
+      const next = (current.hotbarSlot + dir + 9) % 9;
+      gameSocket.send({ type: 'setHotbar', slot: next });
+    };
+    window.addEventListener('wheel', onWheel, { passive: false });
+    return () => window.removeEventListener('wheel', onWheel);
+  }, [chatFocused, menuVisible]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const typing = Boolean(target?.matches('input, textarea, [contenteditable="true"]'));
@@ -153,6 +212,20 @@ export function App() {
         return;
       }
       if (typing) return;
+      if (event.key === '/' && !menuVisible) {
+        event.preventDefault();
+        setChatOpen(true);
+        setChatFocused(true);
+        setChatText((text) => (text.startsWith('/') ? text : `/${text}`));
+        window.setTimeout(() => {
+          const input = chatInputRef.current;
+          if (!input) return;
+          input.focus();
+          const end = input.value.length;
+          input.setSelectionRange(end, end);
+        }, 0);
+        return;
+      }
       if (event.key.toLowerCase() === 'm') {
         event.preventDefault();
         if (menuVisible) closeMenu();
@@ -162,6 +235,14 @@ export function App() {
         event.preventDefault();
         if (menuVisible && menu?.id === 'inventory') closeMenu();
         else openInventory();
+      }
+      if (event.key.toLowerCase() === 'e' && menuVisible) {
+        event.preventDefault();
+        closeMenu();
+      }
+      if (event.key.toLowerCase() === 'q') {
+        event.preventDefault();
+        gameSocket.send({ type: 'dropHotbar', all: event.ctrlKey || event.metaKey });
       }
       if (!menuVisible && !event.key.startsWith('F')) {
         const num = Number(event.key);
@@ -202,7 +283,8 @@ export function App() {
       <WorldCanvas
         player={player}
         zonePlayers={zonePlayers}
-        inputDisabled={menuVisible || chatFocused}
+        inputDisabled={menuVisible}
+        chatFocused={chatFocused}
         touchMode={touchMode}
         onOpenMenu={() => openMenu('skyblock')}
         onOpenInventory={openInventory}
@@ -253,14 +335,26 @@ export function App() {
       </aside>
 
       <div className="actionbar">
-        <span className="health">{Math.ceil(player.hp)}/{Math.round(player.maxHp)} ❤</span>
-        <span className="defense">{Math.round(player.stats.defense)} ❈</span>
-        <span className="mana">{Math.floor(player.mana)}/{Math.round(player.maxMana)} ✎ Mana</span>
+        {actionBar ? <div className="xp-actionbar">{actionBar}</div> : <div className="xp-actionbar xp-actionbar-spacer" />}
+        <div className="stat-bars">
+          <div className="stat-bar health-bar">
+            <div className="stat-bar-fill" style={{ width: `${Math.max(0, Math.min(100, (player.hp / Math.max(1, player.maxHp)) * 100))}%` }} />
+            <span className="health">{Math.ceil(player.hp)}/{Math.round(player.maxHp)} ❤</span>
+          </div>
+          <div className="stat-bar defense-bar">
+            <div className="stat-bar-fill" style={{ width: `${Math.max(0, Math.min(100, player.stats.defense / 4))}%` }} />
+            <span className="defense">{Math.round(player.stats.defense)} ❈ Defense</span>
+          </div>
+          <div className="stat-bar mana-bar">
+            <div className="stat-bar-fill" style={{ width: `${Math.max(0, Math.min(100, (player.mana / Math.max(1, player.maxMana)) * 100))}%` }} />
+            <span className="mana">{Math.floor(player.mana)}/{Math.round(player.maxMana)} ✎</span>
+          </div>
+        </div>
       </div>
 
       <HotbarHud
         player={player}
-        disabled={menuVisible || chatFocused}
+        disabled={menuVisible || (chatFocused && !touchMode)}
         touchMode={touchMode}
         onSelectSlot={(slot) => gameSocket.send({ type: 'setHotbar', slot })}
         onUseSlot={(inventoryIndex) => gameSocket.send({ type: 'useItem', slot: inventoryIndex })}
@@ -276,7 +370,7 @@ export function App() {
       {player.dragonFight && player.dragonFight.hp > 0 ? (
         <div className="dungeon-hud slayer-hud">
           <strong className="mc-light-purple">{player.dragonFight.type}</strong>
-          <span>{player.dragonFight.hp.toLocaleString()} ❤ — press E in the Dragon Nest</span>
+          <span>{player.dragonFight.hp.toLocaleString()} ❤ — click to attack in the Dragon Nest</span>
         </div>
       ) : null}
       {player.kuudraFight ? (
@@ -291,7 +385,7 @@ export function App() {
           <strong className="mc-red">Slayer · {player.activeSlayer.slayerId} T{player.activeSlayer.tier}</strong>
           <span>
             {player.activeSlayer.bossHp
-              ? `Boss spawned — ${player.activeSlayer.bossHp.toLocaleString()} ❤  (walk up, press E)`
+              ? `Boss spawned — ${player.activeSlayer.bossHp.toLocaleString()} ❤  (walk up, click to attack)`
               : `Kill target mobs  ${player.activeSlayer.progressXp}/${player.activeSlayer.requiredXp} XP`}
           </span>
         </div>
@@ -313,7 +407,7 @@ export function App() {
         </div>
       ) : null}
 
-      <section className={`chat-box${touchMode && !chatOpen ? ' chat-collapsed' : ''}`}>
+      <section className={`chat-box${chatFocused ? ' chat-focused' : ' chat-collapsed'}${touchMode && !chatOpen ? ' chat-collapsed' : ''}`}>
         <div className="chat-messages">
           {chats.slice(-8).map((message) => (
             <div key={message.id}><strong className="mc-yellow">{message.username}</strong><span>: {message.text}</span></div>
@@ -324,28 +418,39 @@ export function App() {
           if (!chatText.trim()) return;
           gameSocket.send({ type: 'chat', text: chatText });
           setChatText('');
-          if (touchMode) exitChat();
+          exitChat();
         }}>
           <input
             ref={chatInputRef}
             value={chatText}
             onChange={(event) => setChatText(event.target.value)}
             onFocus={() => { setChatFocused(true); setChatOpen(true); }}
-            onBlur={() => setChatFocused(false)}
+            onBlur={() => {
+              setChatFocused(false);
+              if (touchMode) setChatOpen(false);
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Escape') {
                 event.preventDefault();
                 exitChat();
               }
             }}
-            placeholder={touchMode ? 'Tap to chat...' : 'Press T to chat, Esc to exit...'}
+            placeholder={touchMode ? 'Tap to chat...' : 'T chat · / command · /warp hub  /ah  /bz diamond'}
             maxLength={120}
           />
           {chatFocused ? <button type="button" className="chat-exit" onClick={exitChat}>Esc</button> : null}
         </form>
       </section>
 
-      {menu && menuVisible ? (
+      {menuVisible && menuPending && !menu ? (
+        <div className="chest-overlay" role="dialog" aria-busy="true" aria-label="Loading menu">
+          <div className="chest-window chest-window-loading">
+            <div className="chest-title"><span>Loading…</span></div>
+          </div>
+        </div>
+      ) : null}
+
+      {menu && menuVisible && !menuPending ? (
         menu.id === 'inventory' ? (
           <PlayerInventoryPanel
             player={player}
@@ -414,12 +519,13 @@ export function App() {
             }}
             onClose={closeMenu}
             onBack={() => openMenu(parent, menu.context)}
+            onSearch={(query) => openMenu('bazaar', query ? { query, page: 0 } : {})}
           />
         )
       ) : null}
 
-      {seaCreatureAlert ? (
-        <div className="sea-creature-alert">{seaCreatureAlert} — press E to fight!</div>
+          {seaCreatureAlert ? (
+        <div className="sea-creature-alert">{seaCreatureAlert} — click to fight!</div>
       ) : null}
 
       {damageNumbers.map((hit) => (
@@ -438,3 +544,11 @@ export function App() {
     </main>
   );
 }
+
+/** Keep predicted walk position; only apply server x/y on warps, death, and island changes. */
+function mergeLivePlayer(prev: PlayerState | null, next: PlayerState): PlayerState {
+  const { resetPosition: shouldReset, ...rest } = next;
+  if (!prev || shouldReset || rest.islandId !== prev.islandId) return rest;
+  return { ...rest, x: prev.x, y: prev.y, facing: prev.facing };
+}
+

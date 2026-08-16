@@ -325,6 +325,7 @@ const ISLAND_WARP_ITEM: Record<string, ItemId> = {
   dungeon_hub: 'bone',
   garden: 'wheat',
   dwarven_mines: 'mithril',
+  crystal_hollows: 'gemstone_ruby',
   rift: 'ender_pearl',
 };
 

@@ -20,6 +20,8 @@ export type MoveDirection = 'up' | 'down' | 'left' | 'right';
 const HARD_RECONCILE_TILES = 2.2;
 /** Ignore tiny server nudges while actively moving — common on high-latency links. */
 const SOFT_RECONCILE_TILES = 0.2;
+const ANALOG_DEADZONE = 0.12;
+const ANALOG_SPRINT = 0.88;
 
 export function useMovement(player: PlayerState, map: IslandMap, disabled: boolean) {
   const positionRef = useRef<LocalPosition>({ x: player.x, y: player.y, facing: player.facing });
@@ -27,6 +29,9 @@ export function useMovement(player: PlayerState, map: IslandMap, disabled: boole
   const disabledRef = useRef(disabled);
   const keysRef = useRef(new Set<string>());
   const touchRef = useRef(new Set<MoveDirection>());
+  const analogRef = useRef({ x: 0, y: 0 });
+  const sprintRef = useRef(false);
+  const sprintHoldRef = useRef(false);
   const lastIslandRef = useRef(player.islandId);
   const mapRef = useRef(map);
   mapRef.current = map;
@@ -36,6 +41,9 @@ export function useMovement(player: PlayerState, map: IslandMap, disabled: boole
     if (disabled) {
       keysRef.current.clear();
       touchRef.current.clear();
+      analogRef.current = { x: 0, y: 0 };
+      sprintRef.current = false;
+      sprintHoldRef.current = false;
       movingRef.current = false;
     }
   }, [disabled]);
@@ -58,15 +66,18 @@ export function useMovement(player: PlayerState, map: IslandMap, disabled: boole
 
   useEffect(() => {
     const islandChanged = lastIslandRef.current !== player.islandId;
-    reconcileTo(player.x, player.y, player.facing, islandChanged);
+    if (player.resetPosition || islandChanged) {
+      reconcileTo(player.x, player.y, player.facing, true);
+    }
     lastIslandRef.current = player.islandId;
-  }, [player.facing, player.islandId, player.x, player.y, reconcileTo]);
+  }, [player.facing, player.islandId, player.resetPosition, player.x, player.y, reconcileTo]);
 
   useEffect(() => {
     const off = gameSocket.on((event) => {
-      if (event.type === 'moveCorrection') {
-        reconcileTo(event.x, event.y, event.facing, false);
-      }
+      if (event.type !== 'moveCorrection') return;
+      const force = event.reason === 'blocked' || event.reason === 'gate' || event.reason === 'teleport';
+      if (!force && movingRef.current) return;
+      reconcileTo(event.x, event.y, event.facing, force);
     });
     return off;
   }, [reconcileTo]);
@@ -76,12 +87,11 @@ export function useMovement(player: PlayerState, map: IslandMap, disabled: boole
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.matches('input, textarea, [contenteditable="true"]')) return;
-      const key = event.key.toLowerCase();
-      if (key === 'e' && !disabledRef.current && !event.repeat) {
-        event.preventDefault();
-        gameSocket.send({ type: 'interact' });
+      if (event.key === 'Shift') {
+        sprintRef.current = true;
         return;
       }
+      const key = event.key.toLowerCase();
       if (key === 'r' && !disabledRef.current && !event.repeat) {
         event.preventDefault();
         gameSocket.send({ type: 'useAbility' });
@@ -90,13 +100,18 @@ export function useMovement(player: PlayerState, map: IslandMap, disabled: boole
       if (!movementKeys.has(key) || disabledRef.current) return;
       event.preventDefault();
       keysRef.current.add(key);
+      if (event.shiftKey) sprintRef.current = true;
     };
     const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'Shift') sprintRef.current = false;
       keysRef.current.delete(event.key.toLowerCase());
     };
     const clear = () => {
       keysRef.current.clear();
       touchRef.current.clear();
+      analogRef.current = { x: 0, y: 0 };
+      sprintRef.current = false;
+      sprintHoldRef.current = false;
       movingRef.current = false;
     };
     window.addEventListener('keydown', onKeyDown);
@@ -118,6 +133,8 @@ export function useMovement(player: PlayerState, map: IslandMap, disabled: boole
       previous = now;
       const keys = keysRef.current;
       const touches = touchRef.current;
+      const analog = analogRef.current;
+      const analogMag = Math.hypot(analog.x, analog.y);
       let dx = 0;
       let dy = 0;
       if (!disabledRef.current) {
@@ -125,6 +142,10 @@ export function useMovement(player: PlayerState, map: IslandMap, disabled: boole
         if (keys.has('d') || keys.has('arrowright') || touches.has('right')) dx++;
         if (keys.has('w') || keys.has('arrowup') || touches.has('up')) dy--;
         if (keys.has('s') || keys.has('arrowdown') || touches.has('down')) dy++;
+        if (analogMag > ANALOG_DEADZONE) {
+          dx += analog.x;
+          dy += analog.y;
+        }
       }
       const moving = dx !== 0 || dy !== 0;
       movingRef.current = moving;
@@ -135,7 +156,9 @@ export function useMovement(player: PlayerState, map: IslandMap, disabled: boole
         const current = positionRef.current;
         if (Math.abs(dx) > Math.abs(dy)) current.facing = dx < 0 ? 'left' : 'right';
         else current.facing = dy < 0 ? 'up' : 'down';
-        const distance = MOVE_SPEED * delta;
+        const sprint = sprintRef.current || sprintHoldRef.current || analogMag > ANALOG_SPRINT;
+        const speed = MOVE_SPEED * (sprint ? 1.3 : 1);
+        const distance = speed * delta;
         const nextX = current.x + dx * distance;
         const nextY = current.y + dy * distance;
         if (canStand(mapRef.current, nextX, current.y)) current.x = nextX;
@@ -156,5 +179,14 @@ export function useMovement(player: PlayerState, map: IslandMap, disabled: boole
     else touchRef.current.delete(direction);
   }, []);
 
-  return { positionRef, movingRef, setTouchDirection };
-};
+  const setTouchAnalog = useCallback((x: number, y: number) => {
+    analogRef.current = disabledRef.current ? { x: 0, y: 0 } : { x, y };
+  }, []);
+
+  const setTouchSprint = useCallback((active: boolean) => {
+    sprintHoldRef.current = Boolean(active && !disabledRef.current);
+    if (!active && !keysRef.current.has('shift')) sprintRef.current = false;
+  }, []);
+
+  return { positionRef, movingRef, setTouchDirection, setTouchAnalog, setTouchSprint };
+}

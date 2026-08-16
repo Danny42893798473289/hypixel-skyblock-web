@@ -188,3 +188,59 @@ export function regularFloors(): DungeonFloorDef[] {
 export function masterFloors(): DungeonFloorDef[] {
   return DUNGEON_FLOORS.filter((f) => f.master);
 }
+
+const DUNGEON_CHEST_LOOT: DungeonDrop[] = [
+  { itemId: 'dungeon_chest_key', chance: 0.12, min: 1, max: 1 },
+  { itemId: 'hot_potato_book', chance: 0.08, min: 1, max: 1 },
+];
+
+for (const floor of DUNGEON_FLOORS) {
+  floor.drops.push(...DUNGEON_CHEST_LOOT);
+}
+
+const f3 = DUNGEON_FLOORS.find((f) => f.id === 'f3');
+if (f3) {
+  f3.drops.push(
+    { itemId: 'skeleton_master_helmet', chance: 0.06, min: 1, max: 1 },
+    { itemId: 'skeleton_master_chestplate', chance: 0.06, min: 1, max: 1 },
+    { itemId: 'skeleton_master_leggings', chance: 0.06, min: 1, max: 1 },
+    { itemId: 'skeleton_master_boots', chance: 0.06, min: 1, max: 1 },
+  );
+}
+
+const f4 = DUNGEON_FLOORS.find((f) => f.id === 'f4');
+if (f4) f4.drops.push({ itemId: 'spirit_bow', chance: 0.05, min: 1, max: 1 });
+
+const f5 = DUNGEON_FLOORS.find((f) => f.id === 'f5');
+if (f5) f5.drops.push({ itemId: 'shadow_fury', chance: 0.04, min: 1, max: 1 });
+
+const WITHER_FLOOR_EXTRAS: DungeonDrop[] = [
+  { itemId: 'goldor_helmet', chance: 0.04, min: 1, max: 1 },
+  { itemId: 'goldor_chestplate', chance: 0.04, min: 1, max: 1 },
+  { itemId: 'goldor_leggings', chance: 0.04, min: 1, max: 1 },
+  { itemId: 'goldor_boots', chance: 0.04, min: 1, max: 1 },
+  { itemId: 'maxor_helmet', chance: 0.04, min: 1, max: 1 },
+  { itemId: 'maxor_chestplate', chance: 0.04, min: 1, max: 1 },
+  { itemId: 'maxor_leggings', chance: 0.04, min: 1, max: 1 },
+  { itemId: 'maxor_boots', chance: 0.04, min: 1, max: 1 },
+  { itemId: 'recombobulator_3000', chance: 0.03, min: 1, max: 1 },
+  { itemId: 'wither_essence', chance: 0.35, min: 1, max: 3 },
+];
+
+const f7 = DUNGEON_FLOORS.find((f) => f.id === 'f7');
+if (f7) f7.drops.push(...WITHER_FLOOR_EXTRAS);
+
+const m7 = DUNGEON_FLOORS.find((f) => f.id === 'm7');
+if (m7) {
+  m7.drops.push(
+    ...WITHER_FLOOR_EXTRAS,
+    { itemId: 'necron_helmet', chance: 0.06, min: 1, max: 1 },
+    { itemId: 'necron_chestplate', chance: 0.06, min: 1, max: 1 },
+    { itemId: 'necron_leggings', chance: 0.06, min: 1, max: 1 },
+    { itemId: 'necron_boots', chance: 0.06, min: 1, max: 1 },
+    { itemId: 'storm_helmet', chance: 0.06, min: 1, max: 1 },
+    { itemId: 'storm_chestplate', chance: 0.06, min: 1, max: 1 },
+    { itemId: 'storm_leggings', chance: 0.06, min: 1, max: 1 },
+    { itemId: 'storm_boots', chance: 0.06, min: 1, max: 1 },
+  );
+}

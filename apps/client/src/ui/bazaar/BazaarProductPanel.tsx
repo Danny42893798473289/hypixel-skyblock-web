@@ -15,7 +15,6 @@ import {
   MenuOverlay,
   formatBazaarPrice,
 } from '../chest/slotUtils';
-import { ItemIcon } from '../chest/ItemIcon';
 import { BazaarSyncBadge, PriceHistoryChart } from './BazaarPriceHistory';
 
 const BOOK_DEPTH = 9;
@@ -48,14 +47,10 @@ export function BazaarProductPanel({ itemId, book, orders, bazaarMeta, onMenuCli
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
-      if (event.key === 'Backspace') {
-        event.preventDefault();
-        onBack();
-      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onBack, onClose]);
+  }, [onClose]);
 
   const def = ITEMS[itemId];
   const bestAsk = book?.bestAsk ?? null;
@@ -86,27 +81,17 @@ export function BazaarProductPanel({ itemId, book, orders, bazaarMeta, onMenuCli
       <PriceHistoryChart history={history} />
 
       <div className="bazaar-product-layout">
-        <OrderBookSide
-          title="Buy Orders"
-          subtitle="Sell to these prices"
-          side="buy"
-          levels={padLevels(book?.buys ?? [], BOOK_DEPTH)}
-          itemId={itemId}
-          onMenuClick={onMenuClick}
-        />
-
         <div className="bazaar-product-center">
-          <div className={`mc-slot bazaar-product-item rarity-${(def?.rarity ?? 'common').toLowerCase()}`}>
-            <ItemIcon icon={def?.sprite ?? 'material'} itemId={itemId} rarity={def?.rarity} />
-            <span className="lore-tooltip" role="tooltip">
-              <span className={`lore-line rarity-text-${(def?.rarity ?? 'common').toLowerCase()} bold`}>{def?.name ?? itemId}</span>
-              {def ? buildItemLore(def).map((entry, index) => (
-                <span key={index} className={`lore-line mc-${entry.color ?? 'white'}`}>{entry.text}</span>
-              )) : null}
-            </span>
-          </div>
+          <IconSlotButton
+            icon={def?.sprite ?? 'material'}
+            itemId={itemId}
+            name={def?.name ?? itemId}
+            rarity={def?.rarity}
+            className="bazaar-product-item"
+            lore={def ? buildItemLore(def) : []}
+          />
 
-          <div className="bazaar-action-grid">
+          <div className="bazaar-instant-grid">
             <IconSlotButton
               icon="emerald"
               name="Buy Instantly"
@@ -117,6 +102,20 @@ export function BazaarProductPanel({ itemId, book, orders, bazaarMeta, onMenuCli
               ]}
               onClick={(button) => onMenuClick(0, button, `bazaarBuy:${itemId}`)}
             />
+            <IconSlotButton
+              icon="coin"
+              name="Sell Instantly"
+              disabled={bestBid == null}
+              lore={[
+                { text: bestBid == null ? 'No buy offers' : `${formatBazaarPrice(bestBid)} coins each`, color: 'gold' },
+                { text: '1.125% bazaar tax on sells', color: 'gray' },
+                { text: 'Left: 1 · Right: 64', color: 'yellow' },
+              ]}
+              onClick={(button) => onMenuClick(0, button, `bazaarSell:${itemId}`)}
+            />
+          </div>
+
+          <div className="bazaar-action-grid">
             <IconSlotButton
               icon="paper"
               name="Create Buy Order"
@@ -136,17 +135,6 @@ export function BazaarProductPanel({ itemId, book, orders, bazaarMeta, onMenuCli
                 { text: 'Click to create!', color: 'yellow' },
               ]}
               onClick={(button) => onMenuClick(0, button, `bazaarSellOrder:${itemId}`)}
-            />
-            <IconSlotButton
-              icon="coin"
-              name="Sell Instantly"
-              disabled={bestBid == null}
-              lore={[
-                { text: bestBid == null ? 'No buy offers' : `${formatBazaarPrice(bestBid)} coins each`, color: 'gold' },
-                { text: '1.125% bazaar tax on sells', color: 'gray' },
-                { text: 'Left: 1 · Right: 64', color: 'yellow' },
-              ]}
-              onClick={(button) => onMenuClick(0, button, `bazaarSell:${itemId}`)}
             />
           </div>
 
@@ -173,6 +161,15 @@ export function BazaarProductPanel({ itemId, book, orders, bazaarMeta, onMenuCli
         </div>
 
         <OrderBookSide
+          title="Buy Orders"
+          subtitle="Sell to these prices"
+          side="buy"
+          levels={padLevels(book?.buys ?? [], BOOK_DEPTH)}
+          itemId={itemId}
+          onMenuClick={onMenuClick}
+        />
+
+        <OrderBookSide
           title="Sell Orders"
           subtitle="Buy from these prices"
           side="sell"
@@ -182,7 +179,7 @@ export function BazaarProductPanel({ itemId, book, orders, bazaarMeta, onMenuCli
         />
       </div>
 
-      <div className="menu-hint">Click order book prices to place orders · Esc closes · Backspace goes back</div>
+      <div className="menu-hint">Click order book prices to place orders · Esc closes</div>
     </MenuOverlay>
   );
 }
@@ -206,8 +203,14 @@ function OrderBookSide({
   itemId: ItemId;
   onMenuClick: (slot: number, button: ClickButton, action?: string) => void;
 }) {
+  const [open, setOpen] = useState(() => window.matchMedia('(min-width: 721px)').matches);
   return (
-    <section className={`bazaar-book-side bazaar-book-${side}`}>
+    <details
+      className={`bazaar-book-side bazaar-book-${side}`}
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary>{title}</summary>
       <div className="bazaar-book-heading">
         <strong>{title}</strong>
         <span>{subtitle}</span>
@@ -239,6 +242,6 @@ function OrderBookSide({
           );
         })}
       </div>
-    </section>
+    </details>
   );
 }

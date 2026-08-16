@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ITEMS,
   RECIPE_CATEGORIES,
@@ -7,14 +7,13 @@ import {
   buildRecipeBookLore,
   countItem,
   type EquipmentSlot,
-  type ItemStack,
   type PlayerState,
-  type LoreLine,
   type Recipe,
   type RecipeCategory,
 } from '@aether/shared';
 import {
   ClickButton,
+  HeldCursorGhost,
   IconSlotButton,
   ItemSlotButton,
   MenuOverlay,
@@ -43,20 +42,15 @@ export function PlayerInventoryPanel({ player, touchMode = false, onMenuClick, o
   const [craftCategory, setCraftCategory] = useState<RecipeCategory>('tools');
   const [craftPage, setCraftPage] = useState(0);
   const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(null);
-  const lastTap = useRef<{ index: number; time: number } | null>(null);
   const cursor = player.inventoryCursor ?? null;
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
-      if (event.key === 'Backspace') {
-        event.preventDefault();
-        onBack();
-      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onBack, onClose]);
+  }, [onClose]);
 
   const storage = player.inventory.slice(0, 27);
   const hotbar = player.inventory.slice(27, 36);
@@ -64,37 +58,25 @@ export function PlayerInventoryPanel({ player, touchMode = false, onMenuClick, o
   const craftRecipes = useMemo(() => recipesInCategory(craftCategory), [craftCategory]);
   const craftPages = Math.max(1, Math.ceil(craftRecipes.length / CRAFT_GRID_SIZE));
   const craftVisible = craftRecipes.slice(craftPage * CRAFT_GRID_SIZE, (craftPage + 1) * CRAFT_GRID_SIZE);
-  const selectedRecipe = craftVisible.find((recipe) => recipe.id === selectedRecipeId) ?? craftVisible[0] ?? null;
+  const selectedRecipe = selectedRecipeId
+    ? craftVisible.find((recipe) => recipe.id === selectedRecipeId) ?? null
+    : null;
 
   useEffect(() => {
-    setSelectedRecipeId(craftVisible[0]?.id ?? null);
-  }, [craftCategory, craftPage, craftVisible[0]?.id]);
+    setSelectedRecipeId(null);
+  }, [craftCategory, craftPage]);
 
   function handleInventoryClick(index: number, button: ClickButton) {
     if (button.startsWith('shift')) {
       onMenuClick(index, button, `inventory:${index}`);
       return;
     }
-    if (touchMode && button === 'left') {
-      const now = Date.now();
-      if (lastTap.current?.index === index && now - lastTap.current.time < 400) {
-        onMenuClick(index, 'shift_left', `inventory:${index}`);
-        lastTap.current = null;
-        return;
-      }
-      lastTap.current = { index, time: now };
-    }
     onMenuClick(index, button, `inventoryClick:${index}`);
-  }
-
-  function handleCursorClick(button: ClickButton) {
-    if (button === 'right' || button === 'shift_right') {
-      onMenuClick(0, button, 'inventoryUseCursor');
-    }
   }
 
   return (
     <MenuOverlay title="Inventory & Crafting" onClose={onClose} onBack={onBack} className="inventory-panel-window">
+      <HeldCursorGhost stack={cursor} />
       <div className="inventory-panel-body">
         <div className="inventory-panel-top">
           <section className="inventory-equipment-section">
@@ -239,11 +221,6 @@ export function PlayerInventoryPanel({ player, touchMode = false, onMenuClick, o
         </div>
 
         <section className="inventory-storage-section">
-          {cursor ? (
-            <div className="inventory-cursor-float">
-              <HeldItemSlot cursor={cursor} onClick={handleCursorClick} />
-            </div>
-          ) : null}
           <div className="inventory-label">Inventory</div>
           <div className="chest-grid inventory-storage-grid">
             {storage.map((stack, index) => (
@@ -276,8 +253,8 @@ export function PlayerInventoryPanel({ player, touchMode = false, onMenuClick, o
       </div>
       <div className="menu-hint inventory-menu-hint">
         {touchMode
-          ? 'Tap slots to pick up/place · Double-tap hotbar slot to use · Long-press to use'
-          : 'Left-click pick up/place · Shift-click armor to equip · Shift-click weapons to hotbar · 1–9 select hotbar'}
+          ? 'Tap to pick up/place · Hold a slot for item info · Double-tap to shift-click'
+          : 'Hover for item info · Left-click pick up/place · Shift-click armor to equip · Shift-click weapons to hotbar'}
       </div>
     </MenuOverlay>
   );
@@ -313,24 +290,5 @@ function CraftRecipeDetail({ recipe, player }: { recipe: Recipe; player: PlayerS
         })}
       </div>
     </div>
-  );
-}
-
-function HeldItemSlot({ cursor, onClick }: { cursor: ItemStack; onClick: (button: ClickButton) => void }) {
-  const def = ITEMS[cursor.itemId];
-  const lore: LoreLine[] = [
-    { text: 'Item on your cursor.', color: 'gray' },
-    def.heal
-      ? { text: 'Right-click to eat!', color: 'yellow' }
-      : { text: 'Right-click to equip/use!', color: 'yellow' },
-  ];
-
-  return (
-    <ItemSlotButton
-      stack={cursor}
-      extraLore={lore}
-      onClick={onClick}
-      className="inventory-held-slot"
-    />
   );
 }

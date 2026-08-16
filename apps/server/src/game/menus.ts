@@ -3,6 +3,8 @@ import {
   BAZAAR_SECTIONS,
   bazaarItemsInSection,
   bazaarSectionCounts,
+  getBazaarSection,
+  searchBazaarItems,
   type BazaarSection,
   COLLECTION_CATEGORIES,
   DUNGEON_COMBAT_REQUIREMENT,
@@ -88,7 +90,7 @@ function pageControls(menu: MenuId, context: Context, page: number, pages: numbe
   const slots: MenuSlotView[] = [];
   const params = Object.entries(context)
     .filter(([key]) => key !== 'page')
-    .map(([key, value]) => `${key}=${value}`)
+    .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
     .join(',');
   const target = (next: number) => `page:${menu}|${next}|${params}`;
   if (page > 0) slots.push(slot(48, 'arrow_left', 'Previous Page', [line(`Page ${page}/${pages}`, 'gray')], target(page - 1)));
@@ -118,6 +120,7 @@ const ISLAND_WARP_ITEM: Partial<Record<IslandId, ItemId>> = {
   dungeon_hub: 'bone',
   garden: 'wheat',
   dwarven_mines: 'mithril',
+  crystal_hollows: 'gemstone_ruby',
   rift: 'ender_pearl',
 };
 
@@ -219,7 +222,7 @@ function skyblockMenu(player: PlayerState): MenuView {
     title: 'SkyBlock Menu',
     rows: 6,
     slots: [
-      slot(4, 'player_head', `${player.username}'s Profile`, [
+      slot(4, 'player_head', `${player.username}'s SkyBlock Profile`, [
         line(`Health: ${Math.ceil(player.hp)}/${Math.round(player.stats.health)} ❤`, 'green'),
         line(`Defense: ${Math.round(player.stats.defense)} ❈`, 'green'),
         line(`Strength: ${Math.round(player.stats.strength)} ❁`, 'red'),
@@ -227,41 +230,41 @@ function skyblockMenu(player: PlayerState): MenuView {
         line(''),
         click(),
       ], 'open:profile'),
-      slot(10, 'diamond_sword', 'Your Skills', [line('View your Skill progression and rewards.'), click()], 'open:skills'),
-      slot(28, 'book', 'Quest Book', [
-        line(currentQuestStep(player)?.title ?? 'Starter quests complete!', currentQuestStep(player) ? 'yellow' : 'green'),
-        line(currentQuestStep(player)?.detail ?? 'Claim your reward.', 'gray'),
-        click(),
-      ], 'open:quests'),
-      slot(11, 'painting', 'Collections', [line('View collection milestones and recipe unlocks.'), click()], 'open:collections'),
-      slot(12, 'book', 'Recipe Book', [line('Craft recipes unlocked through Collections.'), click()], 'open:crafting'),
-      slot(13, 'map', 'Fast Travel', [line(`Current island: ${islandForZone(player.zoneId)}`), click()], 'open:fast_travel'),
-      slot(14, 'chest', 'Inventory & Equipment', [line('Manage armor, weapons and carried items.'), click()], 'open:inventory'),
-      slot(15, 'talisman', 'Accessory Bag', [line(`Magical Power: ${player.magicalPower}`, 'light_purple'), click()], 'open:accessories'),
-      slot(16, 'pet', 'Pets', [line(`${player.pets.length} pets`), click()], 'open:pets'),
-      slot(36, 'chest', 'Storage', [
+      slot(19, 'diamond_sword', 'Your Skills', [line('View your Skill progression and rewards.'), click()], 'open:skills'),
+      slot(20, 'painting', 'Collections', [line('View collection milestones and recipe unlocks.'), click()], 'open:collections'),
+      slot(21, 'book', 'Recipe Book', [line('Craft recipes unlocked through Collections.'), click()], 'open:crafting'),
+      slot(22, 'chest', 'Storage', [
         line('10 double chests — always unlocked.', 'gray'),
         line(`${backpackSlotsUsedTotal(player)} / ${BACKPACK_PAGES * BACKPACK_SIZE} slots used`, 'aqua'),
         click(),
       ], 'open:backpack'),
-      slot(19, 'emerald', 'Bazaar', [line('Buy and sell stackable commodities.'), click()], 'open:bazaar'),
-      slot(20, 'gold_ingot', 'Auction House', [line('Trade unique weapons, armor and pets.'), click()], 'open:auction'),
-      slot(21, 'coin', 'Bank', [line(`Purse: ${Math.floor(player.coins).toLocaleString()}`, 'gold'), line(`Bank: ${Math.floor(player.bank.balance).toLocaleString()}`, 'gold'), click()], 'open:bank'),
-      slot(22, 'minion', 'Minions', [line(`${player.minions.length} deployed minions`), click()], 'open:minions'),
-      slot(23, 'zombie_head', 'Slayer Quests', [line(player.activeSlayer ? `Active: ${player.activeSlayer.slayerId} Tier ${player.activeSlayer.tier}` : 'No active quest'), click()], 'open:slayers'),
-      slot(24, 'wither_skull', 'Dungeons', [line(`Class: ${player.selectedDungeonClass}`), click()], 'open:dungeons'),
-      slot(25, 'anvil', 'Blacksmith', [line('Enchant and reforge your gear.'), click()], 'open:reforge'),
-      slot(17, 'wheat', 'Garden', [line('Contests, visitors, crop milestones.'), click()], 'open:garden'),
-      slot(18, 'mithril', 'Heart of the Mountain', [line('Dwarven commissions and perks.'), click()], 'open:hotm'),
-      slot(26, 'potion', 'Alchemy', [line('Brew potions for Alchemy XP.'), click()], 'open:alchemy'),
-      slot(27, 'book', 'Bestiary', [line('Track every mob you have slain.'), click()], 'open:bestiary'),
-      slot(29, 'player_head', 'Mayor', [line('Weekly mayor perks.'), click()], 'open:mayor'),
-      slot(30, 'painting', 'Museum', [line(`${player.museum?.donated.length ?? 0} donated`), click()], 'open:museum'),
+      slot(23, 'pet', 'Pets', [line(`${player.pets.length} pets`), click()], 'open:pets'),
+      slot(24, 'chest', 'Inventory & Equipment', [line('Manage armor, weapons and carried items.'), click()], 'open:inventory'),
+      slot(25, 'talisman', 'Accessory Bag', [line(`Magical Power: ${player.magicalPower}`, 'light_purple'), click()], 'open:accessories'),
+      slot(10, 'book', 'Quest Book', [
+        line(currentQuestStep(player)?.title ?? 'Starter quests complete!', currentQuestStep(player) ? 'yellow' : 'green'),
+        line(currentQuestStep(player)?.detail ?? 'Claim your reward.', 'gray'),
+        click(),
+      ], 'open:quests'),
+      slot(11, 'map', 'Fast Travel', [line(`Current island: ${islandForZone(player.zoneId)}`), click()], 'open:fast_travel'),
+      slot(12, 'emerald', 'Bazaar', [line('Buy and sell stackable commodities.'), click()], 'open:bazaar'),
+      slot(13, 'gold_ingot', 'Auction House', [line('Trade unique weapons, armor and pets.'), click()], 'open:auction'),
+      slot(14, 'coin', 'Bank', [line(`Purse: ${Math.floor(player.coins).toLocaleString()}`, 'gold'), line(`Bank: ${Math.floor(player.bank.balance).toLocaleString()}`, 'gold'), click()], 'open:bank'),
+      slot(15, 'minion', 'Minions', [line(`${player.minions.length} deployed minions`), click()], 'open:minions'),
+      slot(16, 'zombie_head', 'Slayer Quests', [line(player.activeSlayer ? `Active: ${player.activeSlayer.slayerId} Tier ${player.activeSlayer.tier}` : 'No active quest'), click()], 'open:slayers'),
+      slot(28, 'wither_skull', 'Dungeons', [line(`Class: ${player.selectedDungeonClass}`), click()], 'open:dungeons'),
+      slot(29, 'wheat', 'Garden', [line('Contests, visitors, crop milestones.'), click()], 'open:garden'),
+      slot(30, 'mithril', 'Heart of the Mountain', [line('Dwarven commissions and perks.'), click()], 'open:hotm'),
+      slot(31, 'compass', 'Current Location', [line(ZONES[player.zoneId]?.name ?? player.zoneId, 'aqua'), click()], 'open:location'),
+      slot(32, 'leaderboard', 'Leaderboards', [line('Compare your profile with other players.'), click()], 'open:leaderboard'),
       slot(33, 'chestplate', 'Wardrobe', [line('Swap saved armor sets.'), click()], 'open:wardrobe'),
       slot(34, 'magma', 'Kuudra', [line('Crimson Isle siege.'), click()], 'open:kuudra'),
       slot(35, 'ender_pearl', 'Dragons', [line('Place Summoning Eyes in the End.'), click()], 'open:dragons'),
-      slot(31, 'compass', 'Current Location', [line(ZONES[player.zoneId]?.name ?? player.zoneId, 'aqua'), click()], 'open:location'),
-      slot(32, 'leaderboard', 'Leaderboards', [line('Compare your profile with other players.'), click()], 'open:leaderboard'),
+      slot(37, 'anvil', 'Blacksmith', [line('Enchant and reforge your gear.'), click()], 'open:reforge'),
+      slot(38, 'potion', 'Alchemy', [line('Brew potions for Alchemy XP.'), click()], 'open:alchemy'),
+      slot(39, 'book', 'Bestiary', [line('Track every mob you have slain.'), click()], 'open:bestiary'),
+      slot(40, 'player_head', 'Mayor', [line('Weekly mayor perks.'), click()], 'open:mayor'),
+      slot(41, 'painting', 'Museum', [line(`${player.museum?.donated.length ?? 0} donated`), click()], 'open:museum'),
       close(),
     ],
   };
@@ -526,7 +529,27 @@ function openBazaarOrders(player: PlayerState, bazaarOrders: BazaarOrder[]): Men
   ], 'open:bazaar_orders');
 }
 
+function bazaarProductTile(itemId: ItemId, slotNumber: number, extraLore: LoreLine[] = []): MenuSlotView {
+  const view = itemSlot(slotNumber, itemId, `bazaar:${itemId}`);
+  view.lore = [
+    ...extraLore,
+    line('View order book and trade.'),
+    line('Click to view product!', 'yellow'),
+  ];
+  return view;
+}
+
+function bazaarSearchSlot(): MenuSlotView {
+  return slot(47, 'compass', 'Search', [
+    line('Find any bazaar product by name.', 'gray'),
+    line('Use the search bar, or click and type in chat.', 'yellow'),
+  ], 'bazaarSearch:');
+}
+
 function bazaarMenu(_player: PlayerState, bazaarOrders: BazaarOrder[], context: Context = {}): MenuView {
+  const query = typeof context.query === 'string' ? context.query.trim() : '';
+  if (query) return bazaarSearchMenu(_player, bazaarOrders, { ...context, query });
+
   const section = context.section as BazaarSection | undefined;
   if (!section) return bazaarHubMenu(_player, bazaarOrders);
 
@@ -547,13 +570,54 @@ function bazaarMenu(_player: PlayerState, bazaarOrders: BazaarOrder[], context: 
         line(`${items.length} products in this section`, 'aqua'),
         line('Click a product to view the order book.', 'yellow'),
       ]),
-      ...slice.map((itemId, i) => {
-        const view = itemSlot(GRID[i], itemId, `bazaar:${itemId}`);
-        view.lore = [line('View order book and trade.'), line('Click to view product!', 'yellow')];
-        return view;
-      }),
+      ...slice.map((itemId, i) => bazaarProductTile(itemId, GRID[i]!)),
       ...pageControls('bazaar', context, page, pages),
       slot(45, 'arrow', 'Bazaar Sections', [line('Back to section list', 'gray')], 'open:bazaar'),
+      bazaarSearchSlot(),
+      openBazaarOrders(_player, bazaarOrders),
+      close(),
+    ],
+    parent: 'skyblock',
+  };
+}
+
+function bazaarSearchMenu(_player: PlayerState, bazaarOrders: BazaarOrder[], context: Context): MenuView {
+  const query = String(context.query ?? '').trim();
+  const page = Number(context.page ?? 0);
+  const items = searchBazaarItems(query);
+  const pages = Math.max(1, Math.ceil(items.length / GRID.length));
+  const slice = items.slice(page * GRID.length, (page + 1) * GRID.length);
+
+  return {
+    id: 'bazaar',
+    title: 'Bazaar ➜ Search',
+    rows: 6,
+    context,
+    slots: [
+      slot(4, 'compass', 'Search Results', [
+        line(`Query: ${query}`, 'aqua'),
+        line(
+          items.length ? `${items.length} matching product${items.length === 1 ? '' : 's'}` : 'No products match that name.',
+          items.length ? 'gray' : 'red',
+        ),
+        line('Click a product to view the order book.', 'yellow'),
+      ]),
+      ...slice.map((itemId, i) => {
+        const sectionDef = BAZAAR_SECTIONS.find((entry) => entry.id === getBazaarSection(itemId));
+        return bazaarProductTile(
+          itemId,
+          GRID[i]!,
+          sectionDef ? [line(`Section: ${sectionDef.name}`, 'dark_gray')] : [],
+        );
+      }),
+      ...(items.length === 0
+        ? [slot(22, 'barrier', 'No Matches', [
+          line('Try a shorter name, like "diamond" or "spreading".', 'gray'),
+        ])]
+        : []),
+      ...pageControls('bazaar', context, page, pages),
+      slot(45, 'arrow', 'Bazaar Sections', [line('Clear search and return to sections', 'gray')], 'open:bazaar'),
+      bazaarSearchSlot(),
       openBazaarOrders(_player, bazaarOrders),
       close(),
     ],
@@ -571,7 +635,7 @@ function bazaarHubMenu(_player: PlayerState, bazaarOrders: BazaarOrder[]): MenuV
       slot(4, 'emerald', 'Bazaar Alley', [
         line(`${BAZAAR_ITEMS.length} tradeable products`, 'aqua'),
         line('Direct Mode — organized by section', 'gray'),
-        line('Click a section to browse!', 'yellow'),
+        line('Search or click a section to browse!', 'yellow'),
       ]),
       ...BAZAAR_SECTIONS.map((sec, i) => slot(
         11 + i * 2,
@@ -584,6 +648,10 @@ function bazaarHubMenu(_player: PlayerState, bazaarOrders: BazaarOrder[]): MenuV
         ],
         `bazaarSection:${sec.id}`,
       )),
+      slot(22, 'compass', 'Search', [
+        line('Find any product by name — even minion upgrades.', 'gray'),
+        line('Use the search bar, or click and type in chat.', 'yellow'),
+      ], 'bazaarSearch:'),
       openBazaarOrders(_player, bazaarOrders),
       back(),
       close(),

@@ -83,10 +83,12 @@ import {
   emptyQuestBook,
   collectionProgress,
   COLLECTIONS,
+  SKILLS,
   ensureMinionDef,
   starterQuestComplete,
   currentMayor,
 } from '@aether/shared';
+import { parseChatCommand } from '../trade/engine.js';
 import { loadPlayer, savePlayer, takeOfflineInterest, verifyToken } from '../auth/index.js';
 import { BANK_TIERS, accrueBankInterest, bankTier, depositLimit, nextBankTier } from './bank.js';
 import * as bazaar from '../bazaar/engine.js';
@@ -143,6 +145,7 @@ interface Session {
   bazaarItem: ItemId | null;
   currentMenu: MenuId;
   menuContext: Record<string, string | number | boolean>;
+  awaitingBazaarSearch: boolean;
   selectedInventorySlot: number | null;
   lastMoveAt: number;
   /** How far the player may still move — absorbs burst packets after lag spikes. */
@@ -155,6 +158,7 @@ interface Session {
   shieldUntil: number;
   lastManaRegenAt: number;
   statsDirty: boolean;
+  lastAttackAt: number;
 }
 
 const sessions = new Map<string, Session>();
@@ -194,10 +198,32 @@ function gainSkillXp(session: Session, skill: keyof PlayerState['skills'], amoun
   if (!amount) return;
   const before = levelFromXp(session.player.skills[skill] ?? 0).level;
   session.player.skills[skill] += amount;
-  if (levelFromXp(session.player.skills[skill] ?? 0).level > before) markStatsDirty(session);
+  const after = levelFromXp(session.player.skills[skill] ?? 0);
+  if (after.level > before) markStatsDirty(session);
+  if (skill === 'taming' || skill === 'social') return;
+  const name = SKILLS[skill as keyof typeof SKILLS]?.name ?? String(skill);
+  const shown = Number.isInteger(amount) ? String(amount) : amount.toFixed(1);
+  emit(session.socket, { type: 'actionBar', text: `+${shown} ${name} (${after.level})` });
 }
 
-function pushState(session: Session): void {
+function playerChat(session: Session, text: string): void {
+  emit(session.socket, {
+    type: 'chat',
+    message: { id: uuid(), username: 'SkyBlock', text, at: Date.now() },
+  });
+}
+
+function emitMoveCorrection(session: Session, reason: 'blocked' | 'gate' | 'teleport'): void {
+  emit(session.socket, {
+    type: 'moveCorrection',
+    x: session.player.x,
+    y: session.player.y,
+    facing: session.player.facing,
+    reason,
+  });
+}
+
+function pushState(session: Session, opts?: { resetPosition?: boolean }): void {
   session.player.islandId = islandForZone(session.player.zoneId);
   if (session.statsDirty) {
     session.player.stats = recomputeStats(session.player);
@@ -213,7 +239,8 @@ function pushState(session: Session): void {
   const cursorMenus: MenuId[] = ['inventory', 'backpack', 'backpack_page'];
   const payload: PlayerState = session.menuOpen && cursorMenus.includes(session.currentMenu)
     ? { ...session.player, inventoryCursor: session.inventoryCursor }
-    : session.player;
+    : { ...session.player };
+  if (opts?.resetPosition) payload.resetPosition = true;
   emit(session.socket, { type: 'state', player: payload });
   if (session.menuOpen) pushMenu(session);
 }
@@ -249,7 +276,7 @@ function handlePlayerDeath(session: Session, message = 'You died!'): void {
     session.player.y = map.spawn.y;
     session.player.facing = 'right';
     toast(session, `${message} You respawned in the dungeon.`, 'error');
-    pushState(session);
+    pushState(session, { resetPosition: true });
     return;
   }
   if (session.player.activeSlayer) {
@@ -263,7 +290,7 @@ function handlePlayerDeath(session: Session, message = 'You died!'): void {
   session.player.x = spawn.x;
   session.player.y = spawn.y;
   session.player.facing = 'down';
-  pushState(session);
+  pushState(session, { resetPosition: true });
 }
 
 function spendCoins(session: Session, amount: number, label = 'coins'): void {
@@ -434,6 +461,7 @@ export function initGame(serverIo: SocketServer): void {
       bazaarItem: null,
       currentMenu: 'skyblock',
       menuContext: {},
+      awaitingBazaarSearch: false,
       selectedInventorySlot: null,
       lastMoveAt: Date.now(),
       moveCredit: MOVE_SPEED * 0.25,
@@ -445,6 +473,7 @@ export function initGame(serverIo: SocketServer): void {
       shieldUntil: 0,
       lastManaRegenAt: Date.now(),
       statsDirty: false,
+      lastAttackAt: 0,
     };
     if (session.player.mana == null || Number.isNaN(session.player.mana)) {
       session.player.mana = session.player.maxMana ?? session.player.stats.intelligence;
@@ -510,6 +539,7 @@ function handleEvent(session: Session, ev: ClientEvent): void {
       session.currentMenu = 'skyblock';
       session.menuContext = {};
       session.bazaarItem = null;
+      session.awaitingBazaarSearch = false;
       session.inventoryCursor = null;
       pushState(session);
       break;
@@ -521,6 +551,9 @@ function handleEvent(session: Session, ev: ClientEvent): void {
       break;
     case 'interact':
       handleWorldInteract(session);
+      break;
+    case 'attack':
+      handleAttack(session);
       break;
     case 'useAbility':
       doUseAbility(session);
@@ -539,6 +572,9 @@ function handleEvent(session: Session, ev: ClientEvent): void {
         session.player.hotbarSlot = ev.slot;
         pushState(session);
       }
+      break;
+    case 'dropHotbar':
+      doDropHotbar(session, Boolean(ev.all));
       break;
     case 'useItem':
       doUseItem(session, 'slot' in ev ? ev.slot : undefined);
@@ -617,9 +653,16 @@ function handleEvent(session: Session, ev: ClientEvent): void {
     case 'chat': {
       const text = ev.text.trim().slice(0, 120);
       if (!text) break;
+      if (session.awaitingBazaarSearch && !text.startsWith('/')) {
+        session.awaitingBazaarSearch = false;
+        openMenu(session, 'bazaar', { query: text, page: 0 });
+        toast(session, `Searching Bazaar for "${text}"`, 'info');
+        break;
+      }
+      if (handleSkyblockChat(session, text)) break;
       if (handleFeatureChat(session, text, sessions, {
         toast: (s, msg, kind) => toast(s as Session, msg, kind as 'info' | 'error' | 'success'),
-        pushState: (s) => pushState(s as Session),
+        pushState: (s, opts) => pushState(s as Session, opts),
       })) break;
       const message = { id: uuid(), username: session.player.username, text, at: Date.now() };
       for (const s of sessions.values()) {
@@ -641,7 +684,7 @@ function handleEvent(session: Session, ev: ClientEvent): void {
     default:
       if (handleFeatureEvent(session, ev, sessions, {
         toast: (s, msg, kind) => toast(s as Session, msg, kind as 'info' | 'error' | 'success'),
-        pushState: (s) => pushState(s as Session),
+        pushState: (s, opts) => pushState(s as Session, opts),
         warpPrivateIsland: (s, host) => {
           s.player.zoneId = 'island_minions';
           s.player.islandId = 'private_island';
@@ -656,13 +699,13 @@ function handleEvent(session: Session, ev: ClientEvent): void {
 function handleMove(session: Session, x: number, y: number, facing: Facing): void {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return;
   const now = Date.now();
-  const elapsed = Math.max(0, Math.min(600, now - session.lastMoveAt));
+  const elapsed = Math.max(0, Math.min(1500, now - session.lastMoveAt));
   session.lastMoveAt = now;
 
-  // Credit accumulates over real time so lag-burst packets don't get rejected one-by-one.
+  // Credit absorbs FRP lag bursts and Shift sprint (~1.3× walk speed).
   session.moveCredit = Math.min(
-    MOVE_SPEED * 0.8,
-    session.moveCredit + MOVE_SPEED * (elapsed / 1000) * 1.9,
+    MOVE_SPEED * 2.5,
+    session.moveCredit + MOVE_SPEED * 1.35 * (elapsed / 1000),
   );
 
   let dx = x - session.player.x;
@@ -678,7 +721,7 @@ function handleMove(session: Session, x: number, y: number, facing: Facing): voi
   const district = districtAt(map, x, y);
   const gated = district && district.zoneId !== session.player.zoneId ? ZONES[district.zoneId] : null;
   if (gated && !meetsSkillReq(session.player, gated.skillReq)) {
-    emit(session.socket, { type: 'moveCorrection', x: session.player.x, y: session.player.y, facing: session.player.facing });
+    emitMoveCorrection(session, 'gate');
     if (now - session.lastGateWarnAt > 4000) {
       session.lastGateWarnAt = now;
       toast(session, `${gated.name} requires ${gated.skillReq!.skill} level ${gated.skillReq!.level}`, 'error');
@@ -687,20 +730,17 @@ function handleMove(session: Session, x: number, y: number, facing: Facing): voi
   }
 
   if (!canStand(map, x, y)) {
-    emit(session.socket, { type: 'moveCorrection', x: session.player.x, y: session.player.y, facing: session.player.facing });
+    emitMoveCorrection(session, 'blocked');
     return;
   }
 
   if (distance > session.moveCredit + 0.35) {
     const scale = session.moveCredit / distance;
-    if (scale <= 0.02) {
-      emit(session.socket, { type: 'moveCorrection', x: session.player.x, y: session.player.y, facing: session.player.facing });
-      return;
-    }
+    if (scale <= 0.02) return;
     x = session.player.x + dx * scale;
     y = session.player.y + dy * scale;
     if (!canStand(map, x, y)) {
-      emit(session.socket, { type: 'moveCorrection', x: session.player.x, y: session.player.y, facing: session.player.facing });
+      emitMoveCorrection(session, 'blocked');
       return;
     }
     dx = x - session.player.x;
@@ -730,6 +770,122 @@ function handleMove(session: Session, x: number, y: number, facing: Facing): voi
   }
 }
 
+const WARP_ALIASES: Record<string, IslandId> = {
+  hub: 'hub',
+  home: 'private_island',
+  island: 'private_island',
+  private: 'private_island',
+  barn: 'barn',
+  gold: 'gold_mine',
+  goldmine: 'gold_mine',
+  gold_mine: 'gold_mine',
+  deep: 'deep_caverns',
+  caverns: 'deep_caverns',
+  deepcaverns: 'deep_caverns',
+  deep_caverns: 'deep_caverns',
+  spider: 'spider_den',
+  spiders: 'spider_den',
+  spider_den: 'spider_den',
+  park: 'park',
+  forest: 'park',
+  desert: 'mushroom_desert',
+  mushroom: 'mushroom_desert',
+  mushroom_desert: 'mushroom_desert',
+  end: 'the_end',
+  theend: 'the_end',
+  the_end: 'the_end',
+  crimson: 'crimson_isle',
+  nether: 'crimson_isle',
+  crimson_isle: 'crimson_isle',
+  dungeon: 'dungeon_hub',
+  dungeons: 'dungeon_hub',
+  catacombs: 'dungeon_hub',
+  dungeon_hub: 'dungeon_hub',
+  garden: 'garden',
+  mines: 'dwarven_mines',
+  dwarven: 'dwarven_mines',
+  dwarven_mines: 'dwarven_mines',
+  crystals: 'crystal_hollows',
+  crystal: 'crystal_hollows',
+  ch: 'crystal_hollows',
+  crystal_hollows: 'crystal_hollows',
+  hollows: 'crystal_hollows',
+  rift: 'rift',
+};
+
+function resolveWarpTarget(raw: string): IslandId | null {
+  const key = raw.trim().toLowerCase().replace(/\s+/g, '_');
+  if (!key) return null;
+  return WARP_ALIASES[key] ?? (key in ISLANDS ? (key as IslandId) : null);
+}
+
+function handleSkyblockChat(session: Session, text: string): boolean {
+  const parsed = parseChatCommand(text);
+  if (!parsed) return false;
+  const { cmd, args } = parsed;
+  try {
+    if (cmd === 'warp' || cmd === 'is') {
+      const islandId = resolveWarpTarget(args.join(' '));
+      if (!islandId) {
+        toast(session, 'Unknown warp. Try /warp hub, /warp island, /warp garden', 'error');
+        return true;
+      }
+      doWarpIsland(session, islandId);
+      return true;
+    }
+    if (cmd === 'hub') {
+      doWarpIsland(session, 'hub');
+      return true;
+    }
+    if (cmd === 'ah' || cmd === 'auction') {
+      openMenu(session, 'auction');
+      return true;
+    }
+    if (cmd === 'bz' || cmd === 'bazaar') {
+      const query = args.join(' ').trim();
+      openMenu(session, 'bazaar', query ? { query, page: 0 } : {});
+      return true;
+    }
+  } catch (err) {
+    toast(session, err instanceof Error ? err.message : 'Command failed', 'error');
+    return true;
+  }
+  return false;
+}
+
+function combatEntity(session: Session, entity: { kind: string; actionId?: string }): boolean {
+  if (entity.kind !== 'mob' || !entity.actionId) return false;
+  if (entity.actionId.startsWith('dungeon:mob:')) {
+    doDungeonMobCombat(session, entity.actionId.slice('dungeon:mob:'.length));
+    return true;
+  }
+  if (entity.actionId === 'dungeon:boss') {
+    doDungeonBossCombat(session);
+    return true;
+  }
+  if (entity.actionId.startsWith('worldmob:')) {
+    attackWorldMob(session, entity.actionId.slice('worldmob:'.length));
+    return true;
+  }
+  if (entity.actionId.startsWith('slayerboss:')) {
+    attackWorldMob(session, entity.actionId.slice('slayerboss:'.length));
+    return true;
+  }
+  doAction(session, entity.actionId, 1);
+  return true;
+}
+
+function handleAttack(session: Session): void {
+  const now = Date.now();
+  if (now - session.lastAttackAt < 280) return;
+  session.lastAttackAt = now;
+  const map = mapFor(session);
+  const entity = nearestEntity(map, session.player.x, session.player.y, 2.4);
+  if (!entity || entity.kind !== 'mob') return;
+  if (ZONES[entity.zoneId]) session.player.zoneId = entity.zoneId;
+  combatEntity(session, entity);
+}
+
 function handleWorldInteract(session: Session): void {
   const map = mapFor(session);
   const entity = nearestEntity(map, session.player.x, session.player.y);
@@ -742,22 +898,7 @@ function handleWorldInteract(session: Session): void {
     handleDungeonDoor(session);
     return;
   }
-  if (entity.kind === 'mob' && entity.actionId?.startsWith('dungeon:mob:')) {
-    doDungeonMobCombat(session, entity.actionId.slice('dungeon:mob:'.length));
-    return;
-  }
-  if (entity.kind === 'mob' && entity.actionId === 'dungeon:boss') {
-    doDungeonBossCombat(session);
-    return;
-  }
-  if (entity.kind === 'mob' && entity.actionId?.startsWith('worldmob:')) {
-    attackWorldMob(session, entity.actionId.slice('worldmob:'.length));
-    return;
-  }
-  if (entity.kind === 'mob' && entity.actionId?.startsWith('slayerboss:')) {
-    attackWorldMob(session, entity.actionId.slice('slayerboss:'.length));
-    return;
-  }
+  if (combatEntity(session, entity)) return;
   if ((entity.kind === 'npc' || entity.kind === 'station') && entity.menu) {
     if (entity.kind === 'npc' && session.player.zoneId === 'hub_plaza') flagQuest(session, 'talk_adventurer');
     openMenu(session, entity.menu);
@@ -769,10 +910,6 @@ function handleWorldInteract(session: Session): void {
       startOrContinueGather(session, entity.id, act);
       return;
     }
-    doAction(session, entity.actionId, 1);
-    return;
-  }
-  if (entity.kind === 'mob' && entity.actionId) {
     doAction(session, entity.actionId, 1);
     return;
   }
@@ -821,8 +958,15 @@ function handleMenuClick(
     const context: Record<string, string | number | boolean> = { page: Number(page) || 0 };
     for (const pair of (params ?? '').split(',')) {
       if (!pair) continue;
-      const [key, entry] = pair.split('=');
-      if (key) context[key] = entry ?? '';
+      const eq = pair.indexOf('=');
+      const key = eq >= 0 ? pair.slice(0, eq) : pair;
+      const entry = eq >= 0 ? pair.slice(eq + 1) : '';
+      if (!key) continue;
+      try {
+        context[key] = decodeURIComponent(entry);
+      } catch {
+        context[key] = entry;
+      }
     }
     openMenu(session, menu as MenuId, context);
     return;
@@ -904,7 +1048,19 @@ function handleMenuClick(
   }
   if (kind === 'bank') return doBankAction(session, value);
   if (kind === 'bazaarSection') {
+    session.awaitingBazaarSearch = false;
     openMenu(session, 'bazaar', { section: value, page: 0 });
+    return;
+  }
+  if (kind === 'bazaarSearch') {
+    const query = value.trim();
+    if (query) {
+      session.awaitingBazaarSearch = false;
+      openMenu(session, 'bazaar', { query, page: 0 });
+      return;
+    }
+    session.awaitingBazaarSearch = true;
+    toast(session, 'Type an item name in chat to search the Bazaar.', 'info');
     return;
   }
   if (kind === 'dungeonMode') {
@@ -1550,7 +1706,7 @@ function enterDungeon(session: Session, floorId: string): void {
   };
   warpToDungeonSpawn(session);
   session.menuOpen = false;
-  pushState(session);
+  pushState(session, { resetPosition: true });
   broadcastZonePresence();
   toast(session, `Entered ${floor.name}! Walk to the Wither Door and press E to begin.`, 'success');
 }
@@ -1559,7 +1715,7 @@ function resumeDungeon(session: Session): void {
   if (!session.player.dungeonRun) throw new Error('No active dungeon run');
   warpToDungeonSpawn(session);
   session.menuOpen = false;
-  pushState(session);
+  pushState(session, { resetPosition: true });
   broadcastZonePresence();
   toast(session, 'Returned to your dungeon run.', 'info');
 }
@@ -1625,7 +1781,7 @@ function handleDungeonDoor(session: Session): void {
     run.secretClaimed = false;
     run.mobHp = initRoomMobs(run);
     warpToDungeonSpawn(session);
-    pushState(session);
+    pushState(session, { resetPosition: true });
     toast(session, 'The Wither Door opens! Defeat the starred mobs (☠), then return to the door.', 'success');
     return;
   }
@@ -1636,8 +1792,8 @@ function handleDungeonDoor(session: Session): void {
       run.phase = 'boss';
       run.bossHp = floor?.boss.health;
       warpToDungeonSpawn(session);
-      pushState(session);
-      toast(session, `The Blood Door opens! ${floor?.boss.name} awaits — press E to attack!`, 'success');
+      pushState(session, { resetPosition: true });
+      toast(session, `The Blood Door opens! ${floor?.boss.name} awaits — click to attack!`, 'success');
       return;
     }
     run.room++;
@@ -1645,7 +1801,7 @@ function handleDungeonDoor(session: Session): void {
     run.secretClaimed = false;
     run.mobHp = initRoomMobs(run);
     warpToDungeonSpawn(session);
-    pushState(session);
+    pushState(session, { resetPosition: true });
     toast(session, `Room ${run.room}/${run.rooms} — clear the mobs!`, 'info');
   }
 }
@@ -1745,7 +1901,7 @@ function doTravel(session: Session, zoneId: string): void {
   session.player.facing = 'down';
   if (!session.player.visitedZones.includes(zoneId)) session.player.visitedZones.push(zoneId);
   session.menuOpen = false;
-  pushState(session);
+  pushState(session, { resetPosition: true });
   broadcastZonePresence();
   toast(session, `Arrived at ${target.name}`, 'info');
 }
@@ -1770,7 +1926,7 @@ function doWarpIsland(session: Session, islandId: IslandId, zoneId?: string): vo
   session.player.facing = 'down';
   if (!session.player.visitedZones.includes(entry.id)) session.player.visitedZones.push(entry.id);
   session.menuOpen = false;
-  pushState(session);
+  pushState(session, { resetPosition: true });
   broadcastZonePresence();
   toast(session, `Warped to ${island.name}`, 'success');
 }
@@ -2019,6 +2175,7 @@ function doUseAbility(session: Session): void {
   const baseDmg = ability.damage ?? 500;
   const dmg = abilityDamage(session.player, baseDmg, scaling);
   let message = `${ability.name}!`;
+  let resetPosition = false;
 
   if (kind === 'teleport' || kind === 'wither_impact') {
     const distance = kind === 'wither_impact' ? 6 : 8;
@@ -2026,6 +2183,7 @@ function doUseAbility(session: Session): void {
     if (result.moved === 0) throw new Error('Cannot teleport — path blocked');
     session.player.x = result.x;
     session.player.y = result.y;
+    resetPosition = true;
     message = `${ability.name}! Teleported ${result.moved} blocks.`;
   }
 
@@ -2087,6 +2245,7 @@ function doUseAbility(session: Session): void {
       if (result.moved > 0) {
         session.player.x = result.x;
         session.player.y = result.y;
+        resetPosition = true;
       }
     }
   } else if (kind === 'teleport') {
@@ -2105,7 +2264,7 @@ function doUseAbility(session: Session): void {
 
   if (runCompletesDungeon(session)) return;
 
-  pushState(session);
+  pushState(session, resetPosition ? { resetPosition: true } : undefined);
   toast(session, message, 'success');
 }
 
@@ -2118,6 +2277,29 @@ function runCompletesDungeon(session: Session): boolean {
     return true;
   }
   return false;
+}
+
+function doDropHotbar(session: Session, all: boolean): void {
+  if (session.inventoryCursor) {
+    const held = session.inventoryCursor;
+    const name = ITEMS[held.itemId]?.name ?? held.itemId;
+    session.inventoryCursor = null;
+    toast(session, `Dropped ${held.qty} ${name}`);
+    pushState(session);
+    return;
+  }
+  const index = hotbarInventoryIndex(session.player.hotbarSlot);
+  const stack = session.player.inventory[index];
+  if (!stack) return;
+  const qty = all ? stack.qty : 1;
+  const next = session.player.inventory.map((slot) => (slot ? { ...slot } : null));
+  const held = next[index];
+  if (!held) return;
+  held.qty -= qty;
+  if (held.qty <= 0) next[index] = null;
+  session.player.inventory = next;
+  toast(session, `Dropped ${qty} ${ITEMS[stack.itemId]?.name ?? stack.itemId}`);
+  pushState(session);
 }
 
 function doUseItem(session: Session, slot?: number): void {
@@ -2661,6 +2843,7 @@ function noteCollectionMilestone(session: Session, itemId: ItemId, before: numbe
     session.player.unlockedRecipes.push(recipeFlag);
   }
   toast(session, `Collection: ${reward?.label ?? collection.name}  (+${coins} coins)`, 'success');
+  playerChat(session, `COLLECTION LEVEL UP! ${collection.name} ${next}: ${reward?.label ?? collection.name} (+${coins} coins)`);
 }
 
 function installMinionUpgrade(session: Session, minionId: string, upgradeId: ItemId): void {
@@ -2801,7 +2984,7 @@ function joinDungeonParty(session: Session, hostId: string): void {
   onDungeonPartyJoin(host, session);
   warpToDungeonSpawn(session);
   session.menuOpen = false;
-  pushState(session);
+  pushState(session, { resetPosition: true });
   toast(session, `Joined ${host.player.username}'s dungeon party!`, 'success');
   toast(host, `${session.player.username} joined your dungeon party!`, 'success');
 }

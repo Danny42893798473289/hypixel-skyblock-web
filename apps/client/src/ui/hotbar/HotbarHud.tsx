@@ -1,7 +1,7 @@
 import { useRef } from 'react';
-import { ITEMS, HOTBAR_SIZE, type PlayerState } from '@aether/shared';
+import { ITEMS, HOTBAR_SIZE, buildItemLore, itemDisplayName, type PlayerState } from '@aether/shared';
 import { ItemIcon } from '../chest/ItemIcon';
-import { useLongPress } from '../chest/slotUtils';
+import { LoreTooltip } from '../chest/slotUtils';
 
 interface Props {
   player: PlayerState;
@@ -33,16 +33,14 @@ function HotbarSlot({
   onUse: () => void;
 }) {
   const def = stack ? ITEMS[stack.itemId] : undefined;
-  const { consumeLongPress, ...press } = useLongPress(() => onUse());
+  const lore = stack && def ? buildItemLore(def, stack) : [];
 
   return (
     <button
       type="button"
       className={`game-hotbar-slot mc-slot interactive${active ? ' active-hotbar' : ''}${!stack ? ' empty' : ''} rarity-${(def?.rarity ?? 'common').toLowerCase()}`.trim()}
       aria-label={def?.name ?? `Hotbar slot ${slotIndex + 1}`}
-      {...press}
       onClick={(event) => {
-        if (consumeLongPress()) return;
         event.preventDefault();
         onSelect();
       }}
@@ -56,6 +54,13 @@ function HotbarSlot({
         <>
           <ItemIcon icon={def.sprite ?? ''} itemId={stack.itemId} rarity={def.rarity} />
           {stack.qty > 1 ? <span className="stack-count">{formatCount(stack.qty)}</span> : null}
+          <LoreTooltip
+            name={itemDisplayName(def, stack)}
+            rarity={def.rarity}
+            lore={lore}
+            onRightClick={onUse}
+            rightLabel="Use"
+          />
         </>
       ) : null}
     </button>

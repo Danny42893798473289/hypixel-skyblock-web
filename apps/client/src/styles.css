@@ -19,6 +19,10 @@
   --mc-yellow: #ffff55;
   --mc-white: #ffffff;
   --slot-size: clamp(39px, 5.1vh, 52px);
+  --hud-safe-top: env(safe-area-inset-top, 0px);
+  --hud-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --hotbar-bottom: calc(18px + var(--hud-safe-bottom));
+  --chat-keyboard-inset: 0px;
   font-family: 'VT323', monospace;
   font-size: 20px;
   color: white;
@@ -29,6 +33,7 @@ html, body, #root {
   margin: 0;
   width: 100%;
   height: 100%;
+  height: 100dvh;
   overflow: hidden;
   overscroll-behavior: none;
   touch-action: manipulation;
@@ -39,8 +44,10 @@ button { color: inherit; }
 
 .game-screen {
   position: relative;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  max-height: 100svh;
   overflow: hidden;
   background: linear-gradient(#67c6eb 0 53%, #d7f4fb 54%, #7dc453 55% 100%);
   image-rendering: pixelated;
@@ -61,7 +68,7 @@ button { color: inherit; }
   position: absolute;
   z-index: 8;
   left: 50%;
-  bottom: 74px;
+  bottom: calc(var(--hotbar-bottom) + var(--slot-size) + 52px);
   transform: translateX(-50%);
   display: flex;
   align-items: center;
@@ -107,6 +114,7 @@ button { color: inherit; }
   top: 14px;
   left: 18px;
   right: 18px;
+  padding-top: var(--hud-safe-top);
   display: flex;
   align-items: center;
   gap: 18px;
@@ -156,19 +164,59 @@ button { color: inherit; }
 .actionbar {
   position: absolute;
   z-index: 4;
-  bottom: calc(18px + var(--slot-size) + 14px);
+  bottom: calc(var(--hotbar-bottom) + var(--slot-size) + 14px);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  gap: 22px;
-  padding: 5px 13px;
-  background: #0008;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  background: transparent;
+  text-shadow: 2px 2px #000;
+  pointer-events: none;
+}
+.stat-bars {
+  display: flex;
+  gap: 8px;
+}
+.stat-bar {
+  position: relative;
+  width: 158px;
+  height: 18px;
+  background: #000c;
+  box-shadow: 0 0 0 2px #0008;
+  overflow: hidden;
+}
+.stat-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+}
+.health-bar .stat-bar-fill { background: linear-gradient(#e05050, #9a1c1c); }
+.defense-bar .stat-bar-fill { background: linear-gradient(#4caf50, #2d6b30); }
+.mana-bar .stat-bar-fill { background: linear-gradient(#55c2ee, #1d6ea8); }
+.stat-bar span {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 11px;
+  letter-spacing: 0.2px;
+}
+.xp-actionbar {
+  min-height: 16px;
+  color: #aaaaff;
+  font-size: 13px;
   text-shadow: 2px 2px #000;
 }
+.xp-actionbar-spacer { visibility: hidden; }
 .game-hotbar {
   position: absolute;
   z-index: 4;
-  bottom: 18px;
+  bottom: var(--hotbar-bottom);
   left: 50%;
   transform: translateX(-50%);
   display: grid;
@@ -206,17 +254,19 @@ button { color: inherit; }
   pointer-events: none;
 }
 .game-hotbar-touch {
-  --slot-size: 46px;
-  bottom: 118px;
+  --slot-size: min(46px, calc(100vw / 9));
   gap: 4px;
   padding: 6px;
 }
-.touch-mode .actionbar {
-  bottom: calc(118px + var(--slot-size) + 12px);
+.game-screen.touch-mode {
+  --hotbar-bottom: calc(118px + var(--hud-safe-bottom));
 }
 .health { color: var(--mc-red); }
 .defense { color: var(--mc-green); }
 .mana { color: var(--mc-aqua); }
+.stat-bar .health,
+.stat-bar .defense,
+.stat-bar .mana { color: #fff; }
 
 .dungeon-hud {
   position: absolute;
@@ -241,7 +291,7 @@ button { color: inherit; }
 .gather-hud {
   position: absolute;
   z-index: 4;
-  bottom: calc(118px + var(--slot-size) + 52px);
+  bottom: calc(var(--hotbar-bottom) + var(--slot-size) + 88px);
   left: 50%;
   transform: translateX(-50%);
   padding: 6px 12px;
@@ -257,13 +307,29 @@ button { color: inherit; }
   position: absolute;
   z-index: 5;
   left: 16px;
-  bottom: calc(var(--slot-size) + 62px);
+  bottom: calc(var(--hotbar-bottom) + var(--slot-size) + 44px + var(--chat-keyboard-inset));
   width: min(470px, 40vw);
   text-shadow: 2px 2px #000;
+  transition: bottom 0.12s ease-out, opacity 0.15s;
 }
-.chat-messages { background: linear-gradient(90deg, #0008, transparent); padding: 5px 8px; min-height: 25px; }
+.chat-messages {
+  background: linear-gradient(90deg, #0008, transparent);
+  padding: 5px 8px;
+  min-height: 25px;
+  max-height: 180px;
+  overflow-y: auto;
+  transition: max-height 0.15s, opacity 0.15s;
+}
+.chat-box:not(.chat-focused) .chat-messages {
+  max-height: 88px;
+  overflow: hidden;
+  opacity: 0.48;
+  mask-image: linear-gradient(to bottom, #000 55%, transparent);
+}
+.chat-box.chat-focused .chat-messages { opacity: 1; }
 .chat-box form { opacity: .35; transition: opacity .15s; }
-.chat-box form:focus-within { opacity: 1; }
+.chat-box form:focus-within,
+.chat-box.chat-focused form { opacity: 1; }
 .chat-box form { display: flex; align-items: stretch; gap: 6px; }
 .chat-box input {
   width: 100%;
@@ -282,7 +348,7 @@ button { color: inherit; }
   border: 2px solid #ffffff55;
   cursor: pointer;
 }
-.chat-box.chat-collapsed .chat-messages { max-height: 88px; overflow: hidden; }
+.chat-box.chat-collapsed .chat-messages { max-height: 52px; overflow: hidden; }
 
 /* ── Touch controls ───────────────────────────────────────────────────────── */
 .touch-controls {
@@ -296,16 +362,46 @@ button { color: inherit; }
   pointer-events: none;
 }
 .touch-controls-hidden { display: none; }
-.touch-dpad {
+.touch-dpad,
+.touch-stick {
   position: relative;
-  width: 168px;
-  height: 168px;
+  width: 148px;
+  height: 148px;
   pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
+.touch-stick {
+  border-radius: 50%;
+  background: #1b1b1b77;
+  border: 3px solid #ffffff66;
+  box-shadow: inset 0 0 0 2px #0008;
+}
+.touch-stick-knob {
+  position: absolute;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: #3a6ea5dd;
+  border: 3px solid #ffffffaa;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  box-shadow: 0 2px #0008;
+}
+.touch-sprint {
+  width: 78px;
+  height: 56px;
+  color: var(--mc-gold);
+  font-size: 14px;
+}
+.touch-sprint.is-active { background: #3a6ea5dd; }
 .touch-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: 78px 78px;
+  gap: 10px;
   pointer-events: auto;
 }
 .touch-button {
@@ -330,7 +426,9 @@ button { color: inherit; }
 .pad-left { top: 56px; left: 0; }
 .pad-right { top: 56px; left: 112px; }
 .pad-down { top: 112px; left: 56px; }
+.touch-attack { width: 78px; height: 78px; color: var(--mc-red); font-size: 17px; }
 .touch-interact { width: 78px; height: 78px; color: var(--mc-yellow); font-size: 17px; }
+.touch-ability { width: 78px; height: 56px; font-size: 15px; }
 .touch-inventory { width: 78px; height: 56px; color: var(--mc-aqua); font-size: 15px; }
 .touch-menu { width: 78px; height: 56px; font-size: 15px; }
 
@@ -346,7 +444,9 @@ button { color: inherit; }
 .chest-window {
   position: relative;
   width: calc(var(--slot-size) * 9 + 30px);
-  max-height: 96vh;
+  max-height: min(96vh, calc(100dvh - 8px));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 13px 15px 12px;
   color: #303030;
   background:
@@ -469,6 +569,61 @@ button.mc-slot.is-locked { cursor: pointer; }
   display: flex;
   flex-direction: column;
 }
+.lore-tooltip.lore-tooltip-pinned {
+  left: 8px;
+  right: 8px;
+  top: auto;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  width: auto;
+  max-width: none;
+  max-height: min(42vh, 360px);
+  overflow-y: auto;
+  pointer-events: auto;
+  padding-right: 36px;
+  -webkit-overflow-scrolling: touch;
+}
+.lore-tooltip-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 28px;
+  height: 24px;
+  color: #fff;
+  background: #0008;
+  border: 2px solid #ffffff55;
+  cursor: pointer;
+}
+.lore-tooltip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.lore-tooltip-actions button {
+  flex: 1;
+  min-width: 90px;
+  padding: 6px 8px;
+  color: #fff;
+  font-size: 15px;
+  background: #333c;
+  border: 2px solid #ffffff66;
+  cursor: pointer;
+}
+.held-cursor-ghost {
+  position: fixed;
+  z-index: 5000;
+  width: var(--slot-size);
+  height: var(--slot-size);
+  pointer-events: none;
+  transform: translate(-20%, -20%);
+  filter: drop-shadow(3px 3px 0 #0008);
+}
+.chest-window-loading {
+  min-height: 88px;
+  display: grid;
+  place-items: center;
+  color: #3f3f3f;
+}
 .mc-slot:hover .lore-tooltip { display: flex; flex-direction: column; }
 .lore-line { min-height: 20px; white-space: pre-wrap; font-size: 19px; line-height: 20px; }
 .lore-line.bold { font-weight: bold; }
@@ -561,16 +716,17 @@ button.mc-slot.is-locked { cursor: pointer; }
   .scoreboard { display: none; }
   .chest-window { width: min(calc(var(--slot-size) * 9 + 30px), calc(100vw - 8px)); padding: 8px 9px; }
   .lore-tooltip { left: 8px; top: 8px; max-width: min(320px, calc(100vw - 16px)); }
-  .chat-box { width: min(58vw, 320px); bottom: 190px; }
+  .chat-box { width: min(58vw, 320px); }
   .menu-hint { display: none; }
   .inventory-menu-hint { display: block; font-size: 15px; line-height: 1.25; padding-top: 4px; }
   .hud-top { top: 8px; left: 10px; right: 10px; gap: 10px; }
   .hud-brand { font-size: 10px; }
   .hud-location span { display: none; }
-  .actionbar { bottom: calc(176px + var(--slot-size) + 8px); gap: 12px; font-size: 17px; }
-  .game-hotbar-touch { bottom: 168px; --slot-size: 42px; }
-  .touch-mode .actionbar { bottom: calc(168px + var(--slot-size) + 8px); }
-  .interact-prompt { bottom: 232px; }
+  .actionbar { gap: 6px; }
+  .stat-bar { width: 110px; height: 16px; }
+  .stat-bar span { font-size: 9px; }
+  .game-screen.touch-mode { --hotbar-bottom: calc(168px + var(--hud-safe-bottom)); }
+  .game-hotbar-touch { --slot-size: min(42px, calc(100vw / 9)); }
   .toast-stack { top: 62px; }
 }
 
@@ -590,28 +746,21 @@ button.mc-slot.is-locked { cursor: pointer; }
 
 /* Touch devices: give the thumbs room and drop hover-only affordances. */
 .touch-mode .movement-hint { display: none; }
-.touch-mode .lore-tooltip { display: none !important; }
 
 @media (pointer: coarse) {
   .mc-slot { border-width: 2px; }
-  .touch-mode .chat-box { bottom: 200px; }
 }
 
 @media (max-width: 480px) {
-  .touch-dpad { width: 144px; height: 144px; }
+  .touch-stick { width: 128px; height: 128px; }
+  .touch-stick-knob { width: 48px; height: 48px; }
   .touch-button { width: 48px; height: 48px; font-size: 16px; }
-  .pad-up { left: 48px; }
-  .pad-left { top: 48px; }
-  .pad-right { top: 48px; left: 96px; }
-  .pad-down { top: 96px; left: 48px; }
-  .touch-interact { width: 68px; height: 68px; }
-  .touch-inventory { width: 68px; height: 48px; }
-  .touch-menu { width: 68px; height: 48px; }
-  .chat-box { width: min(64vw, 260px); bottom: 168px; }
-  .actionbar { bottom: calc(152px + var(--slot-size) + 8px); }
-  .game-hotbar-touch { bottom: 144px; --slot-size: 40px; }
-  .touch-mode .actionbar { bottom: calc(144px + var(--slot-size) + 8px); }
-  .interact-prompt { bottom: 206px; }
+  .touch-actions { grid-template-columns: 68px 68px; gap: 8px; }
+  .touch-attack, .touch-interact { width: 68px; height: 68px; }
+  .touch-ability, .touch-inventory, .touch-menu, .touch-sprint { width: 68px; height: 48px; }
+  .chat-box { width: min(64vw, 260px); }
+  .game-screen.touch-mode { --hotbar-bottom: calc(144px + var(--hud-safe-bottom)); }
+  .game-hotbar-touch { --slot-size: min(40px, calc(100vw / 9)); }
 }
 
 /* Inventory panel — equipment left, crafting right, storage below */
@@ -648,8 +797,10 @@ button.mc-slot.is-locked { cursor: pointer; }
 }
 .inventory-craft-tabs {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .inventory-craft-tab {
   padding: 3px 6px;
@@ -660,6 +811,8 @@ button.mc-slot.is-locked { cursor: pointer; }
   border: 2px solid;
   border-color: #f0f0f0 #6a6a6a #6a6a6a #f0f0f0;
   cursor: pointer;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 .inventory-craft-tab.active {
   color: #fff;
@@ -675,6 +828,7 @@ button.mc-slot.is-locked { cursor: pointer; }
 }
 .inventory-craft-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: start;
   min-width: 0;
@@ -684,8 +838,9 @@ button.mc-slot.is-locked { cursor: pointer; }
   box-shadow: inset 0 0 0 2px var(--mc-yellow);
 }
 .inventory-craft-detail {
+  flex: 1 1 180px;
   min-width: 180px;
-  max-width: 280px;
+  max-width: 320px;
   max-height: calc(var(--slot-size) * 6);
   overflow-y: auto;
   padding: 8px 10px;
@@ -767,27 +922,46 @@ button.mc-slot.is-locked { cursor: pointer; }
   .inventory-panel-window {
     width: min(calc(var(--slot-size) * 9 + 30px), calc(100vw - 8px));
   }
-  .inventory-craft-tabs { max-height: 52px; overflow-y: auto; }
+  .inventory-craft-detail {
+    max-width: none;
+    max-height: 38vh;
+  }
 }
 
 .touch-mode .inventory-panel-window {
-  max-height: calc(100vh - 16px);
+  max-height: calc(100dvh - 12px);
   margin-bottom: 8px;
 }
 .touch-mode .inventory-craft-tab {
-  min-height: 32px;
-  padding: 6px 8px;
+  min-height: 36px;
+  padding: 8px 10px;
   font-size: 15px;
 }
 .touch-mode .inventory-craft-page-btn {
-  width: 36px;
-  height: 32px;
+  width: 40px;
+  height: 36px;
+}
+.touch-mode .inventory-craft-detail {
+  max-width: none;
 }
 
 /* Bazaar product — full 3×3 order books like Hypixel */
 .bazaar-product-window {
   width: min(calc(var(--slot-size) * 21 + 48px), calc(100vw - 8px));
+  max-height: min(96vh, calc(100dvh - 8px));
+  overflow-y: auto;
 }
+.bazaar-instant-grid {
+  display: grid;
+  grid-template-columns: repeat(2, var(--slot-size));
+  gap: 0;
+}
+.bazaar-book-side > summary {
+  display: none;
+  cursor: pointer;
+  list-style: none;
+}
+.bazaar-book-side > summary::-webkit-details-marker { display: none; }
 .bazaar-spread-bar {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -805,9 +979,13 @@ button.mc-slot.is-locked { cursor: pointer; }
 .bazaar-product-layout {
   display: grid;
   grid-template-columns: 1fr minmax(calc(var(--slot-size) * 4), 1.1fr) 1fr;
+  grid-template-areas: "buy center sell";
   gap: 12px;
   align-items: start;
 }
+.bazaar-product-center { grid-area: center; }
+.bazaar-book-buy { grid-area: buy; }
+.bazaar-book-sell { grid-area: sell; }
 .bazaar-book-side { display: flex; flex-direction: column; gap: 6px; }
 .bazaar-book-heading {
   display: flex;
@@ -845,6 +1023,29 @@ button.mc-slot.is-locked { cursor: pointer; }
   display: grid;
   grid-template-columns: repeat(2, var(--slot-size));
   gap: 0;
+}
+@media (max-width: 720px) {
+  .bazaar-product-window {
+    width: min(calc(var(--slot-size) * 9 + 30px), calc(100vw - 8px));
+  }
+  .bazaar-product-layout {
+    grid-template-columns: 1fr;
+    grid-template-areas: "center" "buy" "sell";
+  }
+  .bazaar-product-center { grid-area: center; }
+  .bazaar-book-buy { grid-area: buy; }
+  .bazaar-book-sell { grid-area: sell; }
+  .bazaar-book-side > summary {
+    display: block;
+    padding: 6px 8px;
+    color: #303030;
+    background: #b8b8b8;
+    border: 2px solid #888;
+    font-size: 16px;
+  }
+  .bazaar-book-side > .bazaar-book-heading { display: none; }
+  .bazaar-book-side:not([open]) .bazaar-book-grid { display: none; }
+  .bazaar-book-side[open] > summary { background: #cacaca; }
 }
 .bazaar-orders-window { width: min(520px, calc(100vw - 8px)); }
 .bazaar-orders-summary {
@@ -949,6 +1150,11 @@ button.mc-slot.is-locked { cursor: pointer; }
   background: #ddd;
 }
 .auction-search { flex: 1; }
+.chest-search-row {
+  display: flex;
+  margin: 0 8px 8px;
+}
+.chest-search { width: 100%; }
 .auction-actions {
   display: flex;
   align-items: center;

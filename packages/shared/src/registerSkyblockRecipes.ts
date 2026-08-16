@@ -347,6 +347,59 @@ export function registerSkyblockRecipes(): void {
     { itemId: 'compactor', qty: 1 },
     { itemId: 'enchanted_redstone_block', qty: 1 },
   ], { collection: 'redstone', amount: 5000 });
+
+  // ── Vanilla / collection crafts so roots unlock the cascade ──
+  craft('craft_hay_bale', 'hay_bale', [{ itemId: 'wheat', qty: 9 }], { collection: 'wheat', amount: 50 });
+  craft('craft_sugar', 'sugar', [{ itemId: 'sugar_cane', qty: 1 }], { collection: 'sugar_cane', amount: 50 });
+  craft('craft_cactus_green', 'cactus_green', [{ itemId: 'cactus', qty: 1 }], { collection: 'cactus', amount: 50 });
+  craft('craft_melon_slice', 'melon_slice', [{ itemId: 'melon', qty: 1 }], { collection: 'melon', amount: 50 });
+  craft('craft_pumpkin_seeds', 'pumpkin_seeds', [{ itemId: 'pumpkin', qty: 1 }], { collection: 'pumpkin', amount: 50 });
+  craft('craft_melon_seeds', 'melon_seeds', [{ itemId: 'melon', qty: 1 }], { collection: 'melon', amount: 50 });
+  craft('craft_cookie', 'cookie', [
+    { itemId: 'wheat', qty: 2 },
+    { itemId: 'cocoa_beans', qty: 1 },
+  ], { collection: 'cocoa_beans', amount: 50 });
+  craft('craft_golden_carrot', 'golden_carrot', [
+    { itemId: 'carrot', qty: 1 },
+    { itemId: 'gold_ingot', qty: 8 },
+  ], { collection: 'carrot', amount: 100 });
+  craft('craft_golden_apple', 'golden_apple', [
+    { itemId: 'apple', qty: 1 },
+    { itemId: 'gold_ingot', qty: 8 },
+  ], { collection: 'apple', amount: 100 });
+  craft('craft_enchanted_golden_apple', 'enchanted_golden_apple', [
+    { itemId: 'golden_apple', qty: 8 },
+    { itemId: 'enchanted_gold_ingot', qty: 1 },
+  ], { collection: 'apple', amount: 1000 });
+  craft('craft_flint', 'flint', [{ itemId: 'gravel', qty: 1 }], { collection: 'gravel', amount: 50 });
+  craft('craft_clay', 'clay', [{ itemId: 'clay_ball', qty: 4 }], { collection: 'clay_ball', amount: 50 });
+  craft('craft_glowstone', 'glowstone', [{ itemId: 'glowstone_dust', qty: 4 }], { collection: 'glowstone_dust', amount: 50 });
+  craft('craft_quartz_block', 'quartz_block', [{ itemId: 'quartz', qty: 4 }], { collection: 'quartz', amount: 50 });
+  craft('craft_nether_brick', 'nether_brick', [{ itemId: 'netherrack', qty: 4 }], { collection: 'netherrack', amount: 50 });
+  craft('craft_magma_block', 'magma_block', [{ itemId: 'magma_cream', qty: 4 }], { collection: 'magma_cream', amount: 50 });
+  craft('craft_slime_block', 'slime_block', [{ itemId: 'slimeball', qty: 9 }], { collection: 'slimeball', amount: 50 });
+  craft('craft_packed_ice', 'packed_ice', [{ itemId: 'ice', qty: 9 }], { collection: 'ice', amount: 50 });
+  craft('craft_ink_sac', 'ink_sac', [{ itemId: 'ink_sack', qty: 1 }]);
+  craft('craft_salmon', 'salmon', [{ itemId: 'raw_salmon', qty: 1 }]);
+  craft('craft_tropical_fish', 'tropical_fish', [{ itemId: 'clownfish', qty: 1 }]);
+  craft('craft_mushroom_from_caps', 'mushroom', [
+    { itemId: 'red_mushroom', qty: 1 },
+    { itemId: 'brown_mushroom', qty: 1 },
+  ]);
+  craft('craft_crimson_planks', 'crimson_planks', [{ itemId: 'crimson_stem', qty: 1 }], { collection: 'crimson_stem', amount: 25 });
+  craft('craft_warped_planks', 'warped_planks', [{ itemId: 'warped_stem', qty: 1 }], { collection: 'warped_stem', amount: 25 });
+  craft('craft_stripped_oak_log', 'stripped_oak_log', [{ itemId: 'oak_log', qty: 1 }], { collection: 'oak_log', amount: 50 });
+  craft('craft_stripped_spruce_log', 'stripped_spruce_log', [{ itemId: 'spruce_log', qty: 1 }], { collection: 'spruce_log', amount: 50 });
+  craft('craft_stripped_birch_log', 'stripped_birch_log', [{ itemId: 'birch_log', qty: 1 }], { collection: 'birch_log', amount: 50 });
+  craft('craft_stripped_jungle_log', 'stripped_jungle_log', [{ itemId: 'jungle_log', qty: 1 }], { collection: 'jungle_log', amount: 50 });
+  craft('craft_stripped_acacia_log', 'stripped_acacia_log', [{ itemId: 'acacia_log', qty: 1 }], { collection: 'acacia_log', amount: 50 });
+  craft('craft_stripped_dark_oak_log', 'stripped_dark_oak_log', [{ itemId: 'dark_oak_log', qty: 1 }], { collection: 'dark_oak_log', amount: 50 });
+  craft('craft_diamond_spreading', 'diamond_spreading', [
+    { itemId: 'enchanted_diamond', qty: 1 },
+    { itemId: 'enchanted_gold_ingot', qty: 1 },
+  ], { collection: 'diamond', amount: 1000 });
+  craft('craft_super_egg', 'super_egg', [{ itemId: 'enchanted_egg', qty: 144 }], { collection: 'egg', amount: 1000 });
+  craft('craft_enchanted_coal_fuel', 'enchanted_coal_fuel', [{ itemId: 'enchanted_coal', qty: 1 }], { collection: 'coal', amount: 100 });
 }
 
 registerSkyblockRecipes();

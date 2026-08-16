@@ -77,6 +77,7 @@ export const ISLAND_THEMES: Record<IslandId, IslandTheme> = {
   dungeon_hub: { ground: 'stone', secondary: 'wall', hazard: 'void', path: 'stone', sky: '#22293b', fog: '#68718a', decor: ['bone_pile', 'lantern', 'obelisk', 'rock'] },
   garden: { ground: 'grass', secondary: 'farmland', hazard: 'water', path: 'dirt', sky: '#8ed6ed', fog: '#fff4b8', decor: ['hay', 'bush', 'fence', 'flower'] },
   dwarven_mines: { ground: 'stone', secondary: 'wall', hazard: 'void', path: 'gravel', sky: '#1a2430', fog: '#6a8a9a', decor: ['crystal', 'lantern', 'stalagmite', 'minecart'] },
+  crystal_hollows: { ground: 'stone', secondary: 'wall', hazard: 'void', path: 'gravel', sky: '#1c2838', fog: '#7ad0c8', decor: ['crystal', 'lantern', 'stalagmite', 'minecart'] },
   rift: { ground: 'obsidian', secondary: 'stone', hazard: 'void', path: 'stone', sky: '#2a1040', fog: '#c45cff', decor: ['end_crystal', 'obelisk', 'crystal'] },
 };
 

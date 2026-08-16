@@ -13,6 +13,7 @@
     "admin:bootstrap": "node scripts/adminBootstrap.mjs",
     "start": "npm run start -w @aether/server",
     "verify": "node scripts/verify-world.mjs",
+    "verify:obtainable": "node scripts/verify-obtainable.mjs",
     "smoke": "node scripts/smoke.mjs",
     "smoke:offline": "node scripts/smoke-offline.mjs",
     "smoke:fixes": "node scripts/smoke-fixes.mjs",

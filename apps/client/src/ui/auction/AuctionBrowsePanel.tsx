@@ -68,14 +68,10 @@ export function AuctionBrowsePanel({ onMenuClick, onClose, onBack }: Props) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
-      if (event.key === 'Backspace') {
-        event.preventDefault();
-        onBack();
-      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onBack, onClose]);
+  }, [onClose]);
 
   const totalLabel = useMemo(() => {
     if (!data) return '';

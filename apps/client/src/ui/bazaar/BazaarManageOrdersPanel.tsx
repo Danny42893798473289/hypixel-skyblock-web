@@ -21,14 +21,10 @@ export function BazaarManageOrdersPanel({ orders, onMenuClick, onClose, onBack }
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
-      if (event.key === 'Backspace') {
-        event.preventDefault();
-        onBack();
-      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onBack, onClose]);
+  }, [onClose]);
 
   const open = orders.filter((order) => order.qty > order.filled);
 
@@ -66,7 +62,7 @@ export function BazaarManageOrdersPanel({ orders, onMenuClick, onClose, onBack }
           })}
         </div>
       )}
-      <div className="menu-hint">Left click an order to cancel · Esc closes · Backspace goes back</div>
+      <div className="menu-hint">Left click an order to cancel · Esc closes</div>
     </MenuOverlay>
   );
 }
