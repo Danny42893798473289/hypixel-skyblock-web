@@ -15,6 +15,14 @@ import type {
   DungeonRunState,
   DungeonClass,
   Facing,
+  QuestBookState,
+  GardenState,
+  HotmState,
+  BestiaryState,
+  MuseumState,
+  WardrobeState,
+  DragonFightState,
+  KuudraFightState,
 } from '@aether/shared';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -59,6 +67,14 @@ export interface StoredUser {
   dungeonRun?: DungeonRunState | null;
   selectedDungeonClass?: DungeonClass;
   visitedZones?: string[];
+  quests?: QuestBookState;
+  garden?: GardenState;
+  hotm?: HotmState;
+  bestiary?: BestiaryState;
+  museum?: MuseumState;
+  wardrobe?: WardrobeState;
+  dragonFight?: DragonFightState | null;
+  kuudraFight?: KuudraFightState | null;
   x?: number;
   y?: number;
   facing?: Facing;

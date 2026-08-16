@@ -323,6 +323,9 @@ const ISLAND_WARP_ITEM: Record<string, ItemId> = {
   the_end: 'end_stone',
   crimson_isle: 'netherrack',
   dungeon_hub: 'bone',
+  garden: 'wheat',
+  dwarven_mines: 'mithril',
+  rift: 'ender_pearl',
 };
 
 /** Ordered texture URLs — Hypixel SkyBlock icons first, then vanilla Minecraft 1.8.9. */

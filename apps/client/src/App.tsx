@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ZONES,
   dungeonPhase,
+  currentMayor,
+  skyblockLevelFromXp,
+  skyblockXp,
   type BazaarOrder,
   type ChatMessage,
   type MenuId,
@@ -223,6 +226,15 @@ export function App() {
         <div><span>Bank</span><strong className="mc-gold">{Math.floor(player.bank.balance).toLocaleString()} ⛃</strong></div>
         <div><span>Location</span><strong className="mc-aqua">{zone?.name ?? player.zoneId}</strong></div>
         <div><span>Players</span><strong>{zonePlayers.length}</strong></div>
+        <div><span>SB Lvl</span><strong className="mc-gold">{skyblockLevelFromXp(skyblockXp({
+          skills: player.skills,
+          collections: player.collections,
+          slayerXp: player.slayerXp,
+          fairySouls: player.fairySouls,
+          museumDonated: player.museum?.donated.length ?? 0,
+          bestiaryKills: Object.values(player.bestiary?.kills ?? {}).reduce((sum, n) => sum + n, 0),
+        })).level}</strong></div>
+        <div><span>Mayor</span><strong>{currentMayor().name}</strong></div>
       </aside>
 
       <div className="actionbar">
@@ -239,6 +251,37 @@ export function App() {
         onUseSlot={(inventoryIndex) => gameSocket.send({ type: 'useItem', slot: inventoryIndex })}
       />
 
+      {player.islandId === 'garden' ? (
+        <div className="dungeon-hud slayer-hud">
+          <strong className="mc-green">Jacob's Contest</strong>
+          <span>{player.garden?.jacobCrop ?? 'wheat'} · score {player.garden?.jacobScore ?? 0}</span>
+        </div>
+      ) : null}
+
+      {player.dragonFight && player.dragonFight.hp > 0 ? (
+        <div className="dungeon-hud slayer-hud">
+          <strong className="mc-light-purple">{player.dragonFight.type}</strong>
+          <span>{player.dragonFight.hp.toLocaleString()} ❤ — press E in the Dragon Nest</span>
+        </div>
+      ) : null}
+      {player.kuudraFight ? (
+        <div className="dungeon-hud slayer-hud">
+          <strong className="mc-red">Kuudra T{player.kuudraFight.tier}</strong>
+          <span>{player.kuudraFight.hp.toLocaleString()} / {player.kuudraFight.maxHp.toLocaleString()} ❤</span>
+        </div>
+      ) : null}
+
+      {player.activeSlayer ? (
+        <div className="dungeon-hud slayer-hud">
+          <strong className="mc-red">Slayer · {player.activeSlayer.slayerId} T{player.activeSlayer.tier}</strong>
+          <span>
+            {player.activeSlayer.bossHp
+              ? `Boss spawned — ${player.activeSlayer.bossHp.toLocaleString()} ❤  (walk up, press E)`
+              : `Kill target mobs  ${player.activeSlayer.progressXp}/${player.activeSlayer.requiredXp} XP`}
+          </span>
+        </div>
+      ) : null}
+
       {player.dungeonRun ? (
         <div className="dungeon-hud">
           <strong className="mc-gold">Catacombs {player.dungeonRun.floorId.toUpperCase()}</strong>
@@ -251,7 +294,7 @@ export function App() {
             )}
             {dungeonPhase(player.dungeonRun) === 'boss' && `Boss — ${player.dungeonRun.bossHp?.toLocaleString() ?? '?'} ❤`}
           </span>
-          <span className="mc-yellow">Score: {player.dungeonRun.score}</span>
+          <span className="mc-yellow">Score: {player.dungeonRun.score} · Secrets: {player.dungeonRun.secretsFound ?? 0}</span>
         </div>
       ) : null}
 

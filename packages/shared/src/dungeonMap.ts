@@ -1,6 +1,8 @@
 import type { DungeonRunState } from './protocol.js';
 import { dungeonFloor } from './dungeonContent.js';
 import { ISLAND_THEMES, islandMap, type IslandMap, type TileKind, type WorldEntity } from './world.js';
+import { overlayLiveWorld, type WorldMobInstance } from './worldCombat.js';
+import type { PlacedMinion } from './minions.js';
 
 const ROOM_W = 26;
 const ROOM_H = 18;
@@ -168,6 +170,19 @@ export function buildDungeonRoomMap(run: DungeonRunState): IslandMap {
       sprite: isBloodRoom ? 'blood_door' : 'wither_door',
       actionId: 'dungeon:door',
     });
+    if (!run.secretClaimed) {
+      entities.push({
+        id: 'dungeon:secret',
+        zoneId: DUNGEON_ZONE,
+        x: 3.5,
+        y: ROOM_H - 3.5,
+        kind: 'fairy',
+        label: 'Dungeon Secret',
+        sprite: 'fairy',
+        actionId: 'dungeon:secret',
+        hidden: true,
+      });
+    }
   }
 
   // Crypt atmosphere
@@ -195,11 +210,17 @@ export function buildDungeonRoomMap(run: DungeonRunState): IslandMap {
   };
 }
 
-export function playerWorldMap(player: { islandId: IslandMap['islandId']; zoneId: string; dungeonRun: DungeonRunState | null }): IslandMap {
+export function playerWorldMap(player: {
+  islandId: IslandMap['islandId'];
+  zoneId: string;
+  dungeonRun: DungeonRunState | null;
+  worldMobs?: WorldMobInstance[];
+  minions?: PlacedMinion[];
+}): IslandMap {
   if (player.dungeonRun && player.zoneId === DUNGEON_ZONE) {
     return buildDungeonRoomMap(player.dungeonRun);
   }
-  return islandMap(player.islandId);
+  return overlayLiveWorld(islandMap(player.islandId), player);
 }
 
 export { DUNGEON_ZONE };

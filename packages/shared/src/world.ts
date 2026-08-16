@@ -75,6 +75,9 @@ export const ISLAND_THEMES: Record<IslandId, IslandTheme> = {
   the_end: { ground: 'obsidian', secondary: 'stone', hazard: 'void', path: 'stone', sky: '#140e25', fog: '#6b4c82', decor: ['end_crystal', 'obelisk', 'rock'] },
   crimson_isle: { ground: 'stone', secondary: 'obsidian', hazard: 'lava', path: 'gravel', sky: '#3b1512', fog: '#be4b29', decor: ['fire', 'lava_rock', 'obelisk'] },
   dungeon_hub: { ground: 'stone', secondary: 'wall', hazard: 'void', path: 'stone', sky: '#22293b', fog: '#68718a', decor: ['bone_pile', 'lantern', 'obelisk', 'rock'] },
+  garden: { ground: 'grass', secondary: 'farmland', hazard: 'water', path: 'dirt', sky: '#8ed6ed', fog: '#fff4b8', decor: ['hay', 'bush', 'fence', 'flower'] },
+  dwarven_mines: { ground: 'stone', secondary: 'wall', hazard: 'void', path: 'gravel', sky: '#1a2430', fog: '#6a8a9a', decor: ['crystal', 'lantern', 'stalagmite', 'minecart'] },
+  rift: { ground: 'obsidian', secondary: 'stone', hazard: 'void', path: 'stone', sky: '#2a1040', fog: '#c45cff', decor: ['end_crystal', 'obelisk', 'crystal'] },
 };
 
 export type WorldEntityKind = 'npc' | 'resource' | 'mob' | 'station' | 'fairy' | 'decor' | 'sign' | 'door';
@@ -130,6 +133,13 @@ const STATION_MENUS: Record<StationKind, { menu: MenuId; label: string; sprite: 
   dungeon: { menu: 'dungeons', label: 'Catacombs Portal', sprite: 'dungeon_portal' },
   slayer: { menu: 'slayers', label: 'Slayer Altar', sprite: 'slayer_altar' },
   pets: { menu: 'pets', label: 'Pet Stand', sprite: 'pet_stand' },
+  garden: { menu: 'garden', label: 'Garden Desk', sprite: 'hay' },
+  hotm: { menu: 'hotm', label: 'Heart of the Mountain', sprite: 'crystal' },
+  alchemy: { menu: 'alchemy', label: 'Brewing Stand', sprite: 'enchant_table' },
+  wardrobe: { menu: 'wardrobe', label: 'Wardrobe', sprite: 'anvil' },
+  museum: { menu: 'museum', label: 'Museum', sprite: 'auction_stand' },
+  kuudra: { menu: 'kuudra', label: 'Kuudra Altar', sprite: 'slayer_altar' },
+  dragons: { menu: 'dragons', label: 'Dragon Altar', sprite: 'end_crystal' },
 };
 
 function hashString(value: string): number {
@@ -541,6 +551,7 @@ function mobSprite(target: string): string {
   if (target === 'zealot') return 'mob_zealot';
   if (target.includes('enderman')) return 'mob_enderman';
   if (target.includes('magma')) return 'mob_magma';
+  if (target.includes('wolf')) return 'mob_wolf';
   return 'mob_zombie';
 }
 

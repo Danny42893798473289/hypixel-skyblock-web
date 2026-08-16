@@ -36,7 +36,10 @@ const FAIRY_REVEAL_DISTANCE = 2.6;
 
 export function WorldCanvas({ player, zonePlayers, inputDisabled, touchMode, onOpenMenu, onOpenInventory }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const map = useMemo(() => playerWorldMap(player), [player.islandId, player.zoneId, player.dungeonRun]);
+  const map = useMemo(
+    () => playerWorldMap(player),
+    [player.islandId, player.zoneId, player.dungeonRun, player.worldMobs, player.minions],
+  );
   const { positionRef, movingRef, setTouchDirection } = useMovement(player, map, inputDisabled);
   const remotesRef = useRef(new Map<string, RemotePosition>());
   const [nearby, setNearby] = useState<WorldEntity | null>(null);
@@ -185,7 +188,12 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, touchMode, onO
       {!inputDisabled && nearby ? (
         <div className="interact-prompt">
           <kbd>{touchMode ? 'TAP' : 'E'}</kbd>
-          <span>{interactionText(nearby)}</span>
+          <span>{interactionText(nearby, player)}</span>
+        </div>
+      ) : null}
+      {player.gatherChannel ? (
+        <div className="gather-hud">
+          {gatherPrompt(player.gatherChannel)}
         </div>
       ) : null}
       {touchMode ? (
@@ -223,13 +231,32 @@ function drawNameplate(
   ctx.restore();
 }
 
-function interactionText(entity: WorldEntity): string {
+function interactionText(entity: WorldEntity, player: PlayerState): string {
   if (entity.kind === 'door') return entity.label.includes('Locked') ? entity.label : `Open ${entity.label.split('—')[0]?.trim() ?? entity.label}`;
-  if (entity.kind === 'mob') return entity.actionId?.startsWith('dungeon:') ? `Attack ${entity.label.split(' (')[0]}` : `Fight ${entity.label}`;
-  if (entity.kind === 'resource') return entity.label;
+  if (entity.kind === 'mob') {
+    if (entity.actionId?.startsWith('slayerboss:')) return `Attack ${entity.label}`;
+    if (entity.actionId?.startsWith('worldmob:') || entity.actionId?.startsWith('dungeon:')) return `Attack ${entity.label.split(' (')[0]}`;
+    return `Fight ${entity.label}`;
+  }
+  if (entity.kind === 'resource') {
+    if (player.gatherChannel?.entityId === entity.id && player.gatherChannel.kind === 'fish') {
+      return player.gatherChannel.fishPhase === 'bite' ? 'Reel it in!' : 'Waiting for a bite...';
+    }
+    return entity.label;
+  }
   if (entity.kind === 'fairy') return 'Collect Fairy Soul';
   if (entity.kind === 'npc') return `Talk to ${entity.label}`;
   return `Open ${entity.label}`;
+}
+
+function gatherPrompt(channel: NonNullable<PlayerState['gatherChannel']>): string {
+  if (channel.kind === 'fish') {
+    return channel.fishPhase === 'bite' ? 'Something is biting! Press E!' : 'Fishing... waiting for a bite';
+  }
+  const elapsed = Date.now() - channel.startedAt;
+  const pct = Math.min(100, Math.floor((elapsed / channel.durationMs) * 100));
+  const verb = channel.kind === 'mine' ? 'Mining' : channel.kind === 'farm' ? 'Harvesting' : 'Chopping';
+  return `${verb}... ${pct}%  (keep pressing E)`;
 }
 
 function clamp(value: number, min: number, max: number): number {

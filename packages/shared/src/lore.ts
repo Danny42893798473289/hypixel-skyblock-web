@@ -69,7 +69,8 @@ const percentStats = new Set<StatKey>([
 
 export function itemDisplayName(def: ItemDef, stack?: ItemStack): string {
   const prefix = stack?.reforge ? `${stack.reforge} ` : '';
-  return `${prefix}${def.name}`;
+  const stars = stack?.dungeonStars ? ` ${'✪'.repeat(stack.dungeonStars)}` : '';
+  return `${prefix}${def.name}${stars}`;
 }
 
 export function buildItemLore(def: ItemDef, stack?: ItemStack): LoreLine[] {
@@ -107,6 +108,9 @@ export function buildItemLore(def: ItemDef, stack?: ItemStack): LoreLine[] {
     lines.push({ text: '' });
   } else if (def.description) {
     lines.push({ text: def.description, color: 'gray' }, { text: '' });
+  }
+  if (stack?.dungeonStars) {
+    lines.push({ text: `Dungeon Stars: ${'✪'.repeat(stack.dungeonStars)}  (+${stack.dungeonStars * 10}% weapon damage)`, color: 'gold' });
   }
   if (def.npcSell) lines.push({ text: `NPC Sell Price: ${def.npcSell.toLocaleString()} Coins`, color: 'gray' });
   lines.push({

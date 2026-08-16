@@ -231,10 +231,11 @@ export function PlayerInventoryPanel({ player, touchMode = false, onMenuClick, o
         </div>
 
         <section className="inventory-storage-section">
-          <div className="inventory-held-row">
-            <div className="inventory-label">Held Item</div>
-            <HeldItemSlot cursor={cursor} onClick={handleCursorClick} />
-          </div>
+          {cursor ? (
+            <div className="inventory-cursor-float">
+              <HeldItemSlot cursor={cursor} onClick={handleCursorClick} />
+            </div>
+          ) : null}
           <div className="inventory-label">Inventory</div>
           <div className="chest-grid inventory-storage-grid">
             {storage.map((stack, index) => (
@@ -274,21 +275,18 @@ export function PlayerInventoryPanel({ player, touchMode = false, onMenuClick, o
   );
 }
 
-function HeldItemSlot({ cursor, onClick }: { cursor: ItemStack | null; onClick: (button: ClickButton) => void }) {
-  const def = cursor ? ITEMS[cursor.itemId] : undefined;
-  const lore: LoreLine[] = cursor && def
-    ? [
-      { text: 'Item on your cursor.', color: 'gray' },
-      def.heal
-        ? { text: 'Right-click to eat!', color: 'yellow' }
-        : { text: 'Right-click to equip/use!', color: 'yellow' },
-    ]
-    : [{ text: 'Pick up an item from your inventory.', color: 'gray' }];
+function HeldItemSlot({ cursor, onClick }: { cursor: ItemStack; onClick: (button: ClickButton) => void }) {
+  const def = ITEMS[cursor.itemId];
+  const lore: LoreLine[] = [
+    { text: 'Item on your cursor.', color: 'gray' },
+    def.heal
+      ? { text: 'Right-click to eat!', color: 'yellow' }
+      : { text: 'Right-click to equip/use!', color: 'yellow' },
+  ];
 
   return (
     <ItemSlotButton
       stack={cursor}
-      emptyLabel="Held item slot"
       extraLore={lore}
       onClick={onClick}
       className="inventory-held-slot"

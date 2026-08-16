@@ -1,6 +1,6 @@
 import type { ItemId } from './items.js';
 
-export type MinionType = 'cobble' | 'wheat' | 'coal' | 'oak';
+export type MinionType = string;
 
 export interface MinionDef {
   type: MinionType;
@@ -52,9 +52,29 @@ export const MINIONS: Record<MinionType, MinionDef> = {
   },
 };
 
+export function ensureMinionDef(type: MinionType, produces?: ItemId, name?: string, color?: string): MinionDef {
+  if (MINIONS[type]) return MINIONS[type];
+  const product = (produces ?? type) as ItemId;
+  MINIONS[type] = {
+    type,
+    itemId: `minion_${type}` as ItemId,
+    produces: product,
+    name: name ?? `${type.replace(/_/g, ' ')} Minion`,
+    intervalSec: 12,
+    storageCap: 64,
+    color: color ?? '#888888',
+  };
+  return MINIONS[type];
+}
+
 export function minionTypeFromItem(itemId: ItemId): MinionType | null {
   for (const m of Object.values(MINIONS)) {
     if (m.itemId === itemId) return m.type;
+  }
+  if (itemId.startsWith('minion_')) {
+    const type = itemId.slice('minion_'.length);
+    ensureMinionDef(type);
+    return type;
   }
   return null;
 }

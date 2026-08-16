@@ -31,6 +31,7 @@ import {
   accessoryBagSlots,
   FAIRY_SOULS_PER_BAG_SLOT,
   BASE_ACCESSORY_BAG_SLOTS,
+  countItem,
   type CollectionCategory,
   type IslandId,
   type ItemId,
@@ -42,10 +43,29 @@ import {
   type BazaarOrder,
   type PlayerState,
   type RecipeCategory,
+  STARTER_QUEST_STEPS,
+  currentQuestStep,
+  isQuestStepDone,
+  starterQuestComplete,
+  PET_EGGS,
+  minionTypeFromItem,
+  ensureMinionDef,
 } from '@aether/shared';
 import { activeAuctions, auctionById, auctionsBySeller, durationOptions, expiredAuctionsFor, formatTimeLeft } from '../auction/engine.js';
 import { getData } from '../store/usersStore.js';
 import { BANK_TIERS, bankTier, msUntilNextInterest, nextBankTier } from './bank.js';
+import {
+  alchemyMenu,
+  bestiaryMenu,
+  dragonsMenu,
+  gardenMenu,
+  hotmMenu,
+  kuudraMenu,
+  mayorMenu,
+  museumMenu,
+  profileExtras,
+  wardrobeMenu,
+} from './midgameMenus.js';
 
 type Context = Record<string, string | number | boolean>;
 
@@ -89,6 +109,9 @@ const ISLAND_WARP_ITEM: Partial<Record<IslandId, ItemId>> = {
   the_end: 'end_stone',
   crimson_isle: 'netherrack',
   dungeon_hub: 'bone',
+  garden: 'wheat',
+  dwarven_mines: 'mithril',
+  rift: 'ender_pearl',
 };
 
 function slot(
@@ -162,6 +185,16 @@ export function buildMenu(
     case 'minions': return minionsMenu(player);
     case 'pets': return petsMenu(player);
     case 'slayers': return slayersMenu(player);
+    case 'quests': return questsMenu(player);
+    case 'garden': return gardenMenu(player);
+    case 'hotm': return hotmMenu(player);
+    case 'alchemy': return alchemyMenu(player);
+    case 'bestiary': return bestiaryMenu(player);
+    case 'mayor': return mayorMenu();
+    case 'museum': return museumMenu(player);
+    case 'wardrobe': return wardrobeMenu(player);
+    case 'kuudra': return kuudraMenu(player);
+    case 'dragons': return dragonsMenu(player);
     case 'dungeons': return dungeonsMenu(player, context);
     case 'accessories': return accessoriesMenu(player);
     case 'enchanting': return enchantingMenu(player, context);
@@ -186,6 +219,11 @@ function skyblockMenu(player: PlayerState): MenuView {
         click(),
       ], 'open:profile'),
       slot(10, 'diamond_sword', 'Your Skills', [line('View your Skill progression and rewards.'), click()], 'open:skills'),
+      slot(28, 'book', 'Quest Book', [
+        line(currentQuestStep(player)?.title ?? 'Starter quests complete!', currentQuestStep(player) ? 'yellow' : 'green'),
+        line(currentQuestStep(player)?.detail ?? 'Claim your reward.', 'gray'),
+        click(),
+      ], 'open:quests'),
       slot(11, 'painting', 'Collections', [line('View collection milestones and recipe unlocks.'), click()], 'open:collections'),
       slot(12, 'book', 'Recipe Book', [line('Craft recipes unlocked through Collections.'), click()], 'open:crafting'),
       slot(13, 'map', 'Fast Travel', [line(`Current island: ${islandForZone(player.zoneId)}`), click()], 'open:fast_travel'),
@@ -199,6 +237,15 @@ function skyblockMenu(player: PlayerState): MenuView {
       slot(23, 'zombie_head', 'Slayer Quests', [line(player.activeSlayer ? `Active: ${player.activeSlayer.slayerId} Tier ${player.activeSlayer.tier}` : 'No active quest'), click()], 'open:slayers'),
       slot(24, 'wither_skull', 'Dungeons', [line(`Class: ${player.selectedDungeonClass}`), click()], 'open:dungeons'),
       slot(25, 'anvil', 'Blacksmith', [line('Enchant and reforge your gear.'), click()], 'open:reforge'),
+      slot(17, 'wheat', 'Garden', [line('Contests, visitors, crop milestones.'), click()], 'open:garden'),
+      slot(18, 'mithril', 'Heart of the Mountain', [line('Dwarven commissions and perks.'), click()], 'open:hotm'),
+      slot(26, 'potion', 'Alchemy', [line('Brew potions for Alchemy XP.'), click()], 'open:alchemy'),
+      slot(27, 'book', 'Bestiary', [line('Track every mob you have slain.'), click()], 'open:bestiary'),
+      slot(29, 'player_head', 'Mayor', [line('Weekly mayor perks.'), click()], 'open:mayor'),
+      slot(30, 'painting', 'Museum', [line(`${player.museum?.donated.length ?? 0} donated`), click()], 'open:museum'),
+      slot(33, 'chestplate', 'Wardrobe', [line('Swap saved armor sets.'), click()], 'open:wardrobe'),
+      slot(34, 'magma', 'Kuudra', [line('Crimson Isle siege.'), click()], 'open:kuudra'),
+      slot(35, 'ender_pearl', 'Dragons', [line('Place Summoning Eyes in the End.'), click()], 'open:dragons'),
       slot(31, 'compass', 'Current Location', [line(ZONES[player.zoneId]?.name ?? player.zoneId, 'aqua'), click()], 'open:location'),
       slot(32, 'leaderboard', 'Leaderboards', [line('Compare your profile with other players.'), click()], 'open:leaderboard'),
       close(),
@@ -300,7 +347,11 @@ function profileMenu(player: PlayerState): MenuView {
     title: `${player.username}'s Profile`,
     rows: 6,
     slots: [
-      slot(4, 'player_head', player.username, [line(`Purse: ${Math.floor(player.coins).toLocaleString()}`, 'gold'), line(`Fairy Souls: ${player.fairySouls}`, 'light_purple')]),
+      slot(4, 'player_head', player.username, [
+        line(`Purse: ${Math.floor(player.coins).toLocaleString()}`, 'gold'),
+        line(`Fairy Souls: ${player.fairySouls}`, 'light_purple'),
+        ...profileExtras(player),
+      ]),
       ...stats.slice(0, 28).map(([key, value], i) => slot(10 + (i % 7) + Math.floor(i / 7) * 9, 'stat', pretty(key), [line(formatStat(value), statColor(key)), line('Includes gear, skills, pets and accessories.')])),
       back(),
       close(),
@@ -736,13 +787,12 @@ function npcMenu(player: PlayerState): MenuView {
         return view;
       }),
       ...(npc?.buys ?? []).map((listing, i) => {
-        const bonus = listing.price;
-        const base = npcSellPrice(listing.itemId) ?? listing.price;
+        const sellPrice = npcSellPrice(listing.itemId) ?? listing.price;
         const view = itemSlot(28 + i, listing.itemId, `npcSell:${listing.itemId}`);
         view.lore = [
           ...view.lore.slice(0, -1),
-          line(`Sell Price: ${Math.max(base, bonus)} Coins`, 'gold'),
-          bonus > base ? line(`Bonus buy price (base ${base})`, 'green') : line('Click to sell from inventory', 'yellow'),
+          line(`Sell Price: ${sellPrice} Coins`, 'gold'),
+          line('Click to sell from inventory', 'yellow'),
         ];
         return view;
       }),
@@ -754,18 +804,59 @@ function npcMenu(player: PlayerState): MenuView {
 }
 
 function minionsMenu(player: PlayerState): MenuView {
+  const deploySlots: MenuSlotView[] = [];
+  const seen = new Set<string>();
+  for (const stack of player.inventory) {
+    if (!stack) continue;
+    const type = minionTypeFromItem(stack.itemId);
+    if (!type || seen.has(type)) continue;
+    seen.add(type);
+    const def = ensureMinionDef(type);
+    deploySlots.push(slot(1 + deploySlots.length, 'minion', `Place ${def.name}`, [
+      line(`In inventory: ${stack.qty}`, 'gray'),
+      line('Produces resources while you play (and offline).', 'gray'),
+      line('Click to deploy!', 'yellow'),
+    ], `placeMinion:${type}`));
+    if (deploySlots.length >= 7) break;
+  }
+
+  const deployed = player.minions.slice(0, 21).map((minion, i) => slot(10 + (i % 7) + Math.floor(i / 7) * 9, 'minion', `${pretty(minion.type)} Minion ${roman(minion.tier)}`, [
+    line(`Stored resources: ${minion.storage}`, 'yellow'),
+    line(`Tier: ${minion.tier}/11`, 'aqua'),
+    line(`Upgrades: ${minion.upgrades?.length ? minion.upgrades.join(', ') : 'none'}`, 'gray'),
+    line('Left-click to collect', 'yellow'),
+    line('Right-click to upgrade tier', 'yellow'),
+    line('Shift-click to pick up', 'yellow'),
+  ], `minion:${minion.id}`));
+
+  const upgradeSlots: MenuSlotView[] = [];
+  const first = player.minions[0];
+  if (first) {
+    for (const [upgradeId, label] of [['super_compactor', 'Install Super Compactor'], ['diamond_spreading', 'Install Diamond Spreading']] as const) {
+      if (countItem(player.inventory, upgradeId) <= 0) continue;
+      upgradeSlots.push(slot(37 + upgradeSlots.length, upgradeId, label, [
+        line(`Applies to ${pretty(first.type)} Minion`, 'gray'),
+        line('Click to install on your first minion.', 'yellow'),
+      ], `minionUpgrade:${first.id}/${upgradeId}`));
+    }
+  }
+
+  const emptyHint = player.minions.length === 0 && deploySlots.length === 0
+    ? [slot(22, 'barrier', 'No Minions Yet', [
+      line('Craft a Tier I minion in the Recipe Book'),
+      line('(Minions category), then click it here to deploy.', 'yellow'),
+    ])]
+    : [];
+
   return {
     id: 'minions',
     title: 'Your Minions',
     rows: 6,
     slots: [
-      ...player.minions.slice(0, 28).map((minion, i) => slot(10 + (i % 7) + Math.floor(i / 7) * 9, 'minion', `${pretty(minion.type)} Minion ${roman(minion.tier)}`, [
-        line(`Stored resources: ${minion.storage}`, 'yellow'),
-        line(`Tier: ${minion.tier}/11`, 'aqua'),
-        line('Left-click to collect', 'yellow'),
-        line('Right-click to upgrade', 'yellow'),
-        line('Shift-click to pick up', 'yellow'),
-      ], `minion:${minion.id}`)),
+      ...deploySlots,
+      ...deployed,
+      ...upgradeSlots,
+      ...emptyHint,
       slot(48, 'crafting_table', 'Craft Minion', [line('Use Collection recipes to craft more minions.'), click()], 'open:crafting'),
       back(),
       close(),
@@ -780,12 +871,47 @@ function petsMenu(player: PlayerState): MenuView {
     title: 'Pets',
     rows: 6,
     slots: [
-      ...player.pets.slice(0, 28).map((pet, i) => {
+      ...player.pets.slice(0, 21).map((pet, i) => {
         const view = itemSlot(10 + (i % 7) + Math.floor(i / 7) * 9, pet.itemId, `pet:${i}`);
         view.name = `${pet.active ? '▶ ' : ''}[Lvl ${pet.level}] ${ITEMS[pet.itemId]?.name.replace(/^\[Lvl \d+\] /, '') ?? pet.itemId}`;
         view.lore = [...view.lore, line(`XP: ${Math.floor(pet.xp).toLocaleString()}`, 'aqua'), line(pet.active ? 'Active Pet' : 'Click to summon!', pet.active ? 'green' : 'yellow')];
         return view;
       }),
+      ...PET_EGGS.filter((egg) => countItem(player.inventory, egg.egg) > 0).slice(0, 5).map((egg, i) =>
+        slot(37 + i, egg.egg, `Hatch ${ITEMS[egg.egg]?.name ?? egg.egg}`, [
+          line('Click to hatch this egg into a pet.', 'yellow'),
+        ], `hatch:${egg.egg}`)),
+      back(),
+      close(),
+    ],
+    parent: 'skyblock',
+  };
+}
+
+function questsMenu(player: PlayerState): MenuView {
+  const current = currentQuestStep(player);
+  const done = starterQuestComplete(player);
+  return {
+    id: 'quests',
+    title: 'Quest Book',
+    rows: 6,
+    slots: [
+      slot(4, 'book', 'Starter Questline', [
+        line(done ? 'All steps complete!' : `Next: ${current?.title ?? '—'}`, done ? 'green' : 'yellow'),
+        line('Follow these like early SkyBlock.', 'gray'),
+      ]),
+      ...STARTER_QUEST_STEPS.map((step, i) => {
+        const complete = isQuestStepDone(player, step.id);
+        return slot(10 + i + Math.floor(i / 7) * 2, complete ? 'emerald' : 'paper', `${complete ? '✔ ' : ''}${step.title}`, [
+          line(step.detail),
+          line(complete ? 'Complete' : 'In progress', complete ? 'green' : 'yellow'),
+        ]);
+      }),
+      done && !player.quests?.claimed
+        ? slot(31, 'gold_ingot', 'Claim Reward', [line('+500 coins and Enchanted Cobblestone', 'gold'), click()], 'questClaim')
+        : slot(31, player.quests?.claimed ? 'emerald' : 'barrier', player.quests?.claimed ? 'Reward Claimed' : 'Keep going', [
+          line(done ? 'Already claimed.' : 'Finish every step to claim.', 'gray'),
+        ]),
       back(),
       close(),
     ],
@@ -811,7 +937,13 @@ function slayersMenu(player: PlayerState): MenuView {
           blocked ? line('Finish your current quest first.', 'red') : !canAfford ? line(`Need ${tierOne.cost.toLocaleString()} coins for Tier I`, 'red') : line('Click to start!', 'green'),
         ], `slayer:${slayer.id}`, { disabled: blocked || !canAfford });
       }),
-      player.activeSlayer ? slot(31, 'sword', 'Active Quest', [line(`${player.activeSlayer.slayerId} Tier ${player.activeSlayer.tier}`, 'red'), line(`Combat XP: ${player.activeSlayer.progressXp}/${player.activeSlayer.requiredXp}`, 'yellow'), player.activeSlayer.bossHp ? line(`Boss HP: ${player.activeSlayer.bossHp.toLocaleString()}`, 'red') : line('Kill the target mob to spawn the boss.')], 'slayer:active') : slot(31, 'barrier', 'No Active Quest', [line('Select a Slayer boss above.')]),
+      player.activeSlayer ? slot(31, 'sword', 'Active Quest', [
+        line(`${player.activeSlayer.slayerId} Tier ${player.activeSlayer.tier}`, 'red'),
+        line(`Combat XP: ${player.activeSlayer.progressXp}/${player.activeSlayer.requiredXp}`, 'yellow'),
+        player.activeSlayer.bossHp
+          ? line(`Boss spawned in the world! Walk up and press E. HP: ${player.activeSlayer.bossHp.toLocaleString()}`, 'red')
+          : line('Kill the target mobs in the world to spawn the boss.'),
+      ], 'slayer:active') : slot(31, 'barrier', 'No Active Quest', [line('Select a Slayer boss above.')]),
       back(),
       close(),
     ],
@@ -889,6 +1021,8 @@ function dungeonsMenu(player: PlayerState, context: Context = {}): MenuView {
           ], 'dungeon:continue')
         : slot(22, 'wither_skull', 'No Active Run', [line('Select a floor below to enter.', 'gray'), line('Walk to the Wither Door inside!', 'gray')]),
       ...(player.dungeonRun ? [slot(24, 'barrier', 'Leave Dungeon', [line('Abandon this run and return to the Dungeon Hub.', 'red')], 'dungeon:leave')] : []),
+      slot(46, 'player_head', 'Host Party', [line('Invite players in the Dungeon Hub to your run.'), click()], 'dungeonParty'),
+      slot(47, 'emerald', 'Join Nearby Party', [line('Join the first hosted run in the Hub.'), click()], 'dungeonJoin:nearby'),
       back(),
       close(),
     ],

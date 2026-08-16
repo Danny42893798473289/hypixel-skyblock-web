@@ -60,6 +60,23 @@ export function registerSkyblockRecipes(): void {
     { itemId: 'stick', qty: 1 },
     { itemId: 'rotten_flesh', qty: 32 },
   ], { collection: 'rotten_flesh', amount: 50 });
+  craft('craft_revenant_falchion', 'revenant_falchion', [
+    { itemId: 'rev_flesh', qty: 32 },
+    { itemId: 'diamond_sword', qty: 1 },
+  ], { collection: 'rev_flesh', amount: 1 });
+  craft('craft_scorpion_foil', 'scorpion_foil', [
+    { itemId: 'tarantula_web', qty: 32 },
+    { itemId: 'stick', qty: 1 },
+  ], { collection: 'tarantula_web', amount: 1 });
+  craft('craft_edible_mace', 'edible_mace', [
+    { itemId: 'wolf_tooth', qty: 24 },
+    { itemId: 'mutton', qty: 16 },
+  ], { collection: 'wolf_tooth', amount: 1 });
+  craft('craft_voidedge_katana', 'voidedge_katana', [
+    { itemId: 'null_sphere', qty: 16 },
+    { itemId: 'enchanted_ender_pearl', qty: 8 },
+    { itemId: 'stick', qty: 1 },
+  ], { collection: 'null_sphere', amount: 1 });
   craft('craft_silver_fang', 'silver_fang', [
     { itemId: 'stick', qty: 1 },
     { itemId: 'enchanted_rotten_flesh', qty: 2 },

@@ -1,4 +1,5 @@
 import type { StatBlock } from './stats.js';
+import { skyblockNpcSellPrice } from './npcPrices.js';
 
 export type ItemId = string;
 
@@ -363,25 +364,25 @@ Object.assign(ITEMS, {
   diamond: skyblockItem('diamond', 'Diamond', 'COMMON', 'MATERIAL', { color: '#55ffff', npcSell: 8 }),
   enchanted_diamond: skyblockItem('enchanted_diamond', 'Enchanted Diamond', 'UNCOMMON', 'MATERIAL', { color: '#55ffff', npcSell: 1280 }),
   enchanted_diamond_block: skyblockItem('enchanted_diamond_block', 'Enchanted Diamond Block', 'RARE', 'MATERIAL', { color: '#00aaaa', npcSell: 204800 }),
-  emerald: skyblockItem('emerald', 'Emerald', 'COMMON', 'MATERIAL', { color: '#55ff55', npcSell: 6 }),
+  emerald: skyblockItem('emerald', 'Emerald', 'COMMON', 'MATERIAL', { color: '#55ff55', npcSell: 4 }),
   enchanted_emerald: skyblockItem('enchanted_emerald', 'Enchanted Emerald', 'UNCOMMON', 'MATERIAL', { color: '#00aa00', npcSell: 960 }),
   redstone: skyblockItem('redstone', 'Redstone', 'COMMON', 'MATERIAL', { color: '#ff5555', npcSell: 1 }),
   enchanted_redstone: skyblockItem('enchanted_redstone', 'Enchanted Redstone', 'UNCOMMON', 'MATERIAL', { color: '#aa0000', npcSell: 160 }),
   lapis: skyblockItem('lapis', 'Lapis Lazuli', 'COMMON', 'MATERIAL', { color: '#5555ff', npcSell: 1 }),
-  gold_ingot: skyblockItem('gold_ingot', 'Gold Ingot', 'COMMON', 'MATERIAL', { color: '#ffaa00', npcSell: 4 }),
+  gold_ingot: skyblockItem('gold_ingot', 'Gold Ingot', 'COMMON', 'MATERIAL', { color: '#ffaa00', npcSell: 3 }),
   mithril: skyblockItem('mithril', 'Mithril', 'COMMON', 'MATERIAL', { color: '#45c9b0', npcSell: 8 }),
   gemstone_ruby: skyblockItem('gemstone_ruby', 'Rough Ruby Gemstone', 'COMMON', 'MATERIAL', { color: '#d81b45', npcSell: 3 }),
   gemstone_jade: skyblockItem('gemstone_jade', 'Rough Jade Gemstone', 'COMMON', 'MATERIAL', { color: '#2ec27e', npcSell: 3 }),
-  potato: skyblockItem('potato', 'Potato', 'COMMON', 'MATERIAL', { color: '#d6b35a', npcSell: 1 }),
-  carrot: skyblockItem('carrot', 'Carrot', 'COMMON', 'MATERIAL', { color: '#ff8800', npcSell: 1 }),
-  pumpkin: skyblockItem('pumpkin', 'Pumpkin', 'COMMON', 'MATERIAL', { color: '#ffaa00', npcSell: 4 }),
+  potato: skyblockItem('potato', 'Potato', 'COMMON', 'MATERIAL', { color: '#d6b35a', npcSell: 3 }),
+  carrot: skyblockItem('carrot', 'Carrot', 'COMMON', 'MATERIAL', { color: '#ff8800', npcSell: 3 }),
+  pumpkin: skyblockItem('pumpkin', 'Pumpkin', 'COMMON', 'MATERIAL', { color: '#ffaa00', npcSell: 10 }),
   melon: skyblockItem('melon', 'Melon', 'COMMON', 'MATERIAL', { color: '#55ff55', npcSell: 2 }),
-  sugar_cane: skyblockItem('sugar_cane', 'Sugar Cane', 'COMMON', 'MATERIAL', { color: '#aaffaa', npcSell: 2 }),
-  cactus: skyblockItem('cactus', 'Cactus', 'COMMON', 'MATERIAL', { color: '#00aa00', npcSell: 3 }),
+  sugar_cane: skyblockItem('sugar_cane', 'Sugar Cane', 'COMMON', 'MATERIAL', { color: '#aaffaa', npcSell: 4 }),
+  cactus: skyblockItem('cactus', 'Cactus', 'COMMON', 'MATERIAL', { color: '#00aa00', npcSell: 4 }),
   cocoa_beans: skyblockItem('cocoa_beans', 'Cocoa Beans', 'COMMON', 'MATERIAL', { color: '#885522', npcSell: 3 }),
-  mushroom: skyblockItem('mushroom', 'Mushroom', 'COMMON', 'MATERIAL', { color: '#aa3333', npcSell: 4 }),
-  ender_pearl: skyblockItem('ender_pearl', 'Ender Pearl', 'COMMON', 'MATERIAL', { color: '#00aaaa', npcSell: 10 }),
-  blaze_rod: skyblockItem('blaze_rod', 'Blaze Rod', 'COMMON', 'MATERIAL', { color: '#ffaa00', npcSell: 9 }),
+  mushroom: skyblockItem('mushroom', 'Mushroom', 'COMMON', 'MATERIAL', { color: '#aa3333', npcSell: 10 }),
+  ender_pearl: skyblockItem('ender_pearl', 'Ender Pearl', 'COMMON', 'MATERIAL', { color: '#00aaaa', npcSell: 7 }),
+  blaze_rod: skyblockItem('blaze_rod', 'Blaze Rod', 'COMMON', 'MATERIAL', { color: '#ffaa00', npcSell: 10 }),
   spider_eye: skyblockItem('spider_eye', 'Spider Eye', 'COMMON', 'MATERIAL', { color: '#aa0000', npcSell: 3 }),
   bone: skyblockItem('bone', 'Bone', 'COMMON', 'MATERIAL', { color: '#eeeeee', npcSell: 2 }),
   jungle_log: skyblockItem('jungle_log', 'Jungle Log', 'COMMON', 'MATERIAL', { color: '#aa7733', npcSell: 2 }),
@@ -434,6 +435,10 @@ for (const [baseId, name, color] of ENCHANTED_VARIANTS) {
 Object.assign(ITEMS, {
   raiders_axe: skyblockItem('raiders_axe', "Raider Axe", 'RARE', 'SWORD', { damage: 80, stats: { strength: 50 }, description: 'Earn bonus coins while defeating enemies.' }),
   leaping_sword: skyblockItem('leaping_sword', 'Leaping Sword', 'EPIC', 'SWORD', { damage: 150, stats: { strength: 100, critDamage: 25 }, ability: { name: 'Leap', description: 'Leap into the air and damage nearby enemies.', manaCost: 50, damage: 350, scaling: 0.2 } }),
+  revenant_falchion: skyblockItem('revenant_falchion', 'Revenant Falchion', 'RARE', 'SWORD', { color: '#55aa55', damage: 90, stats: { strength: 50 }, description: 'Crafted from Revenant Flesh. Strong against the undead.' }),
+  scorpion_foil: skyblockItem('scorpion_foil', 'Scorpion Foil', 'RARE', 'SWORD', { color: '#aa0000', damage: 100, stats: { strength: 30, critChance: 10 }, description: 'Crafted from Tarantula Web.' }),
+  edible_mace: skyblockItem('edible_mace', 'Edible Mace', 'RARE', 'SWORD', { color: '#cccccc', damage: 125, stats: { strength: 25 }, description: 'Crafted from Wolf Teeth. A crunchy Sven trophy.' }),
+  voidedge_katana: skyblockItem('voidedge_katana', 'Voidedge Katana', 'RARE', 'SWORD', { color: '#aa00aa', damage: 155, stats: { strength: 60, critDamage: 20 }, ability: { name: 'Soulcry', description: 'Empower your next hits against Endermen.', manaCost: 200, damage: 800, scaling: 0.15 } }),
   flower_of_truth: skyblockItem('flower_of_truth', 'Flower of Truth', 'LEGENDARY', 'SWORD', { damage: 160, stats: { strength: 300 }, ability: { name: 'Heat-Seeking Rose', description: 'Fires a rose which ricochets between enemies.', manaCost: 25, damage: 500, scaling: 0.2 } }),
   shadow_fury: skyblockItem('shadow_fury', 'Shadow Fury', 'LEGENDARY', 'SWORD', { damage: 300, stats: { strength: 125, critDamage: 30 }, ability: { name: 'Shadow Fury', description: 'Rapidly teleport behind nearby enemies.', cooldownSec: 15 } }),
   giant_sword: skyblockItem('giant_sword', "Giant's Sword", 'LEGENDARY', 'SWORD', { damage: 500, stats: { strength: 25 }, ability: { name: 'Giant Slam', description: 'Slam the ground for massive damage.', manaCost: 100, cooldownSec: 30, damage: 100000, scaling: 0.05 } }),
@@ -477,6 +482,16 @@ Object.assign(ITEMS, {
   monkey_pet: skyblockItem('monkey_pet', '[Lvl 1] Monkey', 'LEGENDARY', 'PET', { stats: { speed: 10, foragingFortune: 20 }, description: 'Foraging Pet. Improves tree harvesting.' }),
   ammonite_pet: skyblockItem('ammonite_pet', '[Lvl 1] Ammonite', 'LEGENDARY', 'PET', { stats: { defense: 20, seaCreatureChance: 5 }, description: 'Fishing Pet. Scales with Mining and Fishing.' }),
   griffin_pet: skyblockItem('griffin_pet', '[Lvl 1] Griffin', 'LEGENDARY', 'PET', { stats: { strength: 10, critChance: 5, critDamage: 10, magicFind: 5 }, description: 'Combat Pet. Finds Mythological creatures.' }),
+  enderman_pet: skyblockItem('enderman_pet', '[Lvl 1] Enderman', 'LEGENDARY', 'PET', { stats: { critDamage: 25, intelligence: 20 }, description: 'Combat Pet. Extra damage to Endermen.' }),
+  healing_potion: skyblockItem('healing_potion', 'Healing Potion', 'COMMON', 'CONSUMABLE', { color: '#ff5555', heal: 50, bazaarable: true, description: 'Restores health. Brewed at an Alchemy stand.' }),
+  speed_potion: skyblockItem('speed_potion', 'Speed Potion', 'COMMON', 'CONSUMABLE', { color: '#55ffff', bazaarable: true, stats: { speed: 10 }, description: 'A sip of speed. Brewed at an Alchemy stand.' }),
+  strength_potion: skyblockItem('strength_potion', 'Strength Potion', 'UNCOMMON', 'CONSUMABLE', { color: '#aa0000', bazaarable: true, stats: { strength: 15 }, description: 'Temporary strength. Brewed at an Alchemy stand.' }),
+  mana_potion: skyblockItem('mana_potion', 'Mana Potion', 'UNCOMMON', 'CONSUMABLE', { color: '#5555ff', bazaarable: true, description: 'Restores 80 mana. Brewed at an Alchemy stand.' }),
+  wolf_pet_egg: skyblockItem('wolf_pet_egg', 'Wolf Pet Egg', 'EPIC', 'CONSUMABLE', { color: '#aaaaaa', description: 'Hatch at the Pets menu to receive a Wolf Pet.' }),
+  enderman_pet_egg: skyblockItem('enderman_pet_egg', 'Enderman Pet Egg', 'EPIC', 'CONSUMABLE', { color: '#aa00aa', description: 'Hatch at the Pets menu to receive an Enderman Pet.' }),
+  tiger_pet_egg: skyblockItem('tiger_pet_egg', 'Tiger Pet Egg', 'EPIC', 'CONSUMABLE', { color: '#ffaa00', description: 'Hatch at the Pets menu to receive a Tiger Pet.' }),
+  silverfish_pet_egg: skyblockItem('silverfish_pet_egg', 'Silverfish Pet Egg', 'EPIC', 'CONSUMABLE', { color: '#888888', description: 'Hatch at the Pets menu to receive a Silverfish Pet.' }),
+  elephant_pet_egg: skyblockItem('elephant_pet_egg', 'Elephant Pet Egg', 'EPIC', 'CONSUMABLE', { color: '#aaaaaa', description: 'Hatch at the Pets menu to receive an Elephant Pet.' }),
 });
 
 const RARITY_NPC_SELL: Record<ItemRarity, number> = {
@@ -498,6 +513,8 @@ const EQUIP_TYPES = new Set<ItemType>([
 
 /** Coins an NPC pays when buying this item from the player. */
 export function npcSellPrice(itemId: ItemId): number | null {
+  const skyblock = skyblockNpcSellPrice(itemId);
+  if (skyblock != null) return skyblock;
   const def = ITEMS[itemId];
   if (!def) return null;
   if (def.npcSell != null && def.npcSell > 0) return def.npcSell;

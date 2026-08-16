@@ -72,6 +72,17 @@ import {
   type IslandMap,
   npcSellPrice,
   accessoryBagSlots,
+  PET_EGGS,
+  spawnMobsForZone,
+  slayerMatchesMob,
+  SLAYER_DROPS,
+  mobSpriteId,
+  emptyQuestBook,
+  collectionProgress,
+  COLLECTIONS,
+  ensureMinionDef,
+  starterQuestComplete,
+  currentMayor,
 } from '@aether/shared';
 import { loadPlayer, savePlayer, takeOfflineInterest, verifyToken } from '../auth/index.js';
 import { BANK_TIERS, accrueBankInterest, bankTier, depositLimit, nextBankTier } from './bank.js';
@@ -88,6 +99,22 @@ import {
   isOnCooldown,
   teleportForward,
 } from './abilities.js';
+import {
+  brewPotion,
+  claimCommission,
+  donateMuseum,
+  ensureMidgame,
+  equipWardrobe,
+  hatchPetEgg,
+  noteGardenHarvest,
+  noteMiningCommission,
+  npcSellMultiplier,
+  placeDragonEye,
+  saveWardrobe,
+  serveGardenVisitor,
+  startKuudra,
+  unlockHotmPerk,
+} from './midgameLogic.js';
 
 interface Session {
   socket: Socket;
@@ -181,6 +208,7 @@ function handlePlayerDeath(session: Session, message = 'You died!'): void {
     return;
   }
   if (session.player.activeSlayer) {
+    session.player.worldMobs = (session.player.worldMobs ?? []).filter((mob) => !mob.slayerBoss);
     session.player.activeSlayer = null;
     toast(session, `${message} Your Slayer quest failed.`, 'error');
   } else {
@@ -216,6 +244,8 @@ function openMenu(session: Session, menu: MenuId, context: Record<string, string
   session.currentMenu = menu;
   session.menuContext = context;
   if (menu !== 'inventory') session.inventoryCursor = null;
+  if (menu === 'bazaar' || menu === 'bazaar_item') flagQuest(session, 'open_bazaar');
+  if (menu === 'npc_shop' && session.player.zoneId === 'hub_plaza') flagQuest(session, 'talk_adventurer');
   if (menu === 'bazaar_item' && typeof context.itemId === 'string') session.bazaarItem = context.itemId;
   else if (menu !== 'bazaar' && menu !== 'bazaar_orders') session.bazaarItem = null;
   if (menu === 'bazaar_orders') {
@@ -281,7 +311,7 @@ function playerWeaponDamage(player: PlayerState): number {
   const stack = hotbarStack(player.inventory, player.hotbarSlot);
   if (stack) {
     const def = ITEMS[stack.itemId];
-    if (def?.damage) return def.damage;
+    if (def?.damage) return def.damage * (1 + 0.1 * (stack.dungeonStars ?? 0));
   }
   return bestTool(player, 'sword').damage ?? 5;
 }
@@ -355,6 +385,9 @@ export function initGame(serverIo: SocketServer): void {
     if (session.player.mana == null || Number.isNaN(session.player.mana)) {
       session.player.mana = session.player.maxMana ?? session.player.stats.intelligence;
     }
+    if (!session.player.quests) session.player.quests = emptyQuestBook();
+    ensureMidgame(session.player);
+    ensureWorldMobs(session);
     pushState(session);
     sessions.set(userId, session);
     registerLivePlayer(
@@ -393,6 +426,7 @@ export function initGame(serverIo: SocketServer): void {
   });
 
   setInterval(minionTick, 1000);
+  setInterval(worldMobTick, 1000);
   setInterval(broadcastZonePresence, Math.round(1000 / PRESENCE_HZ));
   setInterval(bankInterestTick, 60_000);
   setInterval(() => {
@@ -609,6 +643,7 @@ function handleMove(session: Session, x: number, y: number, facing: Facing): voi
   if (district && district.zoneId !== session.player.zoneId) {
     session.player.zoneId = district.zoneId;
     if (!session.player.visitedZones.includes(district.zoneId)) session.player.visitedZones.push(district.zoneId);
+    ensureWorldMobs(session);
     pushState(session);
     toast(session, `Entering ${district.name}`, 'info');
   }
@@ -634,12 +669,34 @@ function handleWorldInteract(session: Session): void {
     doDungeonBossCombat(session);
     return;
   }
+  if (entity.kind === 'mob' && entity.actionId?.startsWith('worldmob:')) {
+    attackWorldMob(session, entity.actionId.slice('worldmob:'.length));
+    return;
+  }
+  if (entity.kind === 'mob' && entity.actionId?.startsWith('slayerboss:')) {
+    attackWorldMob(session, entity.actionId.slice('slayerboss:'.length));
+    return;
+  }
   if ((entity.kind === 'npc' || entity.kind === 'station') && entity.menu) {
+    if (entity.kind === 'npc' && session.player.zoneId === 'hub_plaza') flagQuest(session, 'talk_adventurer');
     openMenu(session, entity.menu);
     return;
   }
-  if ((entity.kind === 'resource' || entity.kind === 'mob') && entity.actionId) {
+  if (entity.kind === 'resource' && entity.actionId) {
+    const act = findAction(session.player.zoneId, entity.actionId);
+    if (act && act.kind !== 'combat') {
+      startOrContinueGather(session, entity.id, act);
+      return;
+    }
     doAction(session, entity.actionId, 1);
+    return;
+  }
+  if (entity.kind === 'mob' && entity.actionId) {
+    doAction(session, entity.actionId, 1);
+    return;
+  }
+  if (entity.kind === 'fairy' && entity.actionId === 'dungeon:secret') {
+    claimDungeonSecret(session);
     return;
   }
   if (entity.kind === 'fairy') {
@@ -817,8 +874,91 @@ function handleMenuClick(
     else doCollectMinion(session, value);
     return;
   }
+  if (kind === 'placeMinion') {
+    if (!zone(session.player.zoneId).hasMinions) {
+      throw new Error('Go to Minion Platform on your island to place minions');
+    }
+    doPlaceMinion(session, value);
+    openMenu(session, 'minions');
+    return;
+  }
+  if (kind === 'garden') {
+    toast(session, serveGardenVisitor(session.player), 'success');
+    pushState(session);
+    return;
+  }
+  if (kind === 'hotm') {
+    toast(session, unlockHotmPerk(session.player, value), 'success');
+    pushState(session);
+    return;
+  }
+  if (kind === 'commission') {
+    toast(session, claimCommission(session.player, value), 'success');
+    pushState(session);
+    return;
+  }
+  if (kind === 'brew') {
+    toast(session, brewPotion(session.player, value), 'success');
+    pushState(session);
+    return;
+  }
+  if (kind === 'museum') {
+    toast(session, donateMuseum(session.player, value as ItemId), 'success');
+    pushState(session);
+    return;
+  }
+  if (kind === 'wardrobe') {
+    const page = Number(value);
+    if (button === 'right') toast(session, saveWardrobe(session.player, page), 'success');
+    else toast(session, equipWardrobe(session.player, page), 'success');
+    pushState(session);
+    return;
+  }
+  if (kind === 'dragon') {
+    toast(session, placeDragonEye(session.player), 'success');
+    spawnDragonIfReady(session);
+    pushState(session);
+    return;
+  }
+  if (kind === 'kuudra') {
+    toast(session, startKuudra(session.player, Number(value) || 1), 'success');
+    spawnKuudra(session);
+    pushState(session);
+    return;
+  }
+  if (kind === 'hatch') {
+    toast(session, hatchPetEgg(session.player, value as ItemId), 'success');
+    pushState(session);
+    return;
+  }
+  if (kind === 'dungeonParty') {
+    inviteDungeonParty(session);
+    return;
+  }
+  if (kind === 'dungeonJoin') {
+    const hostId = value === 'nearby'
+      ? [...sessions.values()].find((entry) => entry.player.dungeonPartyId && entry.player.dungeonRun && entry.player.id !== session.player.id)?.player.id
+      : value;
+    if (!hostId) throw new Error('No open dungeon party in the Hub');
+    joinDungeonParty(session, hostId);
+    return;
+  }
+  if (kind === 'questClaim') {
+    claimStarterQuest(session);
+    return;
+  }
+  if (kind === 'minionUpgrade') {
+    const [minionId, upgradeId] = value.split('/');
+    installMinionUpgrade(session, minionId, upgradeId as ItemId);
+    return;
+  }
   if (kind === 'slayer') {
     if (value === 'active') {
+      const boss = (session.player.worldMobs ?? []).find((mob) => mob.slayerBoss && mob.hp > 0);
+      if (boss) {
+        attackWorldMob(session, boss.id);
+        return;
+      }
       attackSlayerBoss(session);
       return;
     }
@@ -837,8 +977,9 @@ function handleMenuClick(
       progressXp: 0,
       requiredXp: tier.tier * 100,
     };
+    flagQuest(session, 'start_slayer');
     pushState(session);
-    toast(session, `${slayer.name} Tier ${tier.tier} quest started!`, 'success');
+    toast(session, `${slayer.name} Tier ${tier.tier} started! Kill ${slayer.targetMob}s until the boss spawns.`, 'success');
     return;
   }
   if (kind === 'class') {
@@ -1097,6 +1238,15 @@ function useInventorySlot(session: Session, index: number, button = 'left'): voi
     pushState(session);
     return;
   }
+  if (def.type === 'MINION') {
+    const minionType = minionTypeFromItem(stack.itemId);
+    if (!minionType) throw new Error('Unknown minion item');
+    if (!zone(session.player.zoneId).hasMinions) {
+      throw new Error('Go to Minion Platform on your island (walk there and press E, or use Fast Travel)');
+    }
+    doPlaceMinion(session, minionType);
+    return;
+  }
   if (session.currentMenu === 'minions') {
     const minion = session.player.minions[0];
     if (!minion) throw new Error('Place a minion first');
@@ -1167,10 +1317,9 @@ function attackSlayerBoss(session: Session): void {
   const damage = Math.round(meleeDamage(weaponDamage, session.player.stats.strength, session.player.stats.critDamage, critical));
   quest.bossHp = Math.max(0, quest.bossHp - damage);
   if (quest.bossHp <= 0) {
-    session.player.slayerXp[slayer.id] = (session.player.slayerXp[slayer.id] ?? 0) + tier.xp;
-    session.player.activeSlayer = null;
-    session.player.coins += tier.cost * 0.25;
-    toast(session, `${slayer.name} defeated! +${tier.xp} Slayer XP`, 'success');
+    defeatSlayerBoss(session);
+    pushState(session);
+    return;
   } else {
     session.player.hp -= incomingDamage(tier.damage, effectiveDefense(session.player, abilitySessionView(session)));
     if (session.player.hp <= 0) {
@@ -1295,6 +1444,14 @@ function completeDungeon(session: Session): void {
   session.player.skills.dungeoneering += floor.baseCatacombsXp;
   session.player.coins += floor.coinReward;
   const drops = rollDungeonDrops(session, floor);
+  const stars = 1 + Math.floor(Math.random() * 3) + (currentMayor().id === 'paul' ? 1 : 0) + Math.min(2, Math.floor((run.secretsFound ?? 0) / 2));
+  for (const stack of session.player.inventory) {
+    const type = stack ? ITEMS[stack.itemId]?.type : undefined;
+    if (stack && type && ['SWORD', 'BOW', 'HELMET', 'CHESTPLATE', 'LEGGINGS', 'BOOTS'].includes(type)) {
+      stack.dungeonStars = Math.min(5, (stack.dungeonStars ?? 0) + stars);
+      break;
+    }
+  }
   session.player.dungeonRun = null;
   doTravel(session, 'dungeon_hub');
   const dropMsg = drops.length ? ` Drops: ${drops.join(', ')}` : '';
@@ -1316,6 +1473,7 @@ function handleDungeonDoor(session: Session): void {
     run.phase = 'rooms';
     run.room = 1;
     run.roomCleared = false;
+    run.secretClaimed = false;
     run.mobHp = initRoomMobs(run);
     warpToDungeonSpawn(session);
     pushState(session);
@@ -1335,6 +1493,7 @@ function handleDungeonDoor(session: Session): void {
     }
     run.room++;
     run.roomCleared = false;
+    run.secretClaimed = false;
     run.mobHp = initRoomMobs(run);
     warpToDungeonSpawn(session);
     pushState(session);
@@ -1491,6 +1650,15 @@ function runSingleAction(session: Session, act: ReturnType<typeof findAction>): 
   session.lastActionAt[key] = now;
 
   if (act.kind === 'combat') {
+    const target = String(act.target ?? '');
+    const nearby = (session.player.worldMobs ?? []).find((mob) =>
+      mob.hp > 0 && slayerMatchesMob(target, mob.mobId) && Math.hypot(mob.x - session.player.x, mob.y - session.player.y) < 3,
+    ) ?? (session.player.worldMobs ?? []).find((mob) => mob.hp > 0 && slayerMatchesMob(target, mob.mobId));
+    if (nearby) {
+      attackWorldMob(session, nearby.id);
+      return;
+    }
+    ensureWorldMobs(session);
     doCombatAction(session, act);
     return;
   }
@@ -1503,7 +1671,7 @@ function runSingleAction(session: Session, act: ReturnType<typeof findAction>): 
   }
 
   if (act.kind === 'fish') {
-    const chance = 0.55 + fishingSuccessBonus(skillLevel(session.player, 'fishing'));
+    const chance = 0.55 + fishingSuccessBonus(skillLevel(session.player, 'fishing')) + (currentMayor().id === 'marina' ? 0.12 : 0);
     if (Math.random() > chance) {
       toast(session, 'The fish got away...', 'info');
       return;
@@ -1539,7 +1707,18 @@ function giveResource(session: Session, act: NonNullable<ReturnType<typeof findA
   if (!next) throw new Error('Inventory full');
   session.player.inventory = next;
   if (act.skill) session.player.skills[act.skill] += act.xp;
-  session.player.collections[itemId] = (session.player.collections[itemId] ?? 0) + actualQty;
+  const before = session.player.collections[itemId] ?? 0;
+  session.player.collections[itemId] = before + actualQty;
+  noteCollectionMilestone(session, itemId, before, before + actualQty);
+  noteGardenHarvest(session.player, itemId, actualQty);
+  noteMiningCommission(session.player, itemId, actualQty);
+  if (itemId === 'mithril' && (session.player.hotm?.perks.titanium_insanium ?? 0) > 0 && Math.random() < 0.04 * (session.player.hotm.perks.titanium_insanium ?? 0)) {
+    const extra = addItem(session.player.inventory, 'titanium', 1);
+    if (extra) {
+      session.player.inventory = extra;
+      toast(session, 'Titanium Insanium! +1 Titanium', 'success');
+    }
+  }
   awardPetXp(session.player, act.skill, act.xp);
   pushState(session);
   toast(session, `+${actualQty} ${ITEMS[itemId].name}`, 'success');
@@ -1579,7 +1758,9 @@ function doCombatAction(session: Session, act: NonNullable<ReturnType<typeof fin
     const next = addItem(session.player.inventory, drop.itemId, quantity);
     if (next) {
       session.player.inventory = next;
-      session.player.collections[drop.itemId] = (session.player.collections[drop.itemId] ?? 0) + quantity;
+      const before = session.player.collections[drop.itemId] ?? 0;
+      session.player.collections[drop.itemId] = before + quantity;
+      noteCollectionMilestone(session, drop.itemId, before, before + quantity);
     }
   }
   const gainedXp = mob?.combatXp ?? act.xp;
@@ -1709,7 +1890,8 @@ function doUseAbility(session: Session): void {
       run.bossHp = Math.max(0, run.bossHp - dmg);
       message = `${ability.name}! ${dmg.toLocaleString()} damage to the boss!`;
     } else if (session.player.activeSlayer?.bossHp) {
-      session.player.activeSlayer.bossHp = Math.max(0, session.player.activeSlayer.bossHp - dmg);
+      const worldHits = damageNearbyWorldMobs(session, dmg);
+      if (worldHits === 0) session.player.activeSlayer.bossHp = Math.max(0, session.player.activeSlayer.bossHp - dmg);
       message = `${ability.name}! ${dmg.toLocaleString()} damage to Slayer boss!`;
     } else if (hits > 0) {
       message = `${ability.name}! ${dmg.toLocaleString()} damage to ${hits} mob${hits === 1 ? '' : 's'}!`;
@@ -1733,10 +1915,14 @@ function doUseAbility(session: Session): void {
       run.bossHp = Math.max(0, run.bossHp - dmg);
       message = `${ability.name}! ${dmg.toLocaleString()} damage to boss!`;
     } else if (session.player.activeSlayer?.bossHp) {
-      session.player.activeSlayer.bossHp = Math.max(0, session.player.activeSlayer.bossHp - dmg);
+      const worldHits = damageNearbyWorldMobs(session, dmg);
+      if (worldHits === 0) session.player.activeSlayer.bossHp = Math.max(0, session.player.activeSlayer.bossHp - dmg);
       message = `${ability.name}! ${dmg.toLocaleString()} damage!`;
     } else {
-      message = `${ability.name}! ${dmg.toLocaleString()} damage — no target in range.`;
+      const worldHits = damageNearbyWorldMobs(session, dmg);
+      message = worldHits > 0
+        ? `${ability.name}! ${dmg.toLocaleString()} damage to ${worldHits} mob${worldHits === 1 ? '' : 's'}!`
+        : `${ability.name}! ${dmg.toLocaleString()} damage — no target in range.`;
     }
     if (kind === 'shadow') {
       const result = teleportForward(map, session.player.x, session.player.y, session.player.facing, 3);
@@ -1785,9 +1971,23 @@ function doUseItem(session: Session, slot?: number): void {
     const removed = removeItem(session.player.inventory, stack.itemId, 1);
     if (!removed) return;
     session.player.inventory = removed;
-    session.player.hp = Math.min(MAX_HP, session.player.hp + def.heal);
+    session.player.hp = Math.min(session.player.maxHp, session.player.hp + def.heal);
     pushState(session);
     toast(session, `Restored ${def.heal} HP`, 'success');
+    return;
+  }
+  if (stack.itemId === 'mana_potion') {
+    const removed = removeItem(session.player.inventory, stack.itemId, 1);
+    if (!removed) return;
+    session.player.inventory = removed;
+    session.player.mana = Math.min(session.player.maxMana, session.player.mana + 80);
+    pushState(session);
+    toast(session, 'Restored 80 mana', 'success');
+    return;
+  }
+  if (PET_EGGS.some((egg) => egg.egg === stack.itemId)) {
+    toast(session, hatchPetEgg(session.player, stack.itemId), 'success');
+    pushState(session);
   }
 }
 
@@ -1806,27 +2006,31 @@ function doCraft(session: Session, recipeId: string): void {
   const added = addItem(inv, recipe.result.itemId, recipe.result.qty);
   if (!added) throw new Error('Inventory full');
   session.player.inventory = added;
+  flagQuest(session, 'craft_item');
   pushState(session);
   toast(session, `Crafted ${recipe.name}`, 'success');
 }
 
-function doPlaceMinion(session: Session, minionType: 'cobble' | 'wheat' | 'coal' | 'oak'): void {
+function doPlaceMinion(session: Session, minionType: string): void {
   const z = zone(session.player.zoneId);
   if (!z.hasMinions) throw new Error('Go to Minion Platform on your island');
   if (session.player.minions.length >= 6) throw new Error('Max 6 minions');
-  const def = MINIONS[minionType];
+  const def = ensureMinionDef(minionType);
   const removed = removeItem(session.player.inventory, def.itemId, 1);
   if (!removed) throw new Error(`Need ${def.name} in inventory`);
   session.player.inventory = removed;
+  const index = session.player.minions.length;
+  const pad = districtSpawn(islandMap(session.player.islandId), 'island_minions');
   session.player.minions.push({
     id: uuid(),
     type: minionType,
     tier: 1,
-    x: 0,
-    y: 0,
+    x: pad.x + (index % 3) * 2.2 - 2.2,
+    y: pad.y + Math.floor(index / 3) * 2.2,
     storage: 0,
     lastTickAt: Date.now(),
   });
+  flagQuest(session, 'place_minion');
   pushState(session);
   toast(session, `Placed ${def.name}`, 'success');
 }
@@ -1835,7 +2039,7 @@ function doCollectMinion(session: Session, minionId: string): void {
   const m = session.player.minions.find((x) => x.id === minionId);
   if (!m) throw new Error('Minion not found');
   if (m.storage <= 0) throw new Error('Nothing to collect');
-  const produces = MINIONS[m.type].produces;
+  const produces = ensureMinionDef(m.type).produces;
   const next = addItem(session.player.inventory, produces, m.storage);
   if (!next) throw new Error('Inventory full');
   session.player.collections[produces] = (session.player.collections[produces] ?? 0) + m.storage;
@@ -1849,7 +2053,7 @@ function doUpgradeMinion(session: Session, minionId: string): void {
   const m = session.player.minions.find((x) => x.id === minionId);
   if (!m) throw new Error('Minion not found');
   if (m.tier >= 11) throw new Error('Already max tier');
-  const costItem = MINIONS[m.type].produces;
+  const costItem = ensureMinionDef(m.type).produces;
   const cost = Math.min(64 * m.tier, 512);
   const removed = removeItem(session.player.inventory, costItem, cost);
   if (!removed) throw new Error(`Need ${cost} ${ITEMS[costItem].name}`);
@@ -1864,7 +2068,7 @@ function doPickupMinion(session: Session, minionId: string): void {
   if (idx < 0) throw new Error('Minion not found');
   const m = session.player.minions[idx];
   if (m.storage > 0) throw new Error('Collect storage first');
-  const itemId = MINIONS[m.type].itemId;
+  const itemId = ensureMinionDef(m.type).itemId;
   const next = addItem(session.player.inventory, itemId, 1);
   if (!next) throw new Error('Inventory full');
   session.player.inventory = next;
@@ -1888,11 +2092,10 @@ function doNpcBuy(session: Session, itemId: ItemId, qty: number): void {
   toast(session, `Bought ${q} ${ITEMS[itemId].name}`, 'success');
 }
 
-function npcBuyPrice(session: Session, itemId: ItemId): number {
-  const base = npcSellPrice(itemId);
-  if (base == null) throw new Error('This item cannot be sold');
-  const bonus = zone(session.player.zoneId).npc?.buys.find((s) => s.itemId === itemId)?.price;
-  return bonus != null ? Math.max(base, bonus) : base;
+function npcBuyPrice(_session: Session, itemId: ItemId): number {
+  const price = npcSellPrice(itemId);
+  if (price == null) throw new Error('This item cannot be sold');
+  return price;
 }
 
 function doNpcSellFromSlot(session: Session, inventoryIndex: number, qty: number): void {
@@ -1904,9 +2107,11 @@ function doNpcSellFromSlot(session: Session, inventoryIndex: number, qty: number
   const q = Math.min(stack.qty, Math.max(1, Math.floor(qty)));
   stack.qty -= q;
   if (stack.qty <= 0) session.player.inventory[inventoryIndex] = null;
-  session.player.coins += price * q;
+  const paid = Math.round(price * q * npcSellMultiplier(session.player));
+  session.player.coins += paid;
+  flagQuest(session, 'sell_npc');
   pushState(session);
-  toast(session, `Sold ${q} ${ITEMS[stack.itemId]?.name ?? stack.itemId} for ${(price * q).toLocaleString()} coins`, 'success');
+  toast(session, `Sold ${q} ${ITEMS[stack.itemId]?.name ?? stack.itemId} for ${paid.toLocaleString()} coins`, 'success');
 }
 
 function doNpcSell(session: Session, itemId: ItemId, qty: number): void {
@@ -1917,9 +2122,11 @@ function doNpcSell(session: Session, itemId: ItemId, qty: number): void {
   const removed = removeItem(session.player.inventory, itemId, q);
   if (!removed) throw new Error('Not enough items');
   session.player.inventory = removed;
-  session.player.coins += price * q;
+  const paid = Math.round(price * q * npcSellMultiplier(session.player));
+  session.player.coins += paid;
+  flagQuest(session, 'sell_npc');
   pushState(session);
-  toast(session, `Sold ${q} ${ITEMS[itemId]?.name ?? itemId} for ${(price * q).toLocaleString()} coins`, 'success');
+  toast(session, `Sold ${q} ${ITEMS[itemId]?.name ?? itemId} for ${paid.toLocaleString()} coins`, 'success');
 }
 
 function bankInterestTick(): void {
@@ -1935,6 +2142,7 @@ function minionTick(): void {
   for (const s of sessions.values()) {
     let changed = false;
     for (const m of s.player.minions) {
+      const def = ensureMinionDef(m.type);
       const interval = minionIntervalSec(m.type, m.tier) * 1000;
       const speed = m.fuel && m.fuel.expiresAt > Date.now() ? m.fuel.speedMultiplier : 1;
       const cap = minionStorageCap(m.type, m.tier);
@@ -1947,9 +2155,482 @@ function minionTick(): void {
         }
         changed = true;
       }
+      if (m.upgrades?.includes('super_compactor') && m.storage >= 160) {
+        const enchanted = `enchanted_${def.produces}` as ItemId;
+        if (ITEMS[enchanted]) {
+          const stacks = Math.floor(m.storage / 160);
+          const next = addItem(s.player.inventory, enchanted, stacks);
+          if (next) {
+            s.player.inventory = next;
+            m.storage -= stacks * 160;
+            changed = true;
+          }
+        }
+      }
+      if (m.upgrades?.includes('hopper') && m.storage > 0) {
+        const price = npcSellPrice(def.produces) ?? 1;
+        s.player.coins += price * m.storage;
+        m.storage = 0;
+        changed = true;
+      }
     }
     if (changed) emit(s.socket, { type: 'state', player: s.player });
   }
+}
+
+function flagQuest(session: Session, flag: string): void {
+  if (!session.player.quests) session.player.quests = emptyQuestBook();
+  session.player.quests.flags[flag] = true;
+}
+
+function ensureWorldMobs(session: Session): void {
+  const zoneId = session.player.zoneId;
+  const current = session.player.worldMobs ?? [];
+  const bosses = current.filter((mob) => mob.slayerBoss || mob.mobId === 'ender_dragon' || mob.mobId === 'kuudra');
+  const zoneMobs = current.filter((mob) => !mob.slayerBoss && mob.zoneId === zoneId);
+  if (zoneMobs.length === 0) {
+    session.player.worldMobs = [...bosses, ...spawnMobsForZone(zoneId, islandMap(session.player.islandId))];
+  } else {
+    session.player.worldMobs = [...bosses, ...zoneMobs];
+  }
+}
+
+function worldMobTick(): void {
+  const now = Date.now();
+  for (const session of sessions.values()) {
+    let changed = false;
+    for (const mob of session.player.worldMobs ?? []) {
+      if (mob.hp <= 0 && mob.respawnAt && now >= mob.respawnAt) {
+        mob.hp = mob.maxHp;
+        mob.respawnAt = undefined;
+        changed = true;
+      }
+    }
+    const channel = session.player.gatherChannel;
+    if (channel?.fishPhase === 'waiting' && now - channel.startedAt >= channel.durationMs && !channel.biteUntil) {
+      channel.fishPhase = 'bite';
+      channel.biteUntil = now + 1600;
+      toast(session, 'Something is biting! Press E!', 'success');
+      changed = true;
+    }
+    const dragon = session.player.dragonFight;
+    if (dragon && dragon.hp > 0 && dragon.endsAt && now > dragon.endsAt) {
+      session.player.dragonFight = null;
+      session.player.worldMobs = (session.player.worldMobs ?? []).filter((mob) => mob.mobId !== 'ender_dragon');
+      toast(session, 'The dragon fled the nest. Place 8 eyes again.', 'info');
+      changed = true;
+    }
+    if (changed) pushState(session);
+  }
+}
+
+function playerMelee(session: Session): { damage: number; critical: boolean } {
+  const tool = bestTool(session.player, 'sword');
+  const critical = rollCrit(session.player.stats.critChance);
+  const damage = Math.round(meleeDamage(
+    tool.damage ?? 4,
+    session.player.stats.strength,
+    session.player.stats.critDamage,
+    critical,
+    combatDamageBonus(skillLevel(session.player, 'combat')),
+  ));
+  return { damage, critical };
+}
+
+function grantMobRewards(session: Session, mobId: string): void {
+  const mob = MOBS[mobId] ?? MOBS.zombie;
+  for (const drop of mob.drops) {
+    if (Math.random() > drop.chance * (1 + session.player.stats.magicFind / 100)) continue;
+    const quantity = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
+    const next = addItem(session.player.inventory, drop.itemId, quantity);
+    if (next) {
+      session.player.inventory = next;
+      const before = session.player.collections[drop.itemId] ?? 0;
+      session.player.collections[drop.itemId] = before + quantity;
+      noteCollectionMilestone(session, drop.itemId, before, before + quantity);
+    }
+  }
+  session.player.skills.combat += mob.combatXp;
+  session.player.coins += mob.coins;
+  awardPetXp(session.player, 'combat', mob.combatXp);
+  if (!session.player.quests) session.player.quests = emptyQuestBook();
+  ensureMidgame(session.player);
+  session.player.bestiary.kills[mob.id] = (session.player.bestiary.kills[mob.id] ?? 0) + 1;
+  const egg = PET_EGGS.find((entry) => entry.fromMob === mob.id);
+  const eggChance = currentMayor().id === 'diana' ? 0.04 : 0.02;
+  if (egg && Math.random() < eggChance) {
+    const next = addItem(session.player.inventory, egg.egg, 1);
+    if (next) {
+      session.player.inventory = next;
+      toast(session, `A ${ITEMS[egg.egg]?.name} dropped! Hatch it in the Pets menu.`, 'success');
+    }
+  }
+  if (slayerMatchesMob('zombie', mob.id)) {
+    session.player.quests.counters.zombie = (session.player.quests.counters.zombie ?? 0) + 1;
+  }
+  if (session.player.activeSlayer) {
+    const target = SLAYERS.find((slayer) => slayer.id === session.player.activeSlayer?.slayerId)?.targetMob;
+    if (target && slayerMatchesMob(target, mob.id)) {
+      session.player.activeSlayer.progressXp += Math.round(mob.combatXp * (currentMayor().id === 'aatrox' ? 1.25 : 1));
+      maybeSpawnSlayerBoss(session);
+    }
+  }
+}
+
+function maybeSpawnSlayerBoss(session: Session): void {
+  const quest = session.player.activeSlayer;
+  if (!quest || quest.bossHp) return;
+  if (quest.progressXp < quest.requiredXp) return;
+  const slayer = SLAYERS.find((entry) => entry.id === quest.slayerId);
+  const tier = slayer?.tiers.find((entry) => entry.tier === quest.tier);
+  if (!slayer || !tier) return;
+  quest.bossHp = tier.health;
+  const id = `sb:${slayer.id}`;
+  quest.bossId = id;
+  const map = mapFor(session);
+  let x = session.player.x;
+  let y = session.player.y;
+  const offsets: Array<[number, number]> = [[2, 0], [-2, 0], [0, 2], [0, -2], [2, 2], [-2, 2]];
+  for (const [dx, dy] of offsets) {
+    if (canStand(map, session.player.x + dx, session.player.y + dy)) {
+      x = session.player.x + dx;
+      y = session.player.y + dy;
+      break;
+    }
+  }
+  session.player.worldMobs = [
+    ...(session.player.worldMobs ?? []).filter((mob) => !mob.slayerBoss),
+    {
+      id,
+      mobId: slayer.targetMob,
+      zoneId: session.player.zoneId,
+      x,
+      y,
+      hp: tier.health,
+      maxHp: tier.health,
+      label: `${slayer.name} T${tier.tier}`,
+      sprite: mobSpriteId(slayer.targetMob),
+      slayerBoss: true,
+    },
+  ];
+  toast(session, `${slayer.name} spawned nearby! Press E to fight.`, 'success');
+}
+
+function defeatSlayerBoss(session: Session): void {
+  const quest = session.player.activeSlayer;
+  if (!quest) return;
+  const slayer = SLAYERS.find((entry) => entry.id === quest.slayerId);
+  const tier = slayer?.tiers.find((entry) => entry.tier === quest.tier);
+  if (!slayer || !tier) return;
+  session.player.slayerXp[slayer.id] = (session.player.slayerXp[slayer.id] ?? 0) + tier.xp;
+  session.player.coins += Math.round(tier.cost * 0.25);
+  for (const drop of SLAYER_DROPS[slayer.id] ?? []) {
+    const chance = drop.chance * (1 + session.player.stats.magicFind / 100);
+    if (Math.random() > chance) continue;
+    const quantity = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
+    const next = addItem(session.player.inventory, drop.itemId, quantity);
+    if (next) {
+      session.player.inventory = next;
+      const before = session.player.collections[drop.itemId] ?? 0;
+      session.player.collections[drop.itemId] = before + quantity;
+      noteCollectionMilestone(session, drop.itemId, before, before + quantity);
+    }
+  }
+  session.player.worldMobs = (session.player.worldMobs ?? []).filter((mob) => !mob.slayerBoss);
+  session.player.activeSlayer = null;
+  toast(session, `${slayer.name} defeated! +${tier.xp} Slayer XP — check your inventory for drops.`, 'success');
+}
+
+function attackWorldMob(session: Session, mobId: string): void {
+  ensureWorldMobs(session);
+  const mob = (session.player.worldMobs ?? []).find((entry) => entry.id === mobId);
+  if (!mob || mob.hp <= 0) throw new Error('That mob is gone');
+  if (Math.hypot(mob.x - session.player.x, mob.y - session.player.y) > 2.4) throw new Error('Get closer to attack');
+  const { damage, critical } = playerMelee(session);
+  mob.hp = Math.max(0, mob.hp - damage);
+  if (mob.slayerBoss && session.player.activeSlayer) session.player.activeSlayer.bossHp = mob.hp;
+  if (mob.mobId === 'ender_dragon' && session.player.dragonFight) session.player.dragonFight.hp = mob.hp;
+  if (mob.mobId === 'kuudra' && session.player.kuudraFight) session.player.kuudraFight.hp = mob.hp;
+    if (mob.hp <= 0) {
+    finishWorldMobKill(session, mob);
+    pushState(session);
+    toast(session, `${critical ? 'CRITICAL! ' : ''}Defeated ${mob.label}! (${damage.toLocaleString()} dmg)`, 'success');
+    return;
+  }
+  const def = MOBS[mob.mobId] ?? MOBS.zombie;
+  const received = Math.round(incomingDamage(mob.slayerBoss
+    ? (SLAYERS.find((entry) => entry.id === session.player.activeSlayer?.slayerId)?.tiers.find((tier) => tier.tier === session.player.activeSlayer?.tier)?.damage ?? def.damage)
+    : def.damage, effectiveDefense(session.player, abilitySessionView(session))));
+  session.player.hp -= received;
+  if (session.player.hp <= 0) {
+    handlePlayerDeath(session, `${mob.label} killed you!`);
+    return;
+  }
+  pushState(session);
+  toast(session, `${critical ? 'CRIT! ' : ''}${damage.toLocaleString()} dmg → ${mob.label} (${Math.ceil(mob.hp).toLocaleString()} ❤)  −${received} HP`, 'info');
+}
+
+function damageNearbyWorldMobs(session: Session, damage: number, radius = 3.2): number {
+  ensureWorldMobs(session);
+  let hits = 0;
+  for (const mob of session.player.worldMobs ?? []) {
+    if (mob.hp <= 0) continue;
+    if (Math.hypot(mob.x - session.player.x, mob.y - session.player.y) > radius) continue;
+    mob.hp = Math.max(0, mob.hp - damage);
+    hits++;
+    if (mob.slayerBoss && session.player.activeSlayer) session.player.activeSlayer.bossHp = mob.hp;
+    if (mob.mobId === 'ender_dragon' && session.player.dragonFight) session.player.dragonFight.hp = mob.hp;
+    if (mob.mobId === 'kuudra' && session.player.kuudraFight) session.player.kuudraFight.hp = mob.hp;
+    if (mob.hp <= 0) {
+      finishWorldMobKill(session, mob);
+    }
+  }
+  maybeSpawnSlayerBoss(session);
+  return hits;
+}
+
+function gatherDurationMs(session: Session, act: NonNullable<ReturnType<typeof findAction>>): number {
+  let ms = act.cooldownMs ?? 800;
+  if (act.skill === 'mining') ms /= miningSpeedBonus(skillLevel(session.player, 'mining')) * (1 + session.player.stats.miningSpeed / 400);
+  if (act.skill === 'foraging') ms /= foragingSpeedBonus(skillLevel(session.player, 'foraging'));
+  if (act.skill === 'farming') ms = Math.max(280, 650 / (1 + session.player.stats.farmingFortune / 250));
+  return Math.max(280, Math.min(4500, ms));
+}
+
+function startOrContinueGather(session: Session, entityId: string, act: NonNullable<ReturnType<typeof findAction>>): void {
+  if (act.tool) {
+    const tool = bestTool(session.player, act.tool);
+    if (tool.toolType !== act.tool || (tool.toolTier ?? 0) < (act.minToolTier ?? 1)) {
+      throw new Error(`Need ${act.tool} tier ${act.minToolTier ?? 1}+ in inventory`);
+    }
+  }
+  const now = Date.now();
+  if (act.kind === 'fish') {
+    handleFishing(session, entityId, act, now);
+    return;
+  }
+  const channel = session.player.gatherChannel;
+  const duration = gatherDurationMs(session, act);
+  if (!channel || channel.entityId !== entityId || channel.actionId !== act.id) {
+    session.player.gatherChannel = {
+      entityId,
+      actionId: act.id,
+      kind: act.kind as 'mine' | 'farm' | 'forage',
+      startedAt: now,
+      durationMs: duration,
+    };
+    pushState(session);
+    toast(session, act.kind === 'mine' ? 'Mining...' : act.kind === 'farm' ? 'Harvesting...' : 'Chopping...', 'info');
+    return;
+  }
+  if (now - channel.startedAt < channel.durationMs) {
+    const pct = Math.min(99, Math.floor(((now - channel.startedAt) / channel.durationMs) * 100));
+    toast(session, `${pct}%... keep pressing E`, 'info');
+    return;
+  }
+  session.player.gatherChannel = null;
+  let qty = act.qty;
+  if (act.skill === 'farming' && Math.random() < farmingFortuneChance(skillLevel(session.player, 'farming'))) qty += 1;
+  giveResource(session, act, qty);
+}
+
+function handleFishing(session: Session, entityId: string, act: NonNullable<ReturnType<typeof findAction>>, now: number): void {
+  const channel = session.player.gatherChannel;
+  if (!channel || channel.entityId !== entityId || channel.kind !== 'fish') {
+    session.player.gatherChannel = {
+      entityId,
+      actionId: act.id,
+      kind: 'fish',
+      startedAt: now,
+      durationMs: 1600 + Math.random() * 2400,
+      fishPhase: 'waiting',
+    };
+    pushState(session);
+    toast(session, 'You cast your line...', 'info');
+    return;
+  }
+  if (channel.fishPhase === 'waiting') {
+    if (now - channel.startedAt < channel.durationMs) {
+      toast(session, 'Waiting for a bite...', 'info');
+      return;
+    }
+    channel.fishPhase = 'bite';
+    channel.biteUntil = now + 1600;
+    pushState(session);
+    toast(session, 'Something is biting! Press E!', 'success');
+    return;
+  }
+  if (channel.biteUntil && now > channel.biteUntil) {
+    session.player.gatherChannel = null;
+    pushState(session);
+    toast(session, 'The fish got away...', 'info');
+    return;
+  }
+  session.player.gatherChannel = null;
+  const chance = 0.55 + fishingSuccessBonus(skillLevel(session.player, 'fishing')) + (currentMayor().id === 'marina' ? 0.12 : 0);
+  if (Math.random() > chance) {
+    pushState(session);
+    toast(session, 'The fish got away...', 'info');
+    return;
+  }
+  const qty = act.id === 'fish_lake' && Math.random() < 0.5 ? 2 : act.qty;
+  giveResource(session, act, qty);
+}
+
+function noteCollectionMilestone(session: Session, itemId: ItemId, before: number, after: number): void {
+  const collection = COLLECTIONS.find((entry) => entry.itemId === itemId);
+  if (!collection) return;
+  const prev = collectionProgress(collection, before).tier;
+  const next = collectionProgress(collection, after).tier;
+  if (next <= prev) return;
+  const reward = collection.tiers[next - 1];
+  const coins = 25 * next;
+  session.player.coins += coins;
+  toast(session, `Collection: ${reward?.label ?? collection.name}  (+${coins} coins)`, 'success');
+}
+
+function installMinionUpgrade(session: Session, minionId: string, upgradeId: ItemId): void {
+  const minion = session.player.minions.find((entry) => entry.id === minionId);
+  if (!minion) throw new Error('Minion not found');
+  if (!['super_compactor', 'compactor', 'hopper', 'diamond_spreading'].includes(upgradeId)) {
+    throw new Error('That is not a minion upgrade');
+  }
+  if (minion.upgrades?.includes(upgradeId)) throw new Error('Already installed');
+  const removed = removeItem(session.player.inventory, upgradeId, 1);
+  if (!removed) throw new Error(`Need ${ITEMS[upgradeId]?.name ?? upgradeId} in inventory`);
+  session.player.inventory = removed;
+  minion.upgrades = [...(minion.upgrades ?? []), upgradeId];
+  pushState(session);
+  toast(session, `Installed ${ITEMS[upgradeId]?.name ?? upgradeId}`, 'success');
+}
+
+function claimStarterQuest(session: Session): void {
+  if (!session.player.quests) session.player.quests = emptyQuestBook();
+  if (session.player.quests.claimed) throw new Error('Reward already claimed');
+  if (!starterQuestComplete(session.player)) throw new Error('Finish every quest step first');
+  session.player.quests.claimed = true;
+  session.player.coins += 500;
+  const extra = addItem(session.player.inventory, 'enchanted_cobble', 1);
+  if (extra) session.player.inventory = extra;
+  pushState(session);
+  toast(session, 'Quest Book complete! +500 coins and Enchanted Cobblestone.', 'success');
+}
+
+function finishWorldMobKill(session: Session, mob: { id: string; mobId: string; slayerBoss?: boolean }): void {
+  if (mob.slayerBoss) {
+    defeatSlayerBoss(session);
+    return;
+  }
+  if (mob.mobId === 'ender_dragon') {
+    defeatDragon(session);
+    return;
+  }
+  if (mob.mobId === 'kuudra') {
+    defeatKuudra(session);
+    return;
+  }
+  grantMobRewards(session, mob.mobId);
+  const live = (session.player.worldMobs ?? []).find((entry) => entry.id === mob.id);
+  if (live) live.respawnAt = Date.now() + 7000;
+}
+
+function spawnDragonIfReady(session: Session): void {
+  const fight = session.player.dragonFight;
+  if (!fight || fight.hp <= 0) return;
+  session.player.worldMobs = [
+    ...(session.player.worldMobs ?? []).filter((mob) => mob.mobId !== 'ender_dragon'),
+    {
+      id: 'event:dragon',
+      mobId: 'ender_dragon',
+      zoneId: 'end_nest',
+      x: session.player.x + 2,
+      y: session.player.y,
+      hp: fight.hp,
+      maxHp: fight.maxHp,
+      label: fight.type,
+      sprite: 'mob_zealot',
+    },
+  ];
+}
+
+function spawnKuudra(session: Session): void {
+  const fight = session.player.kuudraFight;
+  if (!fight) return;
+  session.player.worldMobs = [
+    ...(session.player.worldMobs ?? []).filter((mob) => mob.mobId !== 'kuudra'),
+    {
+      id: 'event:kuudra',
+      mobId: 'kuudra',
+      zoneId: 'crimson_volcano',
+      x: session.player.x + 2,
+      y: session.player.y,
+      hp: fight.hp,
+      maxHp: fight.maxHp,
+      label: `Kuudra T${fight.tier}`,
+      sprite: 'mob_magma',
+    },
+  ];
+}
+
+function defeatDragon(session: Session): void {
+  const fight = session.player.dragonFight;
+  grantMobRewards(session, 'ender_dragon');
+  const frag = addItem(session.player.inventory, 'dragon_fragment', 3 + Math.floor(Math.random() * 4));
+  if (frag) session.player.inventory = frag;
+  if (Math.random() < 0.12) {
+    const egg = addItem(session.player.inventory, 'enderman_pet_egg', 1);
+    if (egg) session.player.inventory = egg;
+  }
+  session.player.dragonFight = null;
+  session.player.worldMobs = (session.player.worldMobs ?? []).filter((mob) => mob.mobId !== 'ender_dragon');
+  toast(session, `${fight?.type ?? 'Dragon'} felled! Dragon Fragments dropped.`, 'success');
+}
+
+function defeatKuudra(session: Session): void {
+  const fight = session.player.kuudraFight;
+  grantMobRewards(session, 'kuudra');
+  session.player.coins += 2500 * (fight?.tier ?? 1);
+  session.player.kuudraFight = null;
+  session.player.worldMobs = (session.player.worldMobs ?? []).filter((mob) => mob.mobId !== 'kuudra');
+  toast(session, `Kuudra defeated! +${(2500 * (fight?.tier ?? 1)).toLocaleString()} coins.`, 'success');
+}
+
+function claimDungeonSecret(session: Session): void {
+  const run = session.player.dungeonRun;
+  if (!run || run.secretClaimed) throw new Error('No secret here');
+  run.secretClaimed = true;
+  run.secretsFound = (run.secretsFound ?? 0) + 1;
+  run.score += 40;
+  session.player.coins += 75;
+  pushState(session);
+  toast(session, 'Secret found! +40 score, +75 coins.', 'success');
+}
+
+function inviteDungeonParty(session: Session): void {
+  if (!session.player.dungeonRun) throw new Error('Enter a floor first');
+  session.player.dungeonPartyId = session.player.id;
+  session.player.dungeonRun.partyId = session.player.id;
+  let invited = 0;
+  for (const other of sessions.values()) {
+    if (other.player.id === session.player.id) continue;
+    if (other.player.islandId !== 'dungeon_hub') continue;
+    toast(other, `${session.player.username} invited you to their dungeon — open Dungeons and click Join Party.`, 'info');
+    invited++;
+  }
+  pushState(session);
+  toast(session, invited ? `Party hosted. ${invited} player(s) nearby can join.` : 'Party hosted. Nobody else is in the Dungeon Hub.', 'success');
+}
+
+function joinDungeonParty(session: Session, hostId: string): void {
+  const host = [...sessions.values()].find((entry) => entry.player.id === hostId && entry.player.dungeonRun);
+  if (!host?.player.dungeonRun) throw new Error('That party is gone');
+  session.player.dungeonRun = { ...host.player.dungeonRun, partyId: hostId };
+  session.player.dungeonPartyId = hostId;
+  warpToDungeonSpawn(session);
+  session.menuOpen = false;
+  pushState(session);
+  toast(session, `Joined ${host.player.username}'s dungeon party!`, 'success');
+  toast(host, `${session.player.username} joined your dungeon party!`, 'success');
 }
 
 export function getCatalogExtra() {

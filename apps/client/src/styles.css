@@ -237,6 +237,21 @@ button { color: inherit; }
 }
 .dungeon-hud strong { font-size: 16px; }
 .dungeon-hud span { color: var(--mc-gray); font-size: 17px; }
+.slayer-hud { border-color: #aa3333; top: 72px; }
+.gather-hud {
+  position: absolute;
+  z-index: 4;
+  bottom: calc(118px + var(--slot-size) + 52px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  background: #000000bb;
+  border: 2px solid #ffaa00;
+  color: #ffaa00;
+  text-shadow: 2px 2px #000;
+  font-size: 16px;
+  pointer-events: none;
+}
 
 .chat-box {
   position: absolute;
@@ -676,13 +691,12 @@ button.mc-slot:disabled { filter: grayscale(1) brightness(.65); cursor: not-allo
 .inventory-slot-selected .mc-slot {
   box-shadow: inset 0 0 0 2px var(--mc-aqua), 0 0 0 2px #0008;
 }
-.inventory-held-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
+.inventory-cursor-float {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
 }
-.inventory-held-row .inventory-label { margin: 0; }
 .inventory-held-slot.mc-slot { box-shadow: inset 0 0 0 2px var(--mc-yellow); }
 .item-icon, .pixel-icon {
   width: 100%;
@@ -695,7 +709,7 @@ button.mc-slot:disabled { filter: grayscale(1) brightness(.65); cursor: not-allo
 .equipment-preview-slot .pixel-icon {
   opacity: 0.35;
 }
-.inventory-storage-section { width: 100%; overflow-x: auto; }
+.inventory-storage-section { position: relative; width: 100%; overflow-x: auto; }
 
 @media (max-width: 720px) {
   .inventory-panel-top {

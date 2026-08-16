@@ -12,7 +12,10 @@ export type IslandId =
   | 'mushroom_desert'
   | 'the_end'
   | 'crimson_isle'
-  | 'dungeon_hub';
+  | 'dungeon_hub'
+  | 'garden'
+  | 'dwarven_mines'
+  | 'rift';
 
 export type ActionKind = 'mine' | 'farm' | 'forage' | 'fish' | 'combat' | 'npc' | 'warp' | 'feature';
 
@@ -28,7 +31,14 @@ export type StationKind =
   | 'reforge'
   | 'dungeon'
   | 'slayer'
-  | 'pets';
+  | 'pets'
+  | 'garden'
+  | 'hotm'
+  | 'alchemy'
+  | 'wardrobe'
+  | 'museum'
+  | 'kuudra'
+  | 'dragons';
 
 export interface ZoneAction {
   id: string;
@@ -168,6 +178,30 @@ export const ISLANDS: Record<IslandId, IslandDef> = {
     icon: 'skull',
     warpFromHub: true,
     skillReq: { skill: 'combat', level: 12 },
+  },
+  garden: {
+    id: 'garden',
+    name: 'The Garden',
+    description: 'Crop milestones, visitors, and Jacob\'s Farming Contests.',
+    icon: 'farm',
+    warpFromHub: true,
+    skillReq: { skill: 'farming', level: 5 },
+  },
+  dwarven_mines: {
+    id: 'dwarven_mines',
+    name: 'Dwarven Mines',
+    description: 'Mithril, Titanium, commissions, and the Heart of the Mountain.',
+    icon: 'cavern',
+    warpFromHub: true,
+    skillReq: { skill: 'mining', level: 12 },
+  },
+  rift: {
+    id: 'rift',
+    name: 'The Rift',
+    description: 'A broken pocket dimension with strange mobs and motes.',
+    icon: 'end',
+    warpFromHub: true,
+    skillReq: { skill: 'combat', level: 18 },
   },
 };
 
@@ -315,7 +349,7 @@ export const ZONES: Record<string, ZoneDef> = {
       id: 'blacksmith',
       name: 'Blacksmith',
       greeting: 'Bring me coins and I will reforge your equipment.',
-      buys: [{ itemId: 'iron_ingot', price: 8 }],
+      buys: [{ itemId: 'iron_ingot', price: 3 }],
       sells: [{ itemId: 'stone_pickaxe', price: 40 }, { itemId: 'stone_sword', price: 35 }],
     },
   },
@@ -361,7 +395,7 @@ export const ZONES: Record<string, ZoneDef> = {
       id: 'farmhand',
       name: 'Farmhand',
       greeting: 'I buy crops and sell hoes.',
-      buys: [{ itemId: 'wheat', price: 2 }, { itemId: 'carrot', price: 1.5 }],
+      buys: [{ itemId: 'wheat', price: 6 }, { itemId: 'carrot', price: 3 }],
       sells: [{ itemId: 'wooden_hoe', price: 8 }, { itemId: 'rookie_hoe', price: 250 }],
     },
   },
@@ -405,7 +439,7 @@ export const ZONES: Record<string, ZoneDef> = {
       id: 'fish_merchant',
       name: 'Fish Merchant',
       greeting: 'Rods and bait, fresh catch bought daily.',
-      buys: [{ itemId: 'raw_fish', price: 3 }],
+      buys: [{ itemId: 'raw_fish', price: 6 }],
       sells: [{ itemId: 'fishing_rod', price: 30 }, { itemId: 'cooked_fish', price: 12 }],
     },
   },
@@ -446,7 +480,7 @@ export const ZONES: Record<string, ZoneDef> = {
     icon: 'island',
     links: ['island_mine', 'island_farm', 'island_grove', 'island_pond', 'island_minions'],
     actions: [],
-    stations: ['craft', 'warp'],
+    stations: ['craft', 'warp', 'alchemy', 'wardrobe', 'museum'],
     hasCraft: true,
   },
   island_mine: {
@@ -541,11 +575,11 @@ export const ZONES: Record<string, ZoneDef> = {
       name: 'Farm Merchant',
       greeting: 'Fresh produce! I buy crops and sell bread.',
       buys: [
-        { itemId: 'wheat', price: 2.5 },
-        { itemId: 'potato', price: 1.5 },
-        { itemId: 'carrot', price: 1.5 },
+        { itemId: 'wheat', price: 6 },
+        { itemId: 'potato', price: 3 },
+        { itemId: 'carrot', price: 3 },
         { itemId: 'melon', price: 2 },
-        { itemId: 'pumpkin', price: 4 },
+        { itemId: 'pumpkin', price: 10 },
       ],
       sells: [{ itemId: 'bread', price: 8 }, { itemId: 'wheat', price: 4 }],
     },
@@ -614,11 +648,11 @@ export const ZONES: Record<string, ZoneDef> = {
       name: 'Mine Merchant',
       greeting: 'Ores for sale! Bring me your mining haul.',
       buys: [
-        { itemId: 'cobble', price: 1.2 },
-        { itemId: 'coal', price: 4.5 },
-        { itemId: 'iron_ore', price: 9 },
-        { itemId: 'gold_ingot', price: 12 },
-        { itemId: 'lapis', price: 6 },
+        { itemId: 'cobble', price: 1 },
+        { itemId: 'coal', price: 2 },
+        { itemId: 'iron_ore', price: 3 },
+        { itemId: 'gold_ingot', price: 4 },
+        { itemId: 'lapis', price: 1 },
       ],
       sells: [{ itemId: 'stone_pickaxe', price: 40 }, { itemId: 'iron_pickaxe', price: 180 }],
     },
@@ -640,10 +674,10 @@ export const ZONES: Record<string, ZoneDef> = {
       name: 'Cavern Guide',
       greeting: 'Each floor down holds rarer ore. Bring a better pickaxe.',
       buys: [
-        { itemId: 'redstone', price: 2 },
-        { itemId: 'diamond', price: 16 },
-        { itemId: 'emerald', price: 12 },
-        { itemId: 'mithril', price: 20 },
+        { itemId: 'redstone', price: 1 },
+        { itemId: 'diamond', price: 8 },
+        { itemId: 'emerald', price: 6 },
+        { itemId: 'mithril', price: 8 },
       ],
       sells: [{ itemId: 'diamond_pickaxe', price: 900 }],
     },
@@ -770,9 +804,9 @@ export const ZONES: Record<string, ZoneDef> = {
       name: 'Combat Vendor',
       greeting: 'Slayer supplies and drop buyback.',
       buys: [
-        { itemId: 'string', price: 3.5 },
+        { itemId: 'string', price: 3 },
         { itemId: 'spider_eye', price: 3 },
-        { itemId: 'rotten_flesh', price: 2.5 },
+        { itemId: 'rotten_flesh', price: 2 },
       ],
       sells: [{ itemId: 'stone_sword', price: 35 }, { itemId: 'undead_sword', price: 400 }],
     },
@@ -792,7 +826,7 @@ export const ZONES: Record<string, ZoneDef> = {
       id: 'park_ranger',
       name: 'Park Ranger',
       greeting: 'Rare woods grow deeper in the park.',
-      buys: [{ itemId: 'oak_log', price: 2.2 }, { itemId: 'jungle_log', price: 3 }, { itemId: 'dark_oak_log', price: 3 }],
+      buys: [{ itemId: 'oak_log', price: 2 }, { itemId: 'jungle_log', price: 2 }, { itemId: 'dark_oak_log', price: 2 }],
       sells: [{ itemId: 'jungle_axe', price: 650 }],
     },
   },
@@ -825,7 +859,10 @@ export const ZONES: Record<string, ZoneDef> = {
     description: 'Zombies wander in from the treeline.',
     icon: 'mushroom',
     links: ['park_trail'],
-    actions: [combat('fight_husk_park', 'Fight Zombie', 'zombie', 10, 1, 1300, 'Forest zombies drop flesh.')],
+    actions: [
+      combat('fight_husk_park', 'Fight Zombie', 'zombie', 10, 1, 1300, 'Forest zombies drop flesh.'),
+      combat('fight_wolf_park', 'Fight Wolf', 'wolf', 15, 1, 1400, 'Pack wolves hunt the clearing. Needed for Sven Slayer.'),
+    ],
   },
 
   // ── Mushroom Desert ───────────────────────────────────────────────────────
@@ -865,10 +902,10 @@ export const ZONES: Record<string, ZoneDef> = {
       name: 'Trapper',
       greeting: 'Desert harvests fetch a fair price here.',
       buys: [
-        { itemId: 'cactus', price: 3 },
-        { itemId: 'sugar_cane', price: 2 },
+        { itemId: 'cactus', price: 4 },
+        { itemId: 'sugar_cane', price: 4 },
         { itemId: 'cocoa_beans', price: 3 },
-        { itemId: 'mushroom', price: 4 },
+        { itemId: 'mushroom', price: 10 },
       ],
       sells: [{ itemId: 'speed_talisman', price: 1500 }],
     },
@@ -895,6 +932,7 @@ export const ZONES: Record<string, ZoneDef> = {
     links: ['end_entrance'],
     skillReq: { skill: 'combat', level: 15 },
     actions: [combat('fight_zealot', 'Fight Zealot', 'zealot', 60, 2, 1500, 'A powerful Enderman with rare drops.')],
+    stations: ['dragons'],
   },
 
   // ── Crimson Isle ──────────────────────────────────────────────────────────
@@ -917,7 +955,7 @@ export const ZONES: Record<string, ZoneDef> = {
     icon: 'lava',
     links: ['crimson_spawn'],
     actions: [],
-    stations: ['slayer'],
+    stations: ['slayer', 'kuudra'],
   },
 
   // ── Dungeon Hub ───────────────────────────────────────────────────────────
@@ -950,6 +988,86 @@ export const ZONES: Record<string, ZoneDef> = {
     actions: [],
     stations: ['dungeon'],
   },
+  garden_barn: {
+    id: 'garden_barn',
+    islandId: 'garden',
+    name: 'Garden Barn',
+    description: 'Jacob runs contests here. Visitors stop by for crops.',
+    icon: 'farm',
+    links: ['garden_plots'],
+    actions: [],
+    stations: ['warp', 'garden'],
+    skillReq: { skill: 'farming', level: 5 },
+  },
+  garden_plots: {
+    id: 'garden_plots',
+    islandId: 'garden',
+    name: 'Garden Plots',
+    description: 'Contest crops grow in tidy rows.',
+    icon: 'farm',
+    links: ['garden_barn'],
+    actions: [
+      farm('garden_wheat', 'Harvest Wheat', 'wheat', 8, 2, 'Contest wheat.'),
+      farm('garden_carrot', 'Harvest Carrots', 'carrot', 8, 2, 'Contest carrots.'),
+      farm('garden_potato', 'Harvest Potatoes', 'potato', 8, 2, 'Contest potatoes.'),
+      farm('garden_pumpkin', 'Harvest Pumpkins', 'pumpkin', 10, 1, 'Contest pumpkins.'),
+      farm('garden_melon', 'Harvest Melons', 'melon', 8, 2, 'Contest melons.'),
+    ],
+    stations: ['garden'],
+  },
+
+  dwarven_village: {
+    id: 'dwarven_village',
+    islandId: 'dwarven_mines',
+    name: 'Dwarven Village',
+    description: 'Commissions and the Heart of the Mountain.',
+    icon: 'cavern',
+    links: ['dwarven_mithril', 'dwarven_titanium'],
+    actions: [],
+    stations: ['warp', 'hotm'],
+    skillReq: { skill: 'mining', level: 12 },
+  },
+  dwarven_mithril: {
+    id: 'dwarven_mithril',
+    islandId: 'dwarven_mines',
+    name: 'Mithril Deposits',
+    description: 'Blue-green mithril veins line the cavern.',
+    icon: 'mithril',
+    links: ['dwarven_village'],
+    actions: [mine('mine_mithril_dw', 'Mine Mithril', 'mithril', 12, 2, 3, 900, 'Commission mithril.')],
+  },
+  dwarven_titanium: {
+    id: 'dwarven_titanium',
+    islandId: 'dwarven_mines',
+    name: 'Titanium Hollows',
+    description: 'Rare titanium shines in the deep dark.',
+    icon: 'mithril',
+    links: ['dwarven_village'],
+    skillReq: { skill: 'mining', level: 15 },
+    actions: [mine('mine_titanium_dw', 'Mine Titanium', 'titanium', 20, 1, 4, 1200, 'Commission titanium.')],
+  },
+
+  rift_plaza: {
+    id: 'rift_plaza',
+    islandId: 'rift',
+    name: 'Rift Plaza',
+    description: 'Time skips. Motes drift in the air.',
+    icon: 'end',
+    links: ['rift_lagoon'],
+    actions: [combat('fight_rift_mite', 'Fight Rift Mite', 'rift_mite', 25, 2, 1400, 'A glitching pest.')],
+    stations: ['warp'],
+    skillReq: { skill: 'combat', level: 18 },
+  },
+  rift_lagoon: {
+    id: 'rift_lagoon',
+    islandId: 'rift',
+    name: 'Lagoon of Time',
+    description: 'Fish that should not exist.',
+    icon: 'fish',
+    links: ['rift_plaza'],
+    actions: [fish('fish_rift', 'Fish Motes', 'raw_fish', 16, 'Something bites that is not a fish.')],
+  },
+
   /** Virtual zone while inside an active dungeon run (in-world rooms). */
   dungeon_room: {
     id: 'dungeon_room',

@@ -53,8 +53,26 @@ export const MOBS: Record<string, MobDef> = {
   dasher_spider: { id: 'dasher_spider', name: 'Dasher Spider', level: 42, health: 900, damage: 95, defense: 15, combatXp: 30, coins: 10, drops: [{ itemId: 'string', chance: 1, min: 2, max: 5 }] },
   lapis_zombie: { id: 'lapis_zombie', name: 'Lapis Zombie', level: 7, health: 200, damage: 30, defense: 5, combatXp: 12, coins: 5, drops: [{ itemId: 'rotten_flesh', chance: 1, min: 1, max: 2 }, { itemId: 'lapis', chance: 0.75, min: 1, max: 3 }] },
   enderman: { id: 'enderman', name: 'Enderman', level: 42, health: 4500, damage: 350, defense: 50, combatXp: 40, coins: 15, drops: [{ itemId: 'ender_pearl', chance: 1, min: 1, max: 3 }] },
-  zealot: { id: 'zealot', name: 'Zealot', level: 55, health: 13000, damage: 1250, defense: 100, combatXp: 60, coins: 20, drops: [{ itemId: 'ender_pearl', chance: 1, min: 2, max: 4 }] },
+  zealot: {
+    id: 'zealot',
+    name: 'Zealot',
+    level: 55,
+    health: 13000,
+    damage: 1250,
+    defense: 100,
+    combatXp: 60,
+    coins: 20,
+    drops: [
+      { itemId: 'ender_pearl', chance: 1, min: 2, max: 4 },
+      { itemId: 'summoning_eye', chance: 0.025, min: 1, max: 1 },
+      { itemId: 'dragon_fragment', chance: 0.01, min: 1, max: 1 },
+    ],
+  },
   magma_cube: { id: 'magma_cube', name: 'Magma Cube', level: 80, health: 20000, damage: 1800, defense: 150, combatXp: 85, coins: 35, drops: [{ itemId: 'blaze_rod', chance: 0.35, min: 1, max: 2 }] },
+  wolf: { id: 'wolf', name: 'Wolf', level: 15, health: 250, damage: 40, defense: 5, combatXp: 15, coins: 5, drops: [{ itemId: 'bone', chance: 1, min: 1, max: 2 }, { itemId: 'mutton', chance: 0.4, min: 1, max: 1 }] },
+  rift_mite: { id: 'rift_mite', name: 'Rift Mite', level: 30, health: 800, damage: 80, defense: 10, combatXp: 22, coins: 8, drops: [{ itemId: 'ender_pearl', chance: 0.4, min: 1, max: 1 }] },
+  ender_dragon: { id: 'ender_dragon', name: 'Ender Dragon', level: 100, health: 9000000, damage: 2000, defense: 200, combatXp: 300, coins: 1000, drops: [{ itemId: 'dragon_fragment', chance: 1, min: 2, max: 5 }, { itemId: 'summoning_eye', chance: 0.15, min: 1, max: 1 }] },
+  kuudra: { id: 'kuudra', name: 'Kuudra', level: 100, health: 5000000, damage: 2500, defense: 250, combatXp: 400, coins: 2500, drops: [{ itemId: 'blaze_rod', chance: 1, min: 4, max: 8 }] },
 };
 
 export interface ResourceNodeDef {

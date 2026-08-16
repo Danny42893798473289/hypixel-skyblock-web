@@ -21,6 +21,8 @@ import {
 } from './skyblockCatalog.js';
 import { SKYBLOCK_CATALOG_EXTRA } from './skyblockCatalogExtra.js';
 import { setBazaarSection, type BazaarSection } from './bazaarCategories.js';
+import { applyNpcSellPrices } from './npcPrices.js';
+import { ensureMinionDef } from './minions.js';
 
 const FULL_CATALOG = [...SKYBLOCK_CATALOG, ...SKYBLOCK_CATALOG_EXTRA];
 
@@ -148,6 +150,7 @@ export function applySkyblockCatalog(): void {
           description: `Produces ${entry.name.toLowerCase()} on your island.`,
         };
       }
+      ensureMinionDef(entry.id, entry.id, `${entry.name} Minion`, entry.color);
     }
   }
 
@@ -187,12 +190,15 @@ export function applySkyblockCollections(): void {
 
 function tierLabel(entry: CatalogEntry, index: number): string {
   const amount = COLLECTION_TIER_AMOUNTS[index];
-  if (amount === 50) return `${entry.name} tool recipe`;
-  if (amount === 100) return `Enchanted ${entry.name} recipe`;
-  if (amount === 1000) return `${entry.name} Minion recipe`;
-  if (amount === 2500) return `${entry.name} upgrade I`;
-  if (amount === 10000) return `${entry.name} upgrade II`;
-  return `${entry.name} tier ${index + 1}`;
+  if (amount === 50) return `${entry.name} recipes unlocked`;
+  if (amount === 100) return `Enchanted ${entry.name}`;
+  if (amount === 250) return `${entry.name} Minion I`;
+  if (amount === 500) return `${entry.name} sack + coins`;
+  if (amount === 1000) return `Enchanted ${entry.name} Block`;
+  if (amount === 2500) return `${entry.name} Minion upgrade`;
+  if (amount === 5000) return `${entry.name} collection bonus`;
+  if (amount === 10000) return `${entry.name} Minion XI`;
+  return `${entry.name} collection ${index + 1}`;
 }
 
 export function applySkyblockRecipes(): void {
@@ -383,6 +389,7 @@ export function registerAllSkyblockContent(): void {
   applySkyblockCatalog();
   applySkyblockCollections();
   applySkyblockRecipes();
+  applyNpcSellPrices(ITEMS);
   refreshBazaarItems();
 }
 

@@ -250,6 +250,7 @@ export function drawEntity(
       case 'mob_enderman': drawEnderman(ctx, '#b54cff'); break;
       case 'mob_zealot': drawEnderman(ctx, '#38e0a0'); break;
       case 'mob_magma': drawMagmaCube(ctx); break;
+      case 'mob_wolf': drawZombie(ctx, '#d8d8d8', '#8a8a8a'); break;
       case 'fairy': drawFairy(ctx); break;
       case 'bazaar_stall': drawStall(ctx, '#e8c348', '#f6e17a'); break;
       case 'auction_stand': drawStall(ctx, '#c34848', '#f27a7a'); break;

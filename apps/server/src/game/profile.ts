@@ -4,6 +4,8 @@ import {
   REFORGES,
   SKILLS,
   accessoryBagSlots,
+  bestiaryTier,
+  currentMayor,
   magicalPowerIntelligence,
   addStats,
   enchantStatBonuses,
@@ -42,7 +44,10 @@ function stackStats(stack: ItemStack | null | undefined): Partial<StatBlock> {
   return stats;
 }
 
-export function recomputeStats(player: Pick<PlayerState, 'skills' | 'equipment' | 'accessories' | 'pets' | 'fairySouls'>): StatBlock {
+export function recomputeStats(player: Pick<PlayerState, 'skills' | 'equipment' | 'accessories' | 'pets' | 'fairySouls'> & {
+  hotm?: { perks: Record<string, number> };
+  bestiary?: { kills: Record<string, number> };
+}): StatBlock {
   const skillStats: Partial<StatBlock>[] = [];
   for (const skill of Object.values(SKILLS)) {
     const level = levelFromXp(player.skills[skill.id] ?? 0, skill.maxLevel).level;
@@ -70,7 +75,14 @@ export function recomputeStats(player: Pick<PlayerState, 'skills' | 'equipment' 
   };
   const mp = magicalPower(player.accessories);
   const mpStats: Partial<StatBlock> = { intelligence: magicalPowerIntelligence(mp) };
-  return addStats(BASE_STATS, ...skillStats, ...equipmentStats, ...accessoryStats, petStats, soulStats, mpStats);
+  const cole = currentMayor().id === 'cole' ? 15 : 0;
+  const bestiaryMf = Object.values(player.bestiary?.kills ?? {}).reduce((sum, kills) => sum + bestiaryTier(kills), 0) * 0.5;
+  const hotmStats: Partial<StatBlock> = {
+    miningFortune: (player.hotm?.perks.mining_fortune ?? 0) * 5 + cole,
+    miningSpeed: (player.hotm?.perks.mining_speed ?? 0) * 20,
+    magicFind: bestiaryMf,
+  };
+  return addStats(BASE_STATS, ...skillStats, ...equipmentStats, ...accessoryStats, petStats, soulStats, mpStats, hotmStats);
 }
 
 export function magicalPower(accessories: ItemStack[]): number {

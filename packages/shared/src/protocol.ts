@@ -7,6 +7,17 @@ import type { IslandId } from './locations.js';
 import type { LoreLine } from './lore.js';
 import type { StatBlock } from './stats.js';
 import type { Facing } from './world.js';
+import type { GatherChannel, WorldMobInstance } from './worldCombat.js';
+import type { QuestBookState } from './quests.js';
+import type {
+  GardenState,
+  HotmState,
+  DragonFightState,
+  KuudraFightState,
+  BestiaryState,
+  MuseumState,
+  WardrobeState,
+} from './midgame.js';
 
 export type EquipmentSlot = 'helmet' | 'chestplate' | 'leggings' | 'boots';
 export type DungeonClass = 'berserk' | 'archer' | 'mage' | 'tank' | 'healer';
@@ -31,6 +42,7 @@ export interface SlayerQuestState {
   progressXp: number;
   requiredXp: number;
   bossHp?: number;
+  bossId?: string;
 }
 
 export type DungeonPhase = 'starter' | 'rooms' | 'boss';
@@ -48,6 +60,9 @@ export interface DungeonRunState {
   mobHp?: Record<string, number>;
   /** All mobs in the current room are defeated — door unlocks. */
   roomCleared?: boolean;
+  secretsFound?: number;
+  secretClaimed?: boolean;
+  partyId?: string;
 }
 
 export interface PlayerPublic {
@@ -85,6 +100,19 @@ export interface PlayerState extends PlayerPublic {
   dungeonRun: DungeonRunState | null;
   selectedDungeonClass: DungeonClass;
   visitedZones: string[];
+  quests: QuestBookState;
+  garden: GardenState;
+  hotm: HotmState;
+  bestiary: BestiaryState;
+  museum: MuseumState;
+  wardrobe: WardrobeState;
+  dragonFight: DragonFightState | null;
+  kuudraFight: KuudraFightState | null;
+  dungeonPartyId?: string | null;
+  /** Transient live world mobs — not persisted. */
+  worldMobs?: WorldMobInstance[];
+  /** Transient gathering channel — not persisted. */
+  gatherChannel?: GatherChannel | null;
   /** Transient — only set while inventory menu is open (not persisted). */
   inventoryCursor?: ItemStack | null;
 }
@@ -111,7 +139,17 @@ export type MenuId =
   | 'accessories'
   | 'enchanting'
   | 'reforge'
-  | 'leaderboard';
+  | 'leaderboard'
+  | 'quests'
+  | 'garden'
+  | 'hotm'
+  | 'alchemy'
+  | 'bestiary'
+  | 'mayor'
+  | 'museum'
+  | 'wardrobe'
+  | 'kuudra'
+  | 'dragons';
 
 export interface MenuSlotView {
   slot: number;
@@ -184,7 +222,7 @@ export type ClientEvent =
   | { type: 'setHotbar'; slot: number }
   | { type: 'useItem'; slot?: number }
   | { type: 'craft'; recipeId: string }
-  | { type: 'placeMinion'; minionType: 'cobble' | 'wheat' | 'coal' | 'oak' }
+  | { type: 'placeMinion'; minionType: string }
   | { type: 'collectMinion'; minionId: string }
   | { type: 'upgradeMinion'; minionId: string }
   | { type: 'pickupMinion'; minionId: string }

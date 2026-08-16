@@ -12,6 +12,7 @@ export interface ItemStack {
   reforge?: string;
   enchantments?: Record<string, number>;
   statBoosts?: Partial<StatBlock>;
+  dungeonStars?: number;
 }
 
 export type Inventory = (ItemStack | null)[];
@@ -190,12 +191,27 @@ export function clickInventorySlot(
   return { inventory: next, cursor: held };
 }
 
+/** Starter tool set — granted to every player on first join and backfilled on login if missing. */
+export const STARTER_WOODEN_TOOLS: ItemId[] = [
+  'wooden_pickaxe',
+  'wooden_axe',
+  'wooden_hoe',
+  'wooden_sword',
+  'fishing_rod',
+];
+
+export function ensureStarterTools(inv: Inventory): Inventory {
+  let next = inv;
+  for (const itemId of STARTER_WOODEN_TOOLS) {
+    if (countItem(next, itemId) > 0) continue;
+    const added = addItem(next, itemId, 1);
+    if (added) next = added;
+  }
+  return next;
+}
+
 export function starterInventory(): Inventory {
-  let inv = emptyInventory();
-  inv = addItem(inv, 'wooden_pickaxe', 1)!;
-  inv = addItem(inv, 'wooden_axe', 1)!;
-  inv = addItem(inv, 'wooden_hoe', 1)!;
-  inv = addItem(inv, 'wooden_sword', 1)!;
+  let inv = ensureStarterTools(emptyInventory());
   inv = addItem(inv, 'bread', 8)!;
   return inv;
 }

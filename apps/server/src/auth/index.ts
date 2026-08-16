@@ -2,9 +2,15 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { v4 as uuid } from 'uuid';
 import bcrypt from 'bcryptjs';
 import {
+  emptyBestiary,
   emptyCollections,
+  emptyGarden,
+  emptyHotm,
+  emptyMuseum,
   emptySkills,
+  emptyWardrobe,
   starterInventory,
+  ensureStarterTools,
   STARTER_COINS,
   MAX_HP,
   DEFAULT_ZONE,
@@ -116,6 +122,7 @@ function migratePlayerSave(user: StoredUser): { equipment: PlayerState['equipmen
     const next = addItem(inventory, legacyWeapon.itemId, legacyWeapon.qty);
     if (next) inventory = next;
   }
+  inventory = ensureStarterTools(inventory);
   return { equipment, inventory };
 }
 
@@ -157,6 +164,14 @@ function toPlayer(user: StoredUser): PlayerState {
     dungeonRun: user.dungeonRun ?? null,
     selectedDungeonClass: user.selectedDungeonClass ?? 'berserk',
     visitedZones: user.visitedZones ?? [zoneId],
+    quests: user.quests ?? { completed: [], counters: {}, flags: {}, claimed: false },
+    garden: user.garden ?? emptyGarden(),
+    hotm: user.hotm ?? emptyHotm(),
+    bestiary: user.bestiary ?? emptyBestiary(),
+    museum: user.museum ?? emptyMuseum(),
+    wardrobe: user.wardrobe && user.wardrobe.pages.length ? user.wardrobe : emptyWardrobe(),
+    dragonFight: user.dragonFight ?? null,
+    kuudraFight: user.kuudraFight ?? null,
     x: spawn.x,
     y: spawn.y,
     facing: user.facing ?? 'down',
@@ -197,6 +212,14 @@ function applyPlayer(user: StoredUser, player: PlayerState): StoredUser {
     dungeonRun: player.dungeonRun,
     selectedDungeonClass: player.selectedDungeonClass,
     visitedZones: player.visitedZones,
+    quests: player.quests,
+    garden: player.garden,
+    hotm: player.hotm,
+    bestiary: player.bestiary,
+    museum: player.museum,
+    wardrobe: player.wardrobe,
+    dragonFight: player.dragonFight,
+    kuudraFight: player.kuudraFight,
     x: player.x,
     y: player.y,
     facing: player.facing,
@@ -238,6 +261,7 @@ export function registerUser(username: string, password: string): { token: strin
     dungeonRun: null,
     selectedDungeonClass: 'berserk',
     visitedZones: [DEFAULT_ZONE],
+    quests: { completed: [], counters: {}, flags: {}, claimed: false },
     x: spawn.x,
     y: spawn.y,
     facing: 'down',
