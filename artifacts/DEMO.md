@@ -69,6 +69,12 @@ npm run demo       # automated verification (server must be running)
 | `/trade Steve` | Open trade with Steve |
 | `/trade confirm` | Confirm trade (both players) |
 
+## Demo recording
+
+Screen recording (~2 min): [`skyblock-features-demo.mp4`](./skyblock-features-demo.mp4)
+
+Preview frames: [`demo-start.jpg`](./demo-start.jpg), [`demo-bazaar.jpg`](./demo-bazaar.jpg), [`demo-garden.jpg`](./demo-garden.jpg)
+
 ## Demo output
 
 See [`demo-report.json`](./demo-report.json) for machine-readable results.
