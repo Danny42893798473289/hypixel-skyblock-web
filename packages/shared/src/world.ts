@@ -8,6 +8,10 @@ export const TILE = 16;
 const CELL_W = 26;
 const CELL_H = 20;
 const MARGIN = 6;
+/** Extra void around the private island so it reads as a sky plot. */
+const SKY_MARGIN = 10;
+/** Void gap between floating private-island platforms. */
+const SKY_INSET = 5;
 
 export type Facing = 'up' | 'down' | 'left' | 'right';
 
@@ -64,7 +68,7 @@ export interface IslandTheme {
 
 export const ISLAND_THEMES: Record<IslandId, IslandTheme> = {
   hub: { ground: 'grass', secondary: 'stone', hazard: 'water', path: 'path', sky: '#76cbea', fog: '#d9f5ff', decor: ['tree_oak', 'bush', 'flower', 'lamp'] },
-  private_island: { ground: 'grass', secondary: 'dirt', hazard: 'void', path: 'path', sky: '#77cdea', fog: '#e5f8ff', decor: ['tree_oak', 'bush', 'flower'] },
+  private_island: { ground: 'grass', secondary: 'dirt', hazard: 'void', path: 'path', sky: '#6ec8f0', fog: '#e5f8ff', decor: ['tree_oak', 'bush', 'flower'] },
   barn: { ground: 'grass', secondary: 'farmland', hazard: 'water', path: 'dirt', sky: '#8ed6ed', fog: '#fff4b8', decor: ['hay', 'bush', 'fence', 'flower'] },
   gold_mine: { ground: 'stone', secondary: 'gravel', hazard: 'water', path: 'gravel', sky: '#283343', fog: '#a58b64', decor: ['rock', 'stalagmite', 'lantern', 'minecart'] },
   deep_caverns: { ground: 'stone', secondary: 'wall', hazard: 'void', path: 'gravel', sky: '#161b26', fog: '#565a66', decor: ['stalagmite', 'rock', 'lantern', 'crystal'] },
@@ -231,8 +235,8 @@ function paintDistrict(
     for (let x = plot.x; x < plot.x + plot.width; x++) {
       const edgeX = Math.min(x - plot.x, right - x);
       const edgeY = Math.min(y - plot.y, bottom - y);
-      if (edgeX + edgeY < 1 && random() < 0.35) set(tiles, x, y, accent);
-      else set(tiles, x, y, ground);
+      if (edgeX + edgeY < 2 && random() < 0.65) continue;
+      set(tiles, x, y, ground);
     }
   }
 
@@ -386,42 +390,48 @@ export function buildIslandMap(islandId: IslandId): IslandMap {
   const theme = ISLAND_THEMES[islandId];
   const random = mulberry32(hashString(islandId));
   const style = terrainStyle(islandId);
+  const skyPlot = islandId === 'private_island';
   const slots = layoutZones(islandId, zones);
   const cols = Math.max(1, ...slots.map((slot) => slot.col + 1));
   const rows = Math.max(1, ...slots.map((slot) => slot.row + 1));
-  const width = MARGIN * 2 + cols * CELL_W;
-  const height = MARGIN * 2 + rows * CELL_H;
+  const margin = skyPlot ? SKY_MARGIN : MARGIN;
+  const inset = skyPlot ? SKY_INSET : 0;
+  const width = margin * 2 + cols * CELL_W;
+  const height = margin * 2 + rows * CELL_H;
   const tiles: TileKind[][] = Array.from({ length: height }, () => Array.from({ length: width }, () => theme.hazard));
 
   const districts: WorldDistrict[] = slots.map((slot) => {
-    const x = MARGIN + slot.col * CELL_W;
-    const y = MARGIN + slot.row * CELL_H;
+    const x = margin + slot.col * CELL_W + inset;
+    const y = margin + slot.row * CELL_H + inset;
+    const plotWidth = CELL_W - inset * 2;
+    const plotHeight = CELL_H - inset * 2;
     return {
       zoneId: slot.zone.id,
       name: slot.zone.name,
       x,
       y,
-      width: CELL_W,
-      height: CELL_H,
-      centerX: x + Math.floor(CELL_W / 2),
-      centerY: y + Math.floor(CELL_H / 2),
+      width: plotWidth,
+      height: plotHeight,
+      centerX: x + Math.floor(plotWidth / 2),
+      centerY: y + Math.floor(plotHeight / 2),
     };
   });
 
-  paintContinent(tiles, districts, theme, style);
+  if (!skyPlot) paintContinent(tiles, districts, theme, style);
 
   slots.forEach((slot, index) => {
     paintDistrict(tiles, districts[index], districtLook(slot.zone), theme, random);
   });
 
+  const bridge = skyPlot ? 'wood' : theme.path;
   districts.forEach((plot, index) => {
     if (index === 0) return;
     const slot = slots[index];
     const previous = slots.find((entry) => entry.row === slot.row && entry.col === slot.col - 1)
       ?? slots.find((entry) => entry.col === slot.col && entry.row === slot.row - 1);
-    if (previous) carvePath(tiles, plot, districts[slots.indexOf(previous)], theme.path);
+    if (previous) carvePath(tiles, plot, districts[slots.indexOf(previous)], bridge);
     const above = slots.find((entry) => entry.col === slot.col && entry.row === slot.row - 1);
-    if (above) carvePath(tiles, plot, districts[slots.indexOf(above)], theme.path);
+    if (above) carvePath(tiles, plot, districts[slots.indexOf(above)], bridge);
   });
 
   if (islandId === 'hub') {

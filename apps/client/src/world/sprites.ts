@@ -146,8 +146,16 @@ export function drawTile(
       break;
     }
     case 'void': {
-      ctx.fillStyle = '#ffffff12';
-      if (noise % 11 === 0) ctx.fillRect(x + (noise % 15), y + ((noise >>> 7) % 15), 1, 1);
+      ctx.fillStyle = '#ffffff22';
+      if (noise % 4 === 0) ctx.fillRect(x + (noise % 15), y + ((noise >>> 7) % 15), 1, 1);
+      if (noise % 13 === 0) {
+        ctx.fillStyle = '#ffffff66';
+        ctx.fillRect(x + ((noise >>> 3) % 14), y + ((noise >>> 11) % 14), 2, 2);
+      }
+      if (noise % 29 === 0) {
+        ctx.fillStyle = '#cfe9ff44';
+        ctx.fillRect(x + 2, y + 4, 8, 3);
+      }
       break;
     }
     default: {

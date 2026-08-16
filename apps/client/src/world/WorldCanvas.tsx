@@ -8,6 +8,8 @@ import {
   nearestEntity,
   overlayLiveWorld,
   playerWorldMap,
+  applyIslandBlocks,
+  isHoldingPlaceable,
   type IslandMap,
   type PlayerPublic,
   type PlayerState,
@@ -41,6 +43,14 @@ interface RemotePosition {
 /** Fairy souls only fade in once you are almost standing on them. */
 const FAIRY_REVEAL_DISTANCE = 2.6;
 
+function islandBlocksKey(player: PlayerState): string {
+  const blocks = player.islandBlocks;
+  if (!blocks) return '';
+  const keys = Object.keys(blocks);
+  if (!keys.length) return '';
+  return keys.map((key) => `${key}:${blocks[key]}`).join('|');
+}
+
 function dungeonCollisionKey(player: PlayerState): string {
   const run = player.dungeonRun;
   if (!run || player.zoneId !== DUNGEON_ZONE) return '';
@@ -59,12 +69,15 @@ function liveWorldKey(player: PlayerState): string {
 
 export function WorldCanvas({ player, zonePlayers, inputDisabled, chatFocused, touchMode, onOpenMenu, onOpenInventory }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const collisionKey = player.zoneId === DUNGEON_ZONE ? dungeonCollisionKey(player) : player.islandId;
+  const collisionKey = player.zoneId === DUNGEON_ZONE
+    ? dungeonCollisionKey(player)
+    : `${player.islandId}:${islandBlocksKey(player)}`;
   // collisionKey covers island + dungeon floor/phase/room, not object identity.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const collisionMap = useMemo((): IslandMap => {
     if (player.dungeonRun && player.zoneId === DUNGEON_ZONE) return buildDungeonRoomMap(player.dungeonRun);
-    return islandMap(player.islandId);
+    const base = islandMap(player.islandId);
+    return player.islandId === 'private_island' ? applyIslandBlocks(base, player.islandBlocks) : base;
   }, [collisionKey]);
   const overlayKey = liveWorldKey(player);
   // overlayKey is the stable digest of mob HP / minion storage / dungeon combat.
@@ -162,8 +175,13 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, chatFocused, t
       const local = positionRef.current;
       const worldWidth = map.width * TILE;
       const worldHeight = map.height * TILE;
-      const cameraX = clamp(local.x * TILE - viewportWidth / 2, 0, Math.max(0, worldWidth - viewportWidth));
-      const cameraY = clamp(local.y * TILE - viewportHeight / 2, 0, Math.max(0, worldHeight - viewportHeight));
+      const overscan = map.islandId === 'private_island' ? TILE * 6 : 0;
+      const minCamX = -overscan;
+      const minCamY = -overscan;
+      const maxCamX = Math.max(minCamX, worldWidth - viewportWidth + overscan);
+      const maxCamY = Math.max(minCamY, worldHeight - viewportHeight + overscan);
+      const cameraX = clamp(local.x * TILE - viewportWidth / 2, minCamX, maxCamX);
+      const cameraY = clamp(local.y * TILE - viewportHeight / 2, minCamY, maxCamY);
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.fillStyle = map.theme.sky;
@@ -242,7 +260,9 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, chatFocused, t
         aria-label={`Island: ${player.islandId}`}
         onContextMenu={(event) => {
           event.preventDefault();
-          if (!inputDisabled && !chatFocused) gameSocket.send({ type: 'useAbility' });
+          if (inputDisabled || chatFocused) return;
+          if (isHoldingPlaceable(player)) gameSocket.send({ type: 'placeBlock' });
+          else gameSocket.send({ type: 'useAbility' });
         }}
         onClick={(event) => {
           if (event.button !== 0 || inputDisabled || chatFocused || touchMode) return;
@@ -251,7 +271,12 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, chatFocused, t
             gameSocket.send({ type: 'interact' });
             return;
           }
-          gameSocket.send({ type: 'attack' });
+          if (target?.kind === 'mob') {
+            gameSocket.send({ type: 'attack' });
+            return;
+          }
+          if (player.islandId === 'private_island') gameSocket.send({ type: 'breakBlock' });
+          else gameSocket.send({ type: 'attack' });
         }}
       />
       {!inputDisabled && nearby ? (
@@ -269,15 +294,29 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, chatFocused, t
         <TouchControls
           onAnalog={setTouchAnalog}
           onSprint={setTouchSprint}
-          onInteract={() => gameSocket.send({ type: 'interact' })}
-          onAttack={() => gameSocket.send({ type: 'attack' })}
-          onAbility={() => gameSocket.send({ type: 'useAbility' })}
+          onInteract={() => {
+            if (isHoldingPlaceable(player)) gameSocket.send({ type: 'placeBlock' });
+            else gameSocket.send({ type: 'interact' });
+          }}
+          onAttack={() => {
+            if (nearbyRef.current?.kind === 'mob') gameSocket.send({ type: 'attack' });
+            else if (player.islandId === 'private_island') gameSocket.send({ type: 'breakBlock' });
+            else gameSocket.send({ type: 'attack' });
+          }}
+          onAbility={() => {
+            if (isHoldingPlaceable(player)) gameSocket.send({ type: 'placeBlock' });
+            else gameSocket.send({ type: 'useAbility' });
+          }}
           onMenu={onOpenMenu}
           onInventory={onOpenInventory}
           disabled={inputDisabled}
         />
       ) : (
-        <div className="movement-hint">WASD · Shift sprint · click attack · E interact / inventory · R ability · wheel hotbar · Q drop · I inventory · M menu</div>
+        <div className="movement-hint">
+          {player.islandId === 'private_island'
+            ? 'Punch to break · right-click / R / USE to place · cobble expands into void · E interact · WASD move'
+            : 'WASD · Shift sprint · click attack · E interact / inventory · R ability · wheel hotbar · Q drop · I inventory · M menu'}
+        </div>
       )}
     </>
   );

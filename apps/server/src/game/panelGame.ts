@@ -69,6 +69,13 @@ import {
   districtSpawn,
   canStand,
   nearestEntity,
+  ISLAND_BLOCK_CAP,
+  islandBlockKey,
+  placeableTile,
+  tileInFront,
+  hasWalkableNeighbor,
+  isProtectedIslandSpawn,
+  TILE_DROP_ITEM,
   MOVE_SPEED,
   PRESENCE_HZ,
   type Facing,
@@ -575,6 +582,12 @@ function handleEvent(session: Session, ev: ClientEvent): void {
       break;
     case 'dropHotbar':
       doDropHotbar(session, Boolean(ev.all));
+      break;
+    case 'placeBlock':
+      doPlaceBlock(session);
+      break;
+    case 'breakBlock':
+      doBreakBlock(session);
       break;
     case 'useItem':
       doUseItem(session, 'slot' in ev ? ev.slot : undefined);
@@ -2277,6 +2290,80 @@ function runCompletesDungeon(session: Session): boolean {
     return true;
   }
   return false;
+}
+
+function consumeHotbarOne(session: Session): boolean {
+  const index = hotbarInventoryIndex(session.player.hotbarSlot);
+  const next = session.player.inventory.map((slot) => (slot ? { ...slot } : null));
+  const held = next[index];
+  if (!held || held.qty < 1) return false;
+  held.qty -= 1;
+  if (held.qty <= 0) next[index] = null;
+  session.player.inventory = next;
+  return true;
+}
+
+function doPlaceBlock(session: Session): void {
+  if (session.player.islandId !== 'private_island') return;
+  const now = Date.now();
+  if (now - session.lastAttackAt < 180) return;
+
+  const stack = hotbarStack(session.player.inventory, session.player.hotbarSlot);
+  if (!stack) throw new Error('Hold a block to place');
+  const tile = placeableTile(stack.itemId);
+  if (!tile) throw new Error('That item cannot be placed');
+
+  const target = tileInFront(session.player.x, session.player.y, session.player.facing);
+  const map = mapFor(session);
+  const current = map.tiles[target.y]?.[target.x];
+  if (current == null) throw new Error('Out of bounds');
+
+  const blocks = { ...(session.player.islandBlocks ?? {}) };
+  const key = islandBlockKey(target.x, target.y);
+  const alreadyEdited = Object.prototype.hasOwnProperty.call(blocks, key);
+  if (current !== 'void' && !alreadyEdited) throw new Error('Punch the ground first');
+  if (current === 'void' && !hasWalkableNeighbor(map, target.x, target.y)) {
+    throw new Error('Need a walkable tile next to it');
+  }
+  if (!alreadyEdited && Object.keys(blocks).length >= ISLAND_BLOCK_CAP) {
+    throw new Error('Island is at the block limit');
+  }
+  if (!consumeHotbarOne(session)) throw new Error('Hold a block to place');
+
+  blocks[key] = tile;
+  session.player.islandBlocks = blocks;
+  session.lastAttackAt = now;
+  pushState(session);
+}
+
+function doBreakBlock(session: Session): void {
+  if (session.player.islandId !== 'private_island') return;
+  const now = Date.now();
+  if (now - session.lastAttackAt < 180) return;
+
+  const target = tileInFront(session.player.x, session.player.y, session.player.facing);
+  const map = mapFor(session);
+  const current = map.tiles[target.y]?.[target.x];
+  if (!current || current === 'void') return;
+  if (isProtectedIslandSpawn(map, target.x, target.y)) throw new Error('Cannot break the spawn platform');
+
+  const blocks = { ...(session.player.islandBlocks ?? {}) };
+  const key = islandBlockKey(target.x, target.y);
+  if (!Object.prototype.hasOwnProperty.call(blocks, key) && Object.keys(blocks).length >= ISLAND_BLOCK_CAP) {
+    throw new Error('Island is at the block limit');
+  }
+
+  const drop = TILE_DROP_ITEM[current];
+  if (drop) {
+    const next = addItem(session.player.inventory, drop, 1);
+    if (!next) throw new Error('Inventory is full');
+    session.player.inventory = next;
+  }
+
+  blocks[key] = 'void';
+  session.player.islandBlocks = blocks;
+  session.lastAttackAt = now;
+  pushState(session);
 }
 
 function doDropHotbar(session: Session, all: boolean): void {

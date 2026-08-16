@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import {
   MOVE_SPEED,
   canStand,
+  isHoldingPlaceable,
   type Facing,
   type IslandMap,
   type PlayerState,
@@ -34,7 +35,9 @@ export function useMovement(player: PlayerState, map: IslandMap, disabled: boole
   const sprintHoldRef = useRef(false);
   const lastIslandRef = useRef(player.islandId);
   const mapRef = useRef(map);
+  const playerRef = useRef(player);
   mapRef.current = map;
+  playerRef.current = player;
 
   useEffect(() => {
     disabledRef.current = disabled;
@@ -94,7 +97,7 @@ export function useMovement(player: PlayerState, map: IslandMap, disabled: boole
       const key = event.key.toLowerCase();
       if (key === 'r' && !disabledRef.current && !event.repeat) {
         event.preventDefault();
-        gameSocket.send({ type: 'useAbility' });
+        gameSocket.send({ type: isHoldingPlaceable(playerRef.current) ? 'placeBlock' : 'useAbility' });
         return;
       }
       if (!movementKeys.has(key) || disabledRef.current) return;

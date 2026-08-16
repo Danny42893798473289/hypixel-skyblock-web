@@ -6,7 +6,7 @@ import type { PlacedMinion } from './minions.js';
 import type { IslandId } from './locations.js';
 import type { LoreLine } from './lore.js';
 import type { StatBlock } from './stats.js';
-import type { Facing } from './world.js';
+import type { Facing, TileKind } from './world.js';
 import type { GatherChannel, WorldMobInstance } from './worldCombat.js';
 import type { QuestBookState } from './quests.js';
 import type {
@@ -117,6 +117,8 @@ export interface PlayerState extends PlayerPublic {
   kuudraFight: KuudraFightState | null;
   /** 10 double-chest backpacks (54 slots each). Always unlocked. */
   backpacks: Inventory[];
+  /** Sparse private-island tile edits (`"x,y"` → tile). */
+  islandBlocks?: Record<string, TileKind>;
   dungeonPartyId?: string | null;
   /** Transient live world mobs — not persisted. */
   worldMobs?: WorldMobInstance[];
@@ -235,6 +237,8 @@ export type ClientEvent =
   | { type: 'doAction'; actionId: string; times?: number }
   | { type: 'setHotbar'; slot: number }
   | { type: 'dropHotbar'; all?: boolean }
+  | { type: 'placeBlock' }
+  | { type: 'breakBlock' }
   | { type: 'useItem'; slot?: number }
   | { type: 'craft'; recipeId: string }
   | { type: 'placeMinion'; minionType: string }

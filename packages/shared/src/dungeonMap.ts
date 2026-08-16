@@ -3,6 +3,7 @@ import { dungeonFloor } from './dungeonContent.js';
 import { ISLAND_THEMES, islandMap, type IslandMap, type TileKind, type WorldEntity } from './world.js';
 import { overlayLiveWorld, type WorldMobInstance } from './worldCombat.js';
 import type { PlacedMinion } from './minions.js';
+import { applyIslandBlocks, type IslandBlocks } from './islandBuild.js';
 
 const ROOM_W = 26;
 const ROOM_H = 18;
@@ -216,11 +217,16 @@ export function playerWorldMap(player: {
   dungeonRun: DungeonRunState | null;
   worldMobs?: WorldMobInstance[];
   minions?: PlacedMinion[];
+  islandBlocks?: IslandBlocks;
 }): IslandMap {
   if (player.dungeonRun && player.zoneId === DUNGEON_ZONE) {
     return buildDungeonRoomMap(player.dungeonRun);
   }
-  return overlayLiveWorld(islandMap(player.islandId), player);
+  const base = islandMap(player.islandId);
+  const tiled = player.islandId === 'private_island'
+    ? applyIslandBlocks(base, player.islandBlocks)
+    : base;
+  return overlayLiveWorld(tiled, player);
 }
 
 export { DUNGEON_ZONE };

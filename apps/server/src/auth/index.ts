@@ -29,6 +29,7 @@ import {
   DUNGEON_ZONE,
   accessoryBagSlots,
   addItem,
+  applyIslandBlocks,
   type ItemStack,
   type PlayerState,
 } from '@aether/shared';
@@ -134,7 +135,10 @@ function toPlayer(user: StoredUser): PlayerState {
   const { equipment, inventory } = migratePlayerSave(user);
   const accessories = user.accessories ?? [];
   const bank = user.bank ?? { balance: 0, tier: 'starter' as const, lastInterestAt: Date.now() };
-  const map = islandMapForZone(zoneId);
+  const baseMap = islandMapForZone(zoneId);
+  const map = islandForZone(zoneId) === 'private_island'
+    ? applyIslandBlocks(baseMap, user.islandBlocks)
+    : baseMap;
   const spawn = districtSpawn(map, zoneId);
   const offlineInterest = accrueBankInterest(bank);
   if (offlineInterest.gained > 0) offlineInterestByUser.set(user.id, offlineInterest.gained);
@@ -178,6 +182,7 @@ function toPlayer(user: StoredUser): PlayerState {
     dragonFight: user.dragonFight ?? null,
     kuudraFight: user.kuudraFight ?? null,
     backpacks: normalizeBackpacks(user.backpacks),
+    islandBlocks: user.islandBlocks,
     x: spawn.x,
     y: spawn.y,
     facing: user.facing ?? 'down',
@@ -230,6 +235,7 @@ function applyPlayer(user: StoredUser, player: PlayerState): StoredUser {
     dragonFight: player.dragonFight,
     kuudraFight: player.kuudraFight,
     backpacks: player.backpacks,
+    islandBlocks: player.islandBlocks,
     x: player.x,
     y: player.y,
     facing: player.facing,

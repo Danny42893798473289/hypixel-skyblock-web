@@ -15,6 +15,7 @@ import type {
   DungeonRunState,
   DungeonClass,
   Facing,
+  TileKind,
   QuestBookState,
   GardenState,
   HotmState,
@@ -77,6 +78,7 @@ export interface StoredUser {
   dragonFight?: DragonFightState | null;
   kuudraFight?: KuudraFightState | null;
   backpacks?: Inventory[];
+  islandBlocks?: Record<string, TileKind>;
   x?: number;
   y?: number;
   facing?: Facing;

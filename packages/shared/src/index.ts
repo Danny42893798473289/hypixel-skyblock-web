@@ -11,6 +11,7 @@ export * from './lore.js';
 export * from './enchantments.js';
 export * from './content.js';
 export * from './world.js';
+export * from './islandBuild.js';
 export * from './bazaarCategories.js';
 export * from './dungeonContent.js';
 export * from './dungeonMap.js';
