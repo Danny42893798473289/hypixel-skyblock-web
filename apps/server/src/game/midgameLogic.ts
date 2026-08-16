@@ -8,6 +8,8 @@ import {
   currentJacobCrop,
   currentMayor,
   emptyGarden,
+  emptyGardenPlots,
+  JACOB_CONTEST_MS,
   emptyHotm,
   emptyBestiary,
   emptyMuseum,
@@ -34,6 +36,11 @@ export function ensureMidgame(player: PlayerState): void {
     player.garden.jacobScore = 0;
     player.garden.jacobCrop = currentJacobCrop();
   }
+  if (!player.garden.plots?.length) player.garden.plots = emptyGardenPlots();
+  if (player.garden.jacobContestEndsAt == null) player.garden.jacobContestEndsAt = Date.now() + JACOB_CONTEST_MS;
+  if (player.garden.organicMatter == null) player.garden.organicMatter = 0;
+  if (player.garden.composterLevel == null) player.garden.composterLevel = 0;
+  if (player.garden.jacobMedal == null) player.garden.jacobMedal = 'none';
 }
 
 export function noteGardenHarvest(player: PlayerState, itemId: ItemId, qty: number): string | null {

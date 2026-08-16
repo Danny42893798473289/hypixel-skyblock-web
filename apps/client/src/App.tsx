@@ -42,6 +42,8 @@ export function App() {
   const [bazaarBook, setBazaarBook] = useState<OrderBookSnapshot | null>(null);
   const [bazaarOrders, setBazaarOrders] = useState<BazaarOrder[]>([]);
   const [bazaarMeta, setBazaarMeta] = useState<BazaarMeta | null>(null);
+  const [damageNumbers, setDamageNumbers] = useState<Array<{ id: number; x: number; y: number; amount: number; critical?: boolean }>>([]);
+  const [seaCreatureAlert, setSeaCreatureAlert] = useState<string | null>(null);
   const [chatText, setChatText] = useState('');
   const [chatFocused, setChatFocused] = useState(false);
   const [touchMode, setTouchMode] = useState(false);
@@ -89,6 +91,13 @@ export function App() {
           break;
         case 'bazaarMeta':
           setBazaarMeta(event.meta);
+          break;
+        case 'damageNumber':
+          setDamageNumbers((current) => [...current.slice(-8), { id: Date.now(), x: event.x, y: event.y, amount: event.amount, critical: event.critical }]);
+          break;
+        case 'seaCreatureSpawn':
+          setSeaCreatureAlert(event.name);
+          window.setTimeout(() => setSeaCreatureAlert(null), 5000);
           break;
         case 'players':
           setZonePlayers(event.players);
@@ -408,6 +417,20 @@ export function App() {
           />
         )
       ) : null}
+
+      {seaCreatureAlert ? (
+        <div className="sea-creature-alert">{seaCreatureAlert} — press E to fight!</div>
+      ) : null}
+
+      {damageNumbers.map((hit) => (
+        <div
+          key={hit.id}
+          className={`damage-number${hit.critical ? ' crit' : ''}`}
+          style={{ left: `${40 + hit.x * 8}%`, top: `${30 + hit.y * 4}%` }}
+        >
+          {hit.amount.toLocaleString()}{hit.critical ? ' ✧' : ''}
+        </div>
+      ))}
 
       <div className="toast-stack">
         {toasts.map((toast) => <div key={toast.id} className={`toast ${toast.kind ?? ''}`}>{toast.message}</div>)}

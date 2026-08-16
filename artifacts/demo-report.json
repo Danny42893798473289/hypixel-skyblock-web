@@ -1,0 +1,65 @@
+{
+  "generatedAt": "2026-08-16T03:16:44.694Z",
+  "base": "http://127.0.0.1:3001",
+  "passed": 8,
+  "total": 8,
+  "results": [
+    {
+      "name": "Server health",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Hypixel bazaar mirror",
+      "ok": true,
+      "detail": "updated 1786850161940"
+    },
+    {
+      "name": "Auction mirror listings",
+      "ok": true,
+      "detail": "300 listings"
+    },
+    {
+      "name": "Bazaar order depth",
+      "ok": true,
+      "detail": "4 sell levels"
+    },
+    {
+      "name": "Register/login players",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "/pay command",
+      "ok": true,
+      "detail": "Paid 25 coins to demo_b_h4d1"
+    },
+    {
+      "name": "Garden menu opens",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Bazaar price history API",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "features": [
+    "Hypixel bazaar mirror (60s)",
+    "Hypixel auction mirror (1h, 300 BIN)",
+    "Sea creatures on fishing",
+    "Garden v2 plots + Jacob contest + composter",
+    "Enchant procs (Looting, Smite, Thunderlord)",
+    "Collection tier coin + recipe unlock flags",
+    "Slayer RNG meter",
+    "/pay and /trade chat commands",
+    "Co-op dungeon party sync",
+    "/visit island",
+    "Dungeon essence + star upgrades",
+    "Bestiary milestones",
+    "Carpentry XP on craft",
+    "Social XP on visit",
+    "Damage numbers + sea creature HUD"
+  ]
+}

@@ -94,6 +94,21 @@ import { buyBin, cancelListing, claimAuction, createListing, durationOptions, pl
 import { onBazaarSynced } from '../hypixel/broadcast.js';
 import { getBazaarSyncMeta } from '../hypixel/bazaarSync.js';
 import {
+  applyLootingToCoins,
+  procCombatDamage,
+  checkBestiaryMilestone,
+  incrementSlayerRng,
+} from './enchantCombat.js';
+import {
+  afterFishCatch,
+  grantEssenceOnDungeonComplete,
+  handleFeatureChat,
+  handleFeatureEvent,
+  onCraft as grantCarpentryXp,
+  onDungeonPartyJoin,
+  onDungeonStart,
+} from './featureHandlers.js';
+import {
   abilityDamage,
   abilityKey,
   abilityKind,
@@ -573,6 +588,10 @@ function handleEvent(session: Session, ev: ClientEvent): void {
     case 'chat': {
       const text = ev.text.trim().slice(0, 120);
       if (!text) break;
+      if (handleFeatureChat(session, text, sessions, {
+        toast: (s, msg, kind) => toast(s as Session, msg, kind as 'info' | 'error' | 'success'),
+        pushState: (s) => pushState(s as Session),
+      })) break;
       const message = { id: uuid(), username: session.player.username, text, at: Date.now() };
       for (const s of sessions.values()) {
         if (s.player.islandId === session.player.islandId) {
@@ -590,6 +609,18 @@ function handleEvent(session: Session, ev: ClientEvent): void {
       pushState(session);
       break;
     }
+    default:
+      if (handleFeatureEvent(session, ev, sessions, {
+        toast: (s, msg, kind) => toast(s as Session, msg, kind as 'info' | 'error' | 'success'),
+        pushState: (s) => pushState(s as Session),
+        warpPrivateIsland: (s, host) => {
+          s.player.zoneId = 'island_minions';
+          s.player.islandId = 'private_island';
+          s.player.x = 8;
+          s.player.y = 8;
+        },
+        leaveVisit: () => {},
+      })) break;
   }
 }
 
@@ -1473,6 +1504,7 @@ function completeDungeon(session: Session): void {
       break;
     }
   }
+  grantEssenceOnDungeonComplete(session, run.floorId);
   session.player.dungeonRun = null;
   doTravel(session, 'dungeon_hub');
   const dropMsg = drops.length ? ` Drops: ${drops.join(', ')}` : '';
@@ -1743,6 +1775,12 @@ function giveResource(session: Session, act: NonNullable<ReturnType<typeof findA
   awardPetXp(session.player, act.skill, act.xp);
   pushState(session);
   toast(session, `+${actualQty} ${ITEMS[itemId].name}`, 'success');
+  if (act.kind === 'fish' && act.id) {
+    afterFishCatch(session, act.id, skillLevel(session.player, 'fishing'), {
+      toast: (s, msg, kind) => toast(s as Session, msg, kind as 'info' | 'error' | 'success'),
+      pushState: (s) => pushState(s as Session),
+    });
+  }
 }
 
 const COMBAT_DROPS: Record<string, ItemId> = {
@@ -2028,6 +2066,7 @@ function doCraft(session: Session, recipeId: string): void {
   if (!added) throw new Error('Inventory full');
   session.player.inventory = added;
   flagQuest(session, 'craft_item');
+  grantCarpentryXp(session, recipe.ingredients.length);
   pushState(session);
   toast(session, `Crafted ${recipe.name}`, 'success');
 }
@@ -2245,17 +2284,19 @@ function worldMobTick(): void {
   }
 }
 
-function playerMelee(session: Session): { damage: number; critical: boolean } {
+function playerMelee(session: Session, mobId = 'zombie', mobMaxHp = 100): { damage: number; critical: boolean } {
   const tool = bestTool(session.player, 'sword');
-  const critical = rollCrit(session.player.stats.critChance);
-  const damage = Math.round(meleeDamage(
+  const baseCrit = rollCrit(session.player.stats.critChance);
+  const base = Math.round(meleeDamage(
     tool.damage ?? 4,
     session.player.stats.strength,
     session.player.stats.critDamage,
-    critical,
+    baseCrit,
     combatDamageBonus(skillLevel(session.player, 'combat')),
   ));
-  return { damage, critical };
+  const proc = procCombatDamage(session.player, base, mobId, mobMaxHp);
+  emit(session.socket, { type: 'damageNumber', x: session.player.x, y: session.player.y, amount: proc.damage, critical: proc.critical });
+  return { damage: proc.damage, critical: proc.critical || baseCrit };
 }
 
 function grantMobRewards(session: Session, mobId: string): void {
@@ -2272,11 +2313,13 @@ function grantMobRewards(session: Session, mobId: string): void {
     }
   }
   session.player.skills.combat += mob.combatXp;
-  session.player.coins += mob.coins;
+  session.player.coins += applyLootingToCoins(session.player, mob.coins);
   awardPetXp(session.player, 'combat', mob.combatXp);
   if (!session.player.quests) session.player.quests = emptyQuestBook();
   ensureMidgame(session.player);
   session.player.bestiary.kills[mob.id] = (session.player.bestiary.kills[mob.id] ?? 0) + 1;
+  const bestiaryMsg = checkBestiaryMilestone(session.player, mob.id);
+  if (bestiaryMsg) toast(session, bestiaryMsg, 'success');
   const egg = PET_EGGS.find((entry) => entry.fromMob === mob.id);
   const eggChance = currentMayor().id === 'diana' ? 0.04 : 0.02;
   if (egg && Math.random() < eggChance) {
@@ -2345,8 +2388,9 @@ function defeatSlayerBoss(session: Session): void {
   if (!slayer || !tier) return;
   session.player.slayerXp[slayer.id] = (session.player.slayerXp[slayer.id] ?? 0) + tier.xp;
   session.player.coins += Math.round(tier.cost * 0.25);
+  const guaranteedDrop = incrementSlayerRng(session.player, slayer.id, 20);
   for (const drop of SLAYER_DROPS[slayer.id] ?? []) {
-    const chance = drop.chance * (1 + session.player.stats.magicFind / 100);
+    const chance = (guaranteedDrop && drop.chance < 0.2 ? 1 : drop.chance) * (1 + session.player.stats.magicFind / 100);
     if (Math.random() > chance) continue;
     const quantity = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
     const next = addItem(session.player.inventory, drop.itemId, quantity);
@@ -2367,7 +2411,7 @@ function attackWorldMob(session: Session, mobId: string): void {
   const mob = (session.player.worldMobs ?? []).find((entry) => entry.id === mobId);
   if (!mob || mob.hp <= 0) throw new Error('That mob is gone');
   if (Math.hypot(mob.x - session.player.x, mob.y - session.player.y) > 2.4) throw new Error('Get closer to attack');
-  const { damage, critical } = playerMelee(session);
+  const { damage, critical } = playerMelee(session, mob.mobId, mob.maxHp);
   mob.hp = Math.max(0, mob.hp - damage);
   if (mob.slayerBoss && session.player.activeSlayer) session.player.activeSlayer.bossHp = mob.hp;
   if (mob.mobId === 'ender_dragon' && session.player.dragonFight) session.player.dragonFight.hp = mob.hp;
@@ -2507,6 +2551,11 @@ function noteCollectionMilestone(session: Session, itemId: ItemId, before: numbe
   const reward = collection.tiers[next - 1];
   const coins = 25 * next;
   session.player.coins += coins;
+  if (!session.player.unlockedRecipes) session.player.unlockedRecipes = [];
+  const recipeFlag = `collection:${itemId}:t${next}`;
+  if (!session.player.unlockedRecipes.includes(recipeFlag)) {
+    session.player.unlockedRecipes.push(recipeFlag);
+  }
   toast(session, `Collection: ${reward?.label ?? collection.name}  (+${coins} coins)`, 'success');
 }
 
@@ -2645,8 +2694,7 @@ function inviteDungeonParty(session: Session): void {
 function joinDungeonParty(session: Session, hostId: string): void {
   const host = [...sessions.values()].find((entry) => entry.player.id === hostId && entry.player.dungeonRun);
   if (!host?.player.dungeonRun) throw new Error('That party is gone');
-  session.player.dungeonRun = { ...host.player.dungeonRun, partyId: hostId };
-  session.player.dungeonPartyId = hostId;
+  onDungeonPartyJoin(host, session);
   warpToDungeonSpawn(session);
   session.menuOpen = false;
   pushState(session);

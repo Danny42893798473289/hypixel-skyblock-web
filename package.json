@@ -15,7 +15,8 @@
     "verify": "node scripts/verify-world.mjs",
     "smoke": "node scripts/smoke.mjs",
     "smoke:offline": "node scripts/smoke-offline.mjs",
-    "smoke:fixes": "node scripts/smoke-fixes.mjs"
+    "smoke:fixes": "node scripts/smoke-fixes.mjs",
+    "demo": "node scripts/demo-features.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

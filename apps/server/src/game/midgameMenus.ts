@@ -9,6 +9,7 @@ import {
   bestiaryTier,
   currentMayor,
   currentQuestStep,
+  plotReady,
   skyblockLevelFromXp,
   skyblockXp,
   type LoreLine,
@@ -42,6 +43,7 @@ function close(): MenuSlotView {
 export function gardenMenu(player: PlayerState): MenuView {
   const garden = player.garden;
   const visitor = garden.visitor;
+  const ready = (garden.plots ?? []).filter((p) => p.crop && plotReady(p)).length;
   return {
     id: 'garden',
     title: 'The Garden',
@@ -50,7 +52,14 @@ export function gardenMenu(player: PlayerState): MenuView {
       slot(4, 'wheat', "Jacob's Contest", [
         line(`Crop: ${ITEMS[garden.jacobCrop]?.name ?? garden.jacobCrop}`, 'yellow'),
         line(`Your score: ${garden.jacobScore}`, 'aqua'),
-        line('Harvest that crop on Garden Plots to score.', 'gray'),
+        line(`Medal: ${garden.jacobMedal ?? 'none'}`, 'gold'),
+        line(`Ends in: ${Math.max(0, Math.ceil((garden.jacobContestEndsAt - Date.now()) / 60000))}m`, 'gray'),
+        line('Harvest contest crop on plots to score.', 'gray'),
+      ]),
+      slot(10, 'hoe', 'Garden Plots', [
+        line(`${ready} / ${garden.plots?.length ?? 24} ready to harvest`, 'green'),
+        line('Use chat: plant/harvest via Garden zone', 'gray'),
+        line(`Composter Lv ${garden.composterLevel ?? 0} · ${garden.organicMatter ?? 0}/100 OM`, 'aqua'),
       ]),
       visitor
         ? slot(13, 'player_head', `${visitor.name} is visiting`, [

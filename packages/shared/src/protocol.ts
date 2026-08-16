@@ -98,6 +98,12 @@ export interface PlayerState extends PlayerPublic {
   magicalPower: number;
   activeSlayer: SlayerQuestState | null;
   slayerXp: Record<string, number>;
+  /** RNG meter progress toward guaranteed slayer drops (0–100). */
+  slayerRngMeter: Record<string, number>;
+  /** Dungeon essence for star upgrades. */
+  essence: Partial<Record<import('./gardenPlots.js').EssenceType, number>>;
+  /** Recipe ids unlocked via collection milestones. */
+  unlockedRecipes: string[];
   dungeonRun: DungeonRunState | null;
   selectedDungeonClass: DungeonClass;
   visitedZones: string[];
@@ -236,6 +242,17 @@ export type ClientEvent =
   | { type: 'bazaarCancel'; orderId: string }
   | { type: 'bazaarSubscribe'; itemId: ItemId | null }
   | { type: 'chat'; text: string }
+  | { type: 'pay'; targetUsername: string; amount: number }
+  | { type: 'visitIsland'; username: string }
+  | { type: 'tradeRequest'; targetUsername: string }
+  | { type: 'tradeOffer'; coins: number; slot: number; itemSlot: number | null }
+  | { type: 'tradeConfirm' }
+  | { type: 'tradeCancel' }
+  | { type: 'gardenPlant'; plotIndex: number; crop: ItemId }
+  | { type: 'gardenHarvest'; plotIndex: number }
+  | { type: 'gardenWater'; plotIndex: number }
+  | { type: 'gardenCompost'; crop: ItemId; qty: number }
+  | { type: 'upgradeStars'; inventorySlot: number }
   | { type: 'swapSlots'; a: number; b: number };
 
 /** Server -> Client */
@@ -250,6 +267,8 @@ export type ServerEvent =
   | { type: 'bazaarMeta'; meta: BazaarMeta }
   | { type: 'toast'; message: string; kind?: 'info' | 'error' | 'success' }
   | { type: 'chat'; message: ChatMessage }
+  | { type: 'damageNumber'; x: number; y: number; amount: number; critical?: boolean }
+  | { type: 'seaCreatureSpawn'; name: string; mobId: string }
   | { type: 'actionResult'; actionId: string; success: boolean; message: string }
   /** Lightweight position fix — avoids a full state sync that would rubber-band the client. */
   | { type: 'moveCorrection'; x: number; y: number; facing: Facing };

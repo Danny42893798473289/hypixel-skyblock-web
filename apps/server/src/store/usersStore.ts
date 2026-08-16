@@ -81,6 +81,9 @@ export interface StoredUser {
   mana?: number;
   /** Admin account — bypasses limits for testing (future commands). */
   isAdmin?: boolean;
+  slayerRngMeter?: Record<string, number>;
+  essence?: Partial<Record<string, number>>;
+  unlockedRecipes?: string[];
 }
 
 export interface StoredOrder {

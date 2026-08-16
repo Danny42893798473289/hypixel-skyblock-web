@@ -1,5 +1,6 @@
 import type { ItemId } from './items.js';
 import type { ItemStack } from './inventory.js';
+import { emptyGardenPlots, JACOB_CONTEST_MS } from './gardenPlots.js';
 
 export interface GardenPlot {
   crop: ItemId;
@@ -20,6 +21,12 @@ export interface GardenState {
   jacobCrop: ItemId;
   jacobScore: number;
   jacobEndsAt: number;
+  /** 24 plot grid — plant, water, harvest. */
+  plots: import('./gardenPlots.js').GardenPlotCell[];
+  organicMatter: number;
+  composterLevel: number;
+  jacobMedal: 'none' | 'bronze' | 'silver' | 'gold';
+  jacobContestEndsAt: number;
 }
 
 export interface HotmPerk {
@@ -141,12 +148,18 @@ export function currentJacobCrop(now = Date.now()): ItemId {
 }
 
 export function emptyGarden(): GardenState {
+  const now = Date.now();
   return {
     harvested: {},
     visitor: rollGardenVisitor(),
     jacobCrop: currentJacobCrop(),
     jacobScore: 0,
-    jacobEndsAt: Math.ceil(Date.now() / 3_600_000) * 3_600_000,
+    jacobEndsAt: Math.ceil(now / 3_600_000) * 3_600_000,
+    plots: emptyGardenPlots(),
+    organicMatter: 0,
+    composterLevel: 0,
+    jacobMedal: 'none',
+    jacobContestEndsAt: now + JACOB_CONTEST_MS,
   };
 }
 

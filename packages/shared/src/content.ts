@@ -73,6 +73,14 @@ export const MOBS: Record<string, MobDef> = {
   rift_mite: { id: 'rift_mite', name: 'Rift Mite', level: 30, health: 800, damage: 80, defense: 10, combatXp: 22, coins: 8, drops: [{ itemId: 'ender_pearl', chance: 0.4, min: 1, max: 1 }] },
   ender_dragon: { id: 'ender_dragon', name: 'Ender Dragon', level: 100, health: 9000000, damage: 2000, defense: 200, combatXp: 300, coins: 1000, drops: [{ itemId: 'dragon_fragment', chance: 1, min: 2, max: 5 }, { itemId: 'summoning_eye', chance: 0.15, min: 1, max: 1 }] },
   kuudra: { id: 'kuudra', name: 'Kuudra', level: 100, health: 5000000, damage: 2500, defense: 250, combatXp: 400, coins: 2500, drops: [{ itemId: 'blaze_rod', chance: 1, min: 4, max: 8 }] },
+  squid: { id: 'squid', name: 'Squid', level: 1, health: 120, damage: 20, defense: 0, combatXp: 8, coins: 3, drops: [{ itemId: 'ink_sack', chance: 1, min: 1, max: 2 }] },
+  sea_walker: { id: 'sea_walker', name: 'Sea Walker', level: 4, health: 400, damage: 45, defense: 5, combatXp: 18, coins: 8, drops: [{ itemId: 'raw_fish', chance: 1, min: 2, max: 4 }, { itemId: 'lily_pad', chance: 0.3, min: 1, max: 1 }] },
+  night_squid: { id: 'night_squid', name: 'Night Squid', level: 3, health: 300, damage: 35, defense: 0, combatXp: 14, coins: 6, drops: [{ itemId: 'ink_sack', chance: 1, min: 2, max: 4 }] },
+  sea_guardian: { id: 'sea_guardian', name: 'Sea Guardian', level: 10, health: 2500, damage: 120, defense: 25, combatXp: 45, coins: 25, drops: [{ itemId: 'prismarine_shard', chance: 1, min: 1, max: 3 }, { itemId: 'sponge', chance: 0.15, min: 1, max: 1 }] },
+  catfish: { id: 'catfish', name: 'Catfish', level: 6, health: 800, damage: 60, defense: 10, combatXp: 22, coins: 12, drops: [{ itemId: 'raw_fish', chance: 1, min: 3, max: 6 }] },
+  yeti: { id: 'yeti', name: 'Yeti', level: 15, health: 8000, damage: 200, defense: 40, combatXp: 80, coins: 50, drops: [{ itemId: 'ice', chance: 1, min: 2, max: 5 }, { itemId: 'enchanted_ice', chance: 0.2, min: 1, max: 1 }] },
+  magma_soul: { id: 'magma_soul', name: 'Magma Soul', level: 20, health: 12000, damage: 280, defense: 60, combatXp: 95, coins: 60, drops: [{ itemId: 'magma_cream', chance: 1, min: 1, max: 3 }, { itemId: 'blaze_rod', chance: 0.4, min: 1, max: 2 }] },
+  fire_eel: { id: 'fire_eel', name: 'Fire Eel', level: 12, health: 5000, damage: 150, defense: 30, combatXp: 55, coins: 35, drops: [{ itemId: 'raw_fish', chance: 1, min: 4, max: 8 }] },
 };
 
 export interface ResourceNodeDef {

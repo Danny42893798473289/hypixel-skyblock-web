@@ -958,3 +958,30 @@ button.mc-slot:disabled { filter: grayscale(1) brightness(.65); cursor: not-allo
   justify-content: center;
   gap: 12px;
 }
+
+.sea-creature-alert {
+  position: fixed;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #2244aa;
+  color: #fff;
+  padding: 8px 16px;
+  border: 2px solid #88aaff;
+  z-index: 50;
+  font-size: 15px;
+}
+.damage-number {
+  position: fixed;
+  color: #ffcc44;
+  font-weight: bold;
+  font-size: 18px;
+  pointer-events: none;
+  z-index: 45;
+  animation: float-up 1s ease-out forwards;
+}
+.damage-number.crit { color: #ff4444; font-size: 22px; }
+@keyframes float-up {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-28px); }
+}
