@@ -99,8 +99,8 @@ export interface IslandDef {
 export const ISLANDS: Record<IslandId, IslandDef> = {
   hub: {
     id: 'hub',
-    name: 'Sky Hub',
-    description: 'The central village: shops, bank, auctions and the warp gate.',
+    name: 'Hub',
+    description: 'The village: bazaar, auction house, bank, and the warp gate.',
     icon: 'hub',
   },
   private_island: {
@@ -120,7 +120,7 @@ export const ISLANDS: Record<IslandId, IslandDef> = {
   gold_mine: {
     id: 'gold_mine',
     name: 'Gold Mine',
-    description: 'Starter mining island with coal, iron, gold and lapis.',
+    description: 'Starter mines with coal, iron, gold and lapis.',
     icon: 'mine',
     warpFromHub: true,
   },
@@ -390,7 +390,7 @@ export const ZONES: Record<string, ZoneDef> = {
     id: 'hub_warps',
     islandId: 'hub',
     name: 'Warp Gate',
-    description: 'The only way to cross between islands.',
+    description: 'Warp to the Park, Gold Mine, The End, and more.',
     icon: 'portal',
     links: ['hub_plaza'],
     actions: [],

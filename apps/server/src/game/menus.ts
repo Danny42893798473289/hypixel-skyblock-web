@@ -246,7 +246,7 @@ function skyblockMenu(player: PlayerState): MenuView {
         line(currentQuestStep(player)?.detail ?? 'Claim your reward.', 'gray'),
         click(),
       ], 'open:quests'),
-      slot(11, 'map', 'Fast Travel', [line(`Current island: ${islandForZone(player.zoneId)}`), click()], 'open:fast_travel'),
+      slot(11, 'map', 'Fast Travel', [line(`Location: ${ISLANDS[islandForZone(player.zoneId)]?.name ?? player.islandId}`), click()], 'open:fast_travel'),
       slot(12, 'emerald', 'Bazaar', [line('Buy and sell stackable commodities.'), click()], 'open:bazaar'),
       slot(13, 'gold_ingot', 'Auction House', [line('Trade unique weapons, armor and pets.'), click()], 'open:auction'),
       slot(14, 'coin', 'Bank', [line(`Purse: ${Math.floor(player.coins).toLocaleString()}`, 'gold'), line(`Bank: ${Math.floor(player.bank.balance).toLocaleString()}`, 'gold'), click()], 'open:bank'),
@@ -273,7 +273,7 @@ function skyblockMenu(player: PlayerState): MenuView {
 function locationMenu(player: PlayerState): MenuView {
   const zone = ZONES[player.zoneId];
   const slots: MenuSlotView[] = [
-    slot(4, 'compass', zone?.name ?? player.zoneId, [line(zone?.description ?? '', 'gray'), line(`Island: ${zone?.islandId ?? 'Unknown'}`, 'aqua')]),
+    slot(4, 'compass', zone?.name ?? player.zoneId, [line(zone?.description ?? '', 'gray'), line(`Area: ${ISLANDS[zone?.islandId ?? player.islandId]?.name ?? zone?.islandId ?? 'Unknown'}`, 'aqua')]),
   ];
   (zone?.actions ?? []).slice(0, 14).forEach((action, i) => {
     const target = typeof action.target === 'string' ? ITEMS[action.target] ?? MOBS[action.target] : undefined;
@@ -292,7 +292,7 @@ function locationMenu(player: PlayerState): MenuView {
       requirement && !unlocked ? line(`Requires ${pretty(requirement.skill)} ${requirement.level}`, 'red') : line('Walk there, or click to skip the stroll.', 'gray'),
     ], unlocked ? `travel:${target.id}` : undefined, { disabled: !unlocked }));
   });
-  slots.push(back(), slot(48, 'warp_gate', 'Warp Gate', [line('Travel to another island.'), click()], 'open:fast_travel', { itemId: 'ender_pearl' }), close());
+  slots.push(back(), slot(48, 'warp_gate', 'Warp Gate', [line('Travel to another area.'), click()], 'open:fast_travel', { itemId: 'ender_pearl' }), close());
   return { id: 'location', title: `Location: ${zone?.name ?? player.zoneId}`, rows: 6, slots, parent: 'skyblock' };
 }
 
@@ -304,8 +304,8 @@ function travelMenu(player: PlayerState): MenuView {
     rows: 6,
     slots: [
       slot(4, 'warp_gate', 'Fast Travel', [
-        line('Islands are fully walkable — warps only cross between them.', 'gray'),
-        line(`Current island: ${ISLANDS[player.islandId]?.name ?? player.islandId}`, 'aqua'),
+        line('Walk the Hub. Warp to the Park, Gold Mine, The End, and more.', 'gray'),
+        line(`Location: ${ISLANDS[player.islandId]?.name ?? player.islandId}`, 'aqua'),
       ], undefined, { itemId: 'ender_pearl' }),
       ...islands.map((island, i) => {
         const requirement = island.skillReq;
@@ -1208,7 +1208,7 @@ function accessoriesMenu(player: PlayerState): MenuView {
       line(`${player.fairySouls} Fairy Souls found`, 'light_purple'),
       line(`+3 ❤ and +3 ❈ per 5 souls`, 'green'),
       line(`Accessory Bag: ${limit} slots`, 'aqua'),
-      line('Explore islands — souls hide near zone corners!', 'gray'),
+      line('Explore the Hub and beyond — souls hide near zone corners!', 'gray'),
     ]),
     back('inventory'),
     close(),

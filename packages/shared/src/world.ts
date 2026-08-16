@@ -4,11 +4,10 @@ import type { MenuId } from './protocol.js';
 
 export const TILE = 16;
 
-/** Size of one district cell, including the hazard gap around its plot. */
-const CELL_W = 28;
-const CELL_H = 22;
-const PLOT_INSET = 3;
-const MARGIN = 3;
+/** Size of one district neighbourhood on the shared landmass. */
+const CELL_W = 26;
+const CELL_H = 20;
+const MARGIN = 6;
 
 export type Facing = 'up' | 'down' | 'left' | 'right';
 
@@ -165,7 +164,7 @@ function set(tiles: TileKind[][], x: number, y: number, kind: TileKind): void {
   if (tiles[y]?.[x] != null) tiles[y][x] = kind;
 }
 
-function carveBridge(tiles: TileKind[][], from: WorldDistrict, to: WorldDistrict, kind: TileKind): void {
+function carvePath(tiles: TileKind[][], from: WorldDistrict, to: WorldDistrict, kind: TileKind): void {
   let x = from.centerX;
   let y = from.centerY;
   const guard = (from.width + to.width + from.height + to.height) * 4;
@@ -232,8 +231,8 @@ function paintDistrict(
     for (let x = plot.x; x < plot.x + plot.width; x++) {
       const edgeX = Math.min(x - plot.x, right - x);
       const edgeY = Math.min(y - plot.y, bottom - y);
-      if (edgeX + edgeY < 2 && random() < 0.7) continue; // rounded corners
-      set(tiles, x, y, ground);
+      if (edgeX + edgeY < 1 && random() < 0.35) set(tiles, x, y, accent);
+      else set(tiles, x, y, ground);
     }
   }
 
@@ -275,7 +274,109 @@ function paintDistrict(
         set(tiles, x, y, 'water');
       }
     }
-    fillRect(tiles, plot.x + 2, pondTop - 1, plot.width - 4, 1, theme.path);
+  fillRect(tiles, plot.x + 2, pondTop - 1, plot.width - 4, 1, theme.path);
+  }
+}
+
+type TerrainStyle = 'shore' | 'cave' | 'void';
+
+function terrainStyle(islandId: IslandId): TerrainStyle {
+  if (
+    islandId === 'gold_mine'
+    || islandId === 'deep_caverns'
+    || islandId === 'dwarven_mines'
+    || islandId === 'crystal_hollows'
+    || islandId === 'dungeon_hub'
+  ) return 'cave';
+  if (islandId === 'private_island' || islandId === 'the_end' || islandId === 'rift') return 'void';
+  return 'shore';
+}
+
+/** Hub neighbourhoods sit like the real SkyBlock village, not a grid of islets. */
+const HUB_GRID: Array<Array<string | null>> = [
+  ['hub_forest', 'hub_graveyard', 'hub_colosseum', 'hub_wilderness'],
+  ['hub_farm', 'hub_plaza', 'hub_coal_mine', 'hub_warps'],
+  ['hub_fishing', 'hub_bazaar', 'hub_auction', 'hub_blacksmith'],
+  ['hub_community', 'hub_bank', 'hub_library', null],
+];
+
+function layoutZones(islandId: IslandId, zones: ZoneDef[]): { zone: ZoneDef; col: number; row: number }[] {
+  if (islandId === 'hub') {
+    const byId = new Map(zones.map((zone) => [zone.id, zone]));
+    const slots: { zone: ZoneDef; col: number; row: number }[] = [];
+    const used = new Set<string>();
+    HUB_GRID.forEach((row, rowIndex) => {
+      row.forEach((id, col) => {
+        if (!id) return;
+        const zone = byId.get(id);
+        if (!zone) return;
+        slots.push({ zone, col, row: rowIndex });
+        used.add(id);
+      });
+    });
+    let extra = 0;
+    for (const zone of zones) {
+      if (used.has(zone.id)) continue;
+      slots.push({ zone, col: extra % 4, row: HUB_GRID.length + Math.floor(extra / 4) });
+      extra++;
+    }
+    return slots;
+  }
+  const cols = Math.min(3, Math.max(1, Math.ceil(Math.sqrt(zones.length))));
+  return zones.map((zone, index) => ({
+    zone,
+    col: index % cols,
+    row: Math.floor(index / cols),
+  }));
+}
+
+function tileNoise(x: number, y: number, salt: number): number {
+  return (hashString(`${salt}:${x},${y}`) % 1000) / 1000;
+}
+
+/** One continent (or cavern) covering every district — water/void only around the rim. */
+function paintContinent(
+  tiles: TileKind[][],
+  districts: WorldDistrict[],
+  theme: IslandTheme,
+  style: TerrainStyle,
+): void {
+  const height = tiles.length;
+  const width = tiles[0]?.length ?? 0;
+  const minX = Math.min(...districts.map((district) => district.x));
+  const maxX = Math.max(...districts.map((district) => district.x + district.width));
+  const minY = Math.min(...districts.map((district) => district.y));
+  const maxY = Math.max(...districts.map((district) => district.y + district.height));
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const pad = style === 'cave' ? 1.2 : 3.4;
+  const rx = (maxX - minX) / 2 + pad;
+  const ry = (maxY - minY) / 2 + pad;
+  const salt = hashString(theme.sky + theme.fog);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const inPlot = districts.some(
+        (district) => x >= district.x && x < district.x + district.width && y >= district.y && y < district.y + district.height,
+      );
+      const nearPlot = districts.some(
+        (district) => x >= district.x - 1 && x < district.x + district.width + 1 && y >= district.y - 1 && y < district.y + district.height + 1,
+      );
+      const nx = (x - cx) / Math.max(1, rx);
+      const ny = (y - cy) / Math.max(1, ry);
+      const wobble = (tileNoise(x, y, salt) - 0.5) * (style === 'cave' ? 0.08 : 0.28);
+      const land = inPlot || nearPlot || nx * nx + ny * ny < 1.02 + wobble;
+      if (land) {
+        tiles[y][x] = theme.ground;
+        continue;
+      }
+      if (style === 'cave') {
+        const rim = x === 0 || y === 0 || x === width - 1 || y === height - 1;
+        tiles[y][x] = rim ? 'void' : 'wall';
+      } else {
+        tiles[y][x] = theme.hazard;
+      }
+    }
   }
 }
 
@@ -284,48 +385,61 @@ export function buildIslandMap(islandId: IslandId): IslandMap {
   if (!zones.length) throw new Error(`Island has no zones: ${islandId}`);
   const theme = ISLAND_THEMES[islandId];
   const random = mulberry32(hashString(islandId));
-
-  const cols = Math.min(4, Math.ceil(Math.sqrt(zones.length)));
-  const rows = Math.ceil(zones.length / cols);
+  const style = terrainStyle(islandId);
+  const slots = layoutZones(islandId, zones);
+  const cols = Math.max(1, ...slots.map((slot) => slot.col + 1));
+  const rows = Math.max(1, ...slots.map((slot) => slot.row + 1));
   const width = MARGIN * 2 + cols * CELL_W;
   const height = MARGIN * 2 + rows * CELL_H;
   const tiles: TileKind[][] = Array.from({ length: height }, () => Array.from({ length: width }, () => theme.hazard));
 
-  const districts: WorldDistrict[] = zones.map((zone, index) => {
-    const col = index % cols;
-    const row = Math.floor(index / cols);
-    const x = MARGIN + col * CELL_W + PLOT_INSET;
-    const y = MARGIN + row * CELL_H + PLOT_INSET;
-    const plotWidth = CELL_W - PLOT_INSET * 2;
-    const plotHeight = CELL_H - PLOT_INSET * 2;
+  const districts: WorldDistrict[] = slots.map((slot) => {
+    const x = MARGIN + slot.col * CELL_W;
+    const y = MARGIN + slot.row * CELL_H;
     return {
-      zoneId: zone.id,
-      name: zone.name,
+      zoneId: slot.zone.id,
+      name: slot.zone.name,
       x,
       y,
-      width: plotWidth,
-      height: plotHeight,
-      centerX: x + Math.floor(plotWidth / 2),
-      centerY: y + Math.floor(plotHeight / 2),
+      width: CELL_W,
+      height: CELL_H,
+      centerX: x + Math.floor(CELL_W / 2),
+      centerY: y + Math.floor(CELL_H / 2),
     };
   });
 
-  zones.forEach((zone, index) => {
-    paintDistrict(tiles, districts[index], districtLook(zone), theme, random);
+  paintContinent(tiles, districts, theme, style);
+
+  slots.forEach((slot, index) => {
+    paintDistrict(tiles, districts[index], districtLook(slot.zone), theme, random);
   });
 
-  // Spanning walkways plus a few loops, so the island is one connected map.
   districts.forEach((plot, index) => {
     if (index === 0) return;
-    const col = index % cols;
-    const previous = col > 0 ? districts[index - 1] : districts[index - cols];
-    if (previous) carveBridge(tiles, plot, previous, theme.path);
-    const above = districts[index - cols];
-    if (above && col > 0 && random() < 0.6) carveBridge(tiles, plot, above, theme.path);
+    const slot = slots[index];
+    const previous = slots.find((entry) => entry.row === slot.row && entry.col === slot.col - 1)
+      ?? slots.find((entry) => entry.col === slot.col && entry.row === slot.row - 1);
+    if (previous) carvePath(tiles, plot, districts[slots.indexOf(previous)], theme.path);
+    const above = slots.find((entry) => entry.col === slot.col && entry.row === slot.row - 1);
+    if (above) carvePath(tiles, plot, districts[slots.indexOf(above)], theme.path);
   });
 
+  if (islandId === 'hub') {
+    const fishing = districts.find((district) => district.zoneId === 'hub_fishing');
+    if (fishing) {
+      for (let y = fishing.y + 4; y < fishing.y + fishing.height; y++) {
+        for (let x = 0; x < fishing.x + 5; x++) {
+          if (tiles[y]?.[x] == null) continue;
+          if (x < fishing.x + 2 || y > fishing.y + fishing.height - 4) tiles[y][x] = 'water';
+        }
+      }
+      fillRect(tiles, fishing.x + 2, fishing.centerY - 1, 6, 3, theme.path);
+    }
+  }
+
   const entities: WorldEntity[] = [];
-  zones.forEach((zone, index) => {
+  slots.forEach((slot, index) => {
+    const zone = slot.zone;
     const plot = districts[index];
     const right = plot.x + plot.width - 1;
     const bottom = plot.y + plot.height - 1;
@@ -344,8 +458,8 @@ export function buildIslandMap(islandId: IslandId): IslandMap {
       entities.push({
         id: `npc:${zone.id}:${zone.npc.id}`,
         zoneId: zone.id,
-        x: plot.x + 3.5,
-        y: plot.y + 3.5,
+        x: plot.x + 4.5,
+        y: plot.y + 4.5,
         kind: 'npc',
         label: zone.npc.name,
         sprite: npcSprite(zone.npc.id),
@@ -358,8 +472,8 @@ export function buildIslandMap(islandId: IslandId): IslandMap {
       entities.push({
         id: `station:${zone.id}:${station}`,
         zoneId: zone.id,
-        x: right - 2.5 - stationIndex * 3,
-        y: plot.y + 3.5,
+        x: right - 3.5 - stationIndex * 3,
+        y: plot.y + 4.5,
         kind: 'station',
         label: info.label,
         sprite: info.sprite,
@@ -375,8 +489,8 @@ export function buildIslandMap(islandId: IslandId): IslandMap {
       entities.push({
         id: `action:${zone.id}:${action.id}`,
         zoneId: zone.id,
-        x: plot.x + 3.5 + col * 4,
-        y: bottom - 2.5 - row * 3,
+        x: plot.x + 4.5 + col * 4,
+        y: bottom - 3.5 - row * 3,
         kind: action.kind === 'combat' ? 'mob' : 'resource',
         label: action.label,
         sprite: action.kind === 'combat'
@@ -387,13 +501,12 @@ export function buildIslandMap(islandId: IslandId): IslandMap {
       });
     });
 
-    // Decoration: fills the plot and gives each fairy soul somewhere to hide.
-    const decorCount = 10 + Math.floor(random() * 6);
+    const decorCount = 8 + Math.floor(random() * 5);
     for (let i = 0; i < decorCount; i++) {
       const dx = plot.x + 1 + Math.floor(random() * (plot.width - 2));
       const dy = plot.y + 1 + Math.floor(random() * (plot.height - 2));
       const tile = tiles[dy]?.[dx];
-      if (tile == null || tile === theme.hazard || tile === theme.path) continue; // keep walkways clear
+      if (tile == null || tile === theme.hazard || tile === theme.path || tile === 'wall' || tile === 'void') continue;
       const occupied = entities.some((entity) => Math.abs(entity.x - (dx + 0.5)) < 1.6 && Math.abs(entity.y - (dy + 0.5)) < 1.6);
       if (occupied) continue;
       entities.push({
@@ -433,8 +546,6 @@ export function buildIslandMap(islandId: IslandId): IslandMap {
     }
   });
 
-  // Nothing interactive may end up walled in, so clear the tile it stands on
-  // plus the ones the player's hitbox overlaps when reaching it.
   for (const entity of entities) {
     if (entity.kind === 'decor') continue;
     for (const [ox, oy] of [[0, 0], [-0.3, -0.3], [0.3, -0.3], [-0.3, 0.3], [0.3, 0.3]]) {
@@ -445,12 +556,15 @@ export function buildIslandMap(islandId: IslandId): IslandMap {
     }
   }
 
+  const spawnDistrict = districts.find((district) => district.zoneId === 'hub_plaza' || district.zoneId.endsWith('_spawn'))
+    ?? districts[0];
+
   return {
     islandId,
     width,
     height,
     tiles,
-    spawn: { x: districts[0].centerX + 0.5, y: districts[0].centerY + 1.5 },
+    spawn: { x: spawnDistrict.centerX + 0.5, y: spawnDistrict.centerY + 1.5 },
     entities,
     districts,
     theme,
