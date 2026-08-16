@@ -12,12 +12,16 @@ import { loginUser, registerUser, verifyToken, loadPlayer } from './auth/index.j
 import { initGame, getCatalogExtra } from './game/panelGame.js';
 import { BAZAAR_ITEMS, ITEMS, RECIPES, COLLECTIONS, SKILLS } from '@aether/shared';
 import { getOrderBook } from './bazaar/engine.js';
-import { seedMarket } from './bazaar/seed.js';
+import { startHypixelSync } from './hypixel/sync.js';
+import { getBazaarSyncMeta } from './hypixel/bazaarSync.js';
+import { getAuctionSyncMeta } from './hypixel/auctionSync.js';
+import { getPriceHistory } from './hypixel/priceHistory.js';
+import { listAuctions } from './auction/engine.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 initStore();
-seedMarket();
+await startHypixelSync();
 
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: true });
@@ -69,6 +73,26 @@ app.get<{ Headers: { authorization?: string } }>('/api/me', async (req, reply) =
 app.get<{ Params: { itemId: string } }>('/api/bazaar/:itemId', async (req) => {
   return getOrderBook(req.params.itemId as never);
 });
+
+app.get('/api/bazaar/meta', async () => ({
+  bazaar: getBazaarSyncMeta(),
+  auction: getAuctionSyncMeta(),
+}));
+
+app.get<{ Params: { itemId: string } }>('/api/bazaar/:itemId/history', async (req) => ({
+  itemId: req.params.itemId,
+  history: getPriceHistory(req.params.itemId as never),
+}));
+
+app.get<{ Querystring: { search?: string; sort?: string; page?: string; pageSize?: string } }>(
+  '/api/auctions',
+  async (req) => listAuctions({
+    search: req.query.search,
+    sort: (req.query.sort as 'price_asc' | 'price_desc' | 'ending' | 'newest') ?? 'ending',
+    page: Number(req.query.page ?? 0),
+    pageSize: Number(req.query.pageSize ?? 24),
+  }),
+);
 
 const clientDist = path.resolve(__dirname, '../../client/dist');
 if (fs.existsSync(clientDist)) {

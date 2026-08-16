@@ -1,11 +1,13 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ITEMS,
   buildItemLore,
+  type BazaarMeta,
   type BazaarOrder,
   type ItemId,
   type OrderBookLevel,
   type OrderBookSnapshot,
+  type PriceHistoryPoint,
 } from '@aether/shared';
 import {
   ClickButton,
@@ -14,6 +16,7 @@ import {
   formatBazaarPrice,
 } from '../chest/slotUtils';
 import { ItemIcon } from '../chest/ItemIcon';
+import { BazaarSyncBadge, PriceHistoryChart } from './BazaarPriceHistory';
 
 const BOOK_DEPTH = 9;
 
@@ -21,12 +24,27 @@ interface Props {
   itemId: ItemId;
   book: OrderBookSnapshot | null;
   orders: BazaarOrder[];
+  bazaarMeta: BazaarMeta | null;
   onMenuClick: (slot: number, button: ClickButton, action?: string) => void;
   onClose: () => void;
   onBack: () => void;
 }
 
-export function BazaarProductPanel({ itemId, book, orders, onMenuClick, onClose, onBack }: Props) {
+export function BazaarProductPanel({ itemId, book, orders, bazaarMeta, onMenuClick, onClose, onBack }: Props) {
+  const [history, setHistory] = useState<PriceHistoryPoint[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch(`/api/bazaar/${itemId}/history`)
+      .then((res) => res.json())
+      .then((json: { history?: PriceHistoryPoint[] }) => {
+        if (!cancelled) setHistory(json.history ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setHistory([]);
+      });
+    return () => { cancelled = true; };
+  }, [itemId, bazaarMeta?.lastUpdated]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -52,6 +70,11 @@ export function BazaarProductPanel({ itemId, book, orders, onMenuClick, onClose,
       onBack={onBack}
       className="bazaar-product-window"
     >
+      <BazaarSyncBadge
+        lastUpdated={bazaarMeta?.lastUpdated ?? null}
+        source={bazaarMeta?.source ?? 'local'}
+        syncing={bazaarMeta?.syncing ?? false}
+      />
       <div className="bazaar-spread-bar">
         <span className="bazaar-spread-buy">Buy {bestAsk == null ? '—' : formatBazaarPrice(bestAsk)}</span>
         <span className="bazaar-spread-mid">
@@ -59,6 +82,8 @@ export function BazaarProductPanel({ itemId, book, orders, onMenuClick, onClose,
         </span>
         <span className="bazaar-spread-sell">Sell {bestBid == null ? '—' : formatBazaarPrice(bestBid)}</span>
       </div>
+
+      <PriceHistoryChart history={history} />
 
       <div className="bazaar-product-layout">
         <OrderBookSide
@@ -118,6 +143,7 @@ export function BazaarProductPanel({ itemId, book, orders, onMenuClick, onClose,
               disabled={bestBid == null}
               lore={[
                 { text: bestBid == null ? 'No buy offers' : `${formatBazaarPrice(bestBid)} coins each`, color: 'gold' },
+                { text: '1.125% bazaar tax on sells', color: 'gray' },
                 { text: 'Left: 1 · Right: 64', color: 'yellow' },
               ]}
               onClick={(button) => onMenuClick(0, button, `bazaarSell:${itemId}`)}

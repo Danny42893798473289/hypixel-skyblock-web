@@ -6,6 +6,7 @@ import {
   skyblockLevelFromXp,
   skyblockXp,
   type BazaarOrder,
+  type BazaarMeta,
   type ChatMessage,
   type MenuId,
   type MenuView,
@@ -19,6 +20,7 @@ import { ChestMenu } from './ui/chest/ChestMenu';
 import { PlayerInventoryPanel } from './ui/inventory/PlayerInventoryPanel';
 import { BazaarProductPanel } from './ui/bazaar/BazaarProductPanel';
 import { BazaarManageOrdersPanel } from './ui/bazaar/BazaarManageOrdersPanel';
+import { AuctionBrowsePanel } from './ui/auction/AuctionBrowsePanel';
 import { HotbarHud } from './ui/hotbar/HotbarHud';
 import { gameSocket } from './api/socket';
 import { WorldCanvas } from './world/WorldCanvas';
@@ -39,6 +41,7 @@ export function App() {
   const [zonePlayers, setZonePlayers] = useState<PlayerPublic[]>([]);
   const [bazaarBook, setBazaarBook] = useState<OrderBookSnapshot | null>(null);
   const [bazaarOrders, setBazaarOrders] = useState<BazaarOrder[]>([]);
+  const [bazaarMeta, setBazaarMeta] = useState<BazaarMeta | null>(null);
   const [chatText, setChatText] = useState('');
   const [chatFocused, setChatFocused] = useState(false);
   const [touchMode, setTouchMode] = useState(false);
@@ -83,6 +86,9 @@ export function App() {
           break;
         case 'bazaarOrders':
           setBazaarOrders(event.orders);
+          break;
+        case 'bazaarMeta':
+          setBazaarMeta(event.meta);
           break;
         case 'players':
           setZonePlayers(event.players);
@@ -350,6 +356,7 @@ export function App() {
             itemId={String(menu.context.itemId)}
             book={bazaarBook?.itemId === menu.context.itemId ? bazaarBook : null}
             orders={bazaarOrders}
+            bazaarMeta={bazaarMeta}
             onMenuClick={(slot, button, action) => {
               if (action === 'close') {
                 closeMenu();
@@ -372,6 +379,18 @@ export function App() {
             }}
             onClose={closeMenu}
             onBack={() => openMenu(parent, menu.context)}
+          />
+        ) : menu.id === 'auction' && (menu.context?.mode == null || menu.context?.mode === 'browse') ? (
+          <AuctionBrowsePanel
+            onMenuClick={(slot, button, action) => {
+              if (action === 'close') {
+                closeMenu();
+                return;
+              }
+              gameSocket.send({ type: 'menuClick', menu: menu.id, slot, button, action });
+            }}
+            onClose={closeMenu}
+            onBack={() => openMenu(parent)}
           />
         ) : (
           <ChestMenu

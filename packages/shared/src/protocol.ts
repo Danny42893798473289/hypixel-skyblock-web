@@ -18,6 +18,7 @@ import type {
   MuseumState,
   WardrobeState,
 } from './midgame.js';
+import type { BazaarMeta } from './economy.js';
 
 export type EquipmentSlot = 'helmet' | 'chestplate' | 'leggings' | 'boots';
 export type DungeonClass = 'berserk' | 'archer' | 'mage' | 'tank' | 'healer';
@@ -246,6 +247,7 @@ export type ServerEvent =
   | { type: 'zonePlayers'; players: PlayerPublic[] }
   | { type: 'bazaarBook'; book: OrderBookSnapshot }
   | { type: 'bazaarOrders'; orders: BazaarOrder[] }
+  | { type: 'bazaarMeta'; meta: BazaarMeta }
   | { type: 'toast'; message: string; kind?: 'info' | 'error' | 'success' }
   | { type: 'chat'; message: ChatMessage }
   | { type: 'actionResult'; actionId: string; success: boolean; message: string }

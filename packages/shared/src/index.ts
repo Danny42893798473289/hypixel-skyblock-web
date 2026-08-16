@@ -18,6 +18,7 @@ export * from './accessories.js';
 export * from './worldCombat.js';
 export * from './quests.js';
 export * from './midgame.js';
+export * from './economy.js';
 import './registerCatalog.js';
 import './registerGear.js';
 import './registerSkyblockRecipes.js';

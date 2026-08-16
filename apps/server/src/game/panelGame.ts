@@ -91,6 +91,8 @@ import { registerLivePlayer, unregisterLivePlayer } from './livePlayers.js';
 import { buildMenu } from './menus.js';
 import { magicalPower, recomputeStats } from './profile.js';
 import { buyBin, cancelListing, claimAuction, createListing, durationOptions, placeBid } from '../auction/engine.js';
+import { onBazaarSynced } from '../hypixel/broadcast.js';
+import { getBazaarSyncMeta } from '../hypixel/bazaarSync.js';
 import {
   abilityDamage,
   abilityKey,
@@ -281,6 +283,22 @@ function publishBazaar(itemId: ItemId): void {
   }
 }
 
+function publishBazaarMeta(): void {
+  const meta = getBazaarSyncMeta();
+  for (const s of sessions.values()) {
+    emit(s.socket, { type: 'bazaarMeta', meta });
+  }
+}
+
+function publishBazaarSync(): void {
+  publishBazaarMeta();
+  const items = new Set<ItemId>();
+  for (const s of sessions.values()) {
+    if (s.bazaarItem) items.add(s.bazaarItem);
+  }
+  for (const itemId of items) publishBazaar(itemId);
+}
+
 function skillLevel(player: PlayerState, skill: keyof PlayerState['skills']): number {
   return levelFromXp(player.skills[skill]).level;
 }
@@ -346,6 +364,8 @@ export function initGame(serverIo: SocketServer): void {
     if (s.bazaarItem) publishBazaar(s.bazaarItem);
   });
 
+  onBazaarSynced(() => publishBazaarSync());
+
   serverIo.on('connection', (socket) => {
     const token = socket.handshake.auth?.token as string | undefined;
     const userId = verifyToken(token);
@@ -401,6 +421,7 @@ export function initGame(serverIo: SocketServer): void {
     catchUpMinions(session.player);
     savePlayer(session.player);
     emit(socket, { type: 'welcome', player: session.player, token: token! });
+    emit(socket, { type: 'bazaarMeta', meta: getBazaarSyncMeta() });
     const offlineInterest = takeOfflineInterest(userId);
     if (offlineInterest > 0) {
       toast(session, `Your bank earned ${offlineInterest.toLocaleString()} coins of interest while you were away!`, 'success');
