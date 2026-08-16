@@ -22,9 +22,12 @@ import {
   collectionProgress,
   collectionsInCategory,
   isRecipeUnlocked,
+  obtainHintForItem,
   islandForZone,
   levelFromXp,
+  recipesForCollection,
   recipesInCategory,
+  buildRecipeBookLore,
   warpableIslands,
   zonesOnIsland,
   npcSellPrice,
@@ -32,6 +35,10 @@ import {
   FAIRY_SOULS_PER_BAG_SLOT,
   BASE_ACCESSORY_BAG_SLOTS,
   countItem,
+  BACKPACK_PAGES,
+  BACKPACK_SIZE,
+  backpackSlotsUsed,
+  normalizeBackpacks,
   type CollectionCategory,
   type IslandId,
   type ItemId,
@@ -200,6 +207,8 @@ export function buildMenu(
     case 'enchanting': return enchantingMenu(player, context);
     case 'reforge': return reforgeMenu(player);
     case 'leaderboard': return leaderboardMenu(player);
+    case 'backpack': return backpackHubMenu(player);
+    case 'backpack_page': return backpackPageMenu(player, context);
     default: return skyblockMenu(player);
   }
 }
@@ -230,6 +239,11 @@ function skyblockMenu(player: PlayerState): MenuView {
       slot(14, 'chest', 'Inventory & Equipment', [line('Manage armor, weapons and carried items.'), click()], 'open:inventory'),
       slot(15, 'talisman', 'Accessory Bag', [line(`Magical Power: ${player.magicalPower}`, 'light_purple'), click()], 'open:accessories'),
       slot(16, 'pet', 'Pets', [line(`${player.pets.length} pets`), click()], 'open:pets'),
+      slot(36, 'chest', 'Storage', [
+        line('10 double chests — always unlocked.', 'gray'),
+        line(`${backpackSlotsUsedTotal(player)} / ${BACKPACK_PAGES * BACKPACK_SIZE} slots used`, 'aqua'),
+        click(),
+      ], 'open:backpack'),
       slot(19, 'emerald', 'Bazaar', [line('Buy and sell stackable commodities.'), click()], 'open:bazaar'),
       slot(20, 'gold_ingot', 'Auction House', [line('Trade unique weapons, armor and pets.'), click()], 'open:auction'),
       slot(21, 'coin', 'Bank', [line(`Purse: ${Math.floor(player.coins).toLocaleString()}`, 'gold'), line(`Bank: ${Math.floor(player.bank.balance).toLocaleString()}`, 'gold'), click()], 'open:bank'),
@@ -331,6 +345,7 @@ function inventoryMenu(player: PlayerState): MenuView {
     return view;
   });
   slots.push(
+    slot(16, 'chest', 'Storage', [line('10 double chests of extra inventory.'), click()], 'open:backpack'),
     slot(24, 'talisman', 'Accessory Bag', [line(`${player.accessories.length} accessories`), line(`Magical Power: ${player.magicalPower}`, 'light_purple'), click()], 'open:accessories'),
     slot(25, 'anvil', 'Reforge Anvil', [click()], 'open:reforge'),
     slot(26, 'enchanting_table', 'Enchanting Table', [click()], 'open:enchanting'),
@@ -408,16 +423,32 @@ function collectionsMenu(player: PlayerState, context: Context): MenuView {
     const progress = collectionProgress(collection, amount);
     const view = itemSlot(GRID[i], collection.itemId, undefined, Math.min(64, Math.max(1, Math.floor(amount) || 1)));
     view.name = `${collection.name} Collection`;
+    const related = recipesForCollection(collection.itemId);
+    const obtain = obtainHintForItem(collection.itemId);
     view.lore = [
-      line(`Collected: ${Math.floor(amount).toLocaleString()}`, 'yellow'),
+      amount > 0
+        ? line(`Collected: ${Math.floor(amount).toLocaleString()}`, 'yellow')
+        : line('Not discovered yet', 'red', true),
       line(`Tier ${progress.tier}/${progress.maxTier}`, 'aqua'),
+      line(obtain, 'gray'),
       line(''),
-      ...(progress.next
-        ? [line(`Next: ${progress.next.amount.toLocaleString()} — ${progress.next.label}`, 'gray'),
-           line(`Remaining: ${Math.max(0, progress.next.amount - Math.floor(amount)).toLocaleString()}`, 'red')]
-        : [line('Collection maxed!', 'green')]),
+      line('Unlocks', 'yellow', true),
+      ...collection.tiers.flatMap((tier) => {
+        const done = amount >= tier.amount;
+        const recipes = related.filter((recipe) => (recipe.unlockAmount ?? 0) === tier.amount);
+        const rows: LoreLine[] = [
+          line(`${done ? '✔' : '✖'} ${tier.amount.toLocaleString()} — ${tier.label}`, done ? 'green' : 'red'),
+        ];
+        if (!done) {
+          for (const recipe of recipes) {
+            rows.push(line(`  ${recipe.name}: ${recipe.ingredients.map((ing) => `${ing.qty}× ${ITEMS[ing.itemId]?.name ?? ing.itemId}`).join(', ')}`, 'gray'));
+          }
+        }
+        return rows;
+      }),
     ];
     view.glint = progress.tier > 0;
+    view.disabled = amount <= 0;
     return view;
   });
 
@@ -460,17 +491,7 @@ function craftingMenu(player: PlayerState, context: Context): MenuView {
     const view = itemSlot(GRID[i], recipe.result.itemId, unlocked ? `craft:${recipe.id}` : undefined, recipe.result.qty);
     view.name = recipe.name;
     view.disabled = !unlocked;
-    view.lore = [
-      line('Ingredients:', 'yellow'),
-      ...recipe.ingredients.map((ingredient) => {
-        const have = countCollectionSafe(player, ingredient.itemId);
-        return line(`${have >= ingredient.qty ? '✔' : '✖'} ${ingredient.qty}x ${ITEMS[ingredient.itemId]?.name ?? ingredient.itemId} (${have})`, have >= ingredient.qty ? 'green' : 'red');
-      }),
-      line(''),
-      unlocked
-        ? line('Click to craft!', 'yellow')
-        : line(`Requires ${recipe.unlockAmount?.toLocaleString()} ${ITEMS[recipe.unlockCollection!]?.name} Collection`, 'red'),
-    ];
+    view.lore = buildRecipeBookLore(recipe, player.collections, (itemId) => countItem(player.inventory, itemId));
     return view;
   });
 
@@ -488,10 +509,6 @@ function craftingMenu(player: PlayerState, context: Context): MenuView {
     ],
     parent: 'skyblock',
   };
-}
-
-function countCollectionSafe(player: PlayerState, itemId: ItemId): number {
-  return player.inventory.reduce((total, stack) => (stack?.itemId === itemId ? total + stack.qty : total), 0);
 }
 
 function formatBazaarPrice(price: number): string {
@@ -1027,6 +1044,59 @@ function dungeonsMenu(player: PlayerState, context: Context = {}): MenuView {
       close(),
     ],
     parent: 'skyblock',
+  };
+}
+
+function backpackSlotsUsedTotal(player: PlayerState): number {
+  return normalizeBackpacks(player.backpacks).reduce((sum, pack) => sum + backpackSlotsUsed(pack), 0);
+}
+
+function stackMenuSlot(slotNumber: number, stack: PlayerState['inventory'][number], action: string): MenuSlotView {
+  if (!stack) return slot(slotNumber, '', '', [], action);
+  const def = ITEMS[stack.itemId];
+  if (!def) return slot(slotNumber, 'barrier', 'Unknown Item', [line(stack.itemId, 'red')], action);
+  return slot(slotNumber, def.sprite ?? spriteFor(stack.itemId, def.type), def.name, buildItemLore(def, stack), action, {
+    itemId: stack.itemId,
+    count: stack.qty,
+    rarity: def.rarity ?? 'COMMON',
+    glint: Boolean(stack.enchantments && Object.keys(stack.enchantments).length),
+  });
+}
+
+function backpackHubMenu(player: PlayerState): MenuView {
+  const packs = normalizeBackpacks(player.backpacks);
+  const positions = [11, 12, 13, 14, 15, 20, 21, 22, 23, 24];
+  const slots: MenuSlotView[] = [
+    slot(4, 'chest', 'Storage', [
+      line('Ten double chests of extra space.', 'gray'),
+      line('No collection unlock required.', 'green'),
+      line(`${backpackSlotsUsedTotal(player)} / ${BACKPACK_PAGES * BACKPACK_SIZE} slots used`, 'aqua'),
+    ]),
+  ];
+  for (let i = 0; i < BACKPACK_PAGES; i++) {
+    const used = backpackSlotsUsed(packs[i]);
+    slots.push(slot(positions[i], 'chest', `Backpack ${i + 1}`, [
+      line('Double Chest', 'dark_gray'),
+      line(`${used} / ${BACKPACK_SIZE} slots used`, used >= BACKPACK_SIZE ? 'red' : 'aqua'),
+      line(''),
+      line('Click to open!', 'yellow'),
+    ], `backpack:open:${i}`));
+  }
+  slots.push(back(), close());
+  return { id: 'backpack', title: 'Storage', rows: 6, slots, parent: 'skyblock' };
+}
+
+function backpackPageMenu(player: PlayerState, context: Context): MenuView {
+  const page = Math.max(0, Math.min(BACKPACK_PAGES - 1, Number(context.page ?? 0) || 0));
+  const pack = normalizeBackpacks(player.backpacks)[page];
+  const slots = pack.map((stack, index) => stackMenuSlot(index, stack, `backpack:click:${index}`));
+  return {
+    id: 'backpack_page',
+    title: `Backpack ${page + 1}`,
+    rows: 6,
+    slots,
+    parent: 'backpack',
+    context: { page },
   };
 }
 

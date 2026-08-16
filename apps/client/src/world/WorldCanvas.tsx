@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   TILE,
-  playerWorldMap,
+  DUNGEON_ZONE,
+  buildDungeonRoomMap,
+  dungeonPhase,
+  islandMap,
   nearestEntity,
+  overlayLiveWorld,
+  playerWorldMap,
+  type IslandMap,
   type PlayerPublic,
   type PlayerState,
   type WorldEntity,
@@ -34,17 +40,49 @@ interface RemotePosition {
 /** Fairy souls only fade in once you are almost standing on them. */
 const FAIRY_REVEAL_DISTANCE = 2.6;
 
+function dungeonCollisionKey(player: PlayerState): string {
+  const run = player.dungeonRun;
+  if (!run || player.zoneId !== DUNGEON_ZONE) return '';
+  return `${run.floorId}:${dungeonPhase(run)}:${run.room}`;
+}
+
+function liveWorldKey(player: PlayerState): string {
+  const mobs = (player.worldMobs ?? []).map((mob) => `${mob.id}:${Math.ceil(mob.hp)}`).join(',');
+  const minions = (player.minions ?? []).map((minion) => `${minion.id}:${minion.storage}`).join(',');
+  const run = player.dungeonRun;
+  const dungeon = run
+    ? `${run.bossHp ?? 0}:${run.roomCleared ? 1 : 0}:${run.secretClaimed ? 1 : 0}:${JSON.stringify(run.mobHp ?? {})}`
+    : '';
+  return `${mobs}|${minions}|${dungeon}`;
+}
+
 export function WorldCanvas({ player, zonePlayers, inputDisabled, touchMode, onOpenMenu, onOpenInventory }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const map = useMemo(
-    () => playerWorldMap(player),
-    [player.islandId, player.zoneId, player.dungeonRun, player.worldMobs, player.minions],
+  const collisionKey = player.zoneId === DUNGEON_ZONE ? dungeonCollisionKey(player) : player.islandId;
+  // collisionKey covers island + dungeon floor/phase/room, not object identity.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const collisionMap = useMemo((): IslandMap => {
+    if (player.dungeonRun && player.zoneId === DUNGEON_ZONE) return buildDungeonRoomMap(player.dungeonRun);
+    return islandMap(player.islandId);
+  }, [collisionKey]);
+  const overlayKey = liveWorldKey(player);
+  // overlayKey is the stable digest of mob HP / minion storage / dungeon combat.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const liveMap = useMemo(
+    () => (player.dungeonRun && player.zoneId === DUNGEON_ZONE ? playerWorldMap(player) : overlayLiveWorld(collisionMap, player)),
+    [collisionMap, overlayKey],
   );
-  const { positionRef, movingRef, setTouchDirection } = useMovement(player, map, inputDisabled);
+  const { positionRef, movingRef, setTouchDirection } = useMovement(player, collisionMap, inputDisabled);
   const remotesRef = useRef(new Map<string, RemotePosition>());
   const [nearby, setNearby] = useState<WorldEntity | null>(null);
   const nearbyIdRef = useRef<string | null>(null);
   const foundFairies = useMemo(() => new Set(player.visitedZones.filter((entry) => entry.startsWith('fairy:'))), [player.visitedZones]);
+  const liveMapRef = useRef(liveMap);
+  const foundFairiesRef = useRef(foundFairies);
+  const usernameRef = useRef(player.username);
+  liveMapRef.current = liveMap;
+  foundFairiesRef.current = foundFairies;
+  usernameRef.current = player.username;
 
   useEffect(() => {
     const seen = new Set<string>();
@@ -100,6 +138,7 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, touchMode, onO
       const scale = Math.max(2, Math.min(5, Math.floor(Math.min(cssWidth / (TILE * tilesAcross), cssHeight / (TILE * tilesDown)))));
       const viewportWidth = cssWidth / scale;
       const viewportHeight = cssHeight / scale;
+      const map = liveMapRef.current;
       const local = positionRef.current;
       const worldWidth = map.width * TILE;
       const worldHeight = map.height * TILE;
@@ -130,7 +169,7 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, touchMode, onO
       for (const entity of map.entities) {
         if (entity.x < firstX - 2 || entity.x > lastX + 2 || entity.y < firstY - 2 || entity.y > lastY + 3) continue;
         if (entity.kind === 'fairy') {
-          if (foundFairies.has(entity.id)) continue;
+          if (foundFairiesRef.current.has(entity.id)) continue;
           const distance = Math.hypot(entity.x - local.x, entity.y - local.y);
           if (distance > FAIRY_REVEAL_DISTANCE) continue;
           const alpha = 1 - distance / FAIRY_REVEAL_DISTANCE;
@@ -159,7 +198,7 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, touchMode, onO
         y: local.y,
         draw: () => {
           drawPlayer(ctx, local.x, local.y, local.facing, movingRef.current, Math.floor(now / 150), true);
-          drawNameplate(ctx, player.username, local.x, local.y - 1.15, '#ffff55');
+          drawNameplate(ctx, usernameRef.current, local.x, local.y - 1.15, '#ffff55');
         },
       });
       drawables.sort((a, b) => a.y - b.y);
@@ -172,7 +211,7 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, touchMode, onO
     };
     animationFrame = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animationFrame);
-  }, [foundFairies, map, movingRef, player.username, positionRef]);
+  }, [movingRef, positionRef]);
 
   return (
     <>

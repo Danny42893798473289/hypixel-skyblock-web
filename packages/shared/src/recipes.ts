@@ -1,4 +1,6 @@
 import { ITEMS, type ItemId } from './items.js';
+import type { LoreLine } from './lore.js';
+import { isRecipeUnlocked, obtainHintForItem, type CollectionsState } from './collections.js';
 
 export interface Recipe {
   id: string;
@@ -206,4 +208,51 @@ export function recipeCategory(recipe: Recipe): RecipeCategory {
 export function recipesInCategory(category: RecipeCategory): Recipe[] {
   return RECIPES.filter((recipe) => recipeCategory(recipe) === category)
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function recipesForCollection(collectionId: ItemId): Recipe[] {
+  return RECIPES.filter((recipe) => recipe.unlockCollection === collectionId)
+    .sort((a, b) => (a.unlockAmount ?? 0) - (b.unlockAmount ?? 0));
+}
+
+/** Tooltip for the recipe book — always includes ingredients, plus collection requirements when locked. */
+export function buildRecipeBookLore(
+  recipe: Recipe,
+  collections: CollectionsState,
+  inventoryCount: (itemId: ItemId) => number,
+): LoreLine[] {
+  const unlocked = isRecipeUnlocked(recipe.unlockCollection, recipe.unlockAmount, collections);
+  const lines: LoreLine[] = [];
+  if (!unlocked && recipe.unlockCollection) {
+    const have = collections[recipe.unlockCollection] ?? 0;
+    const need = recipe.unlockAmount ?? 0;
+    const collectionName = ITEMS[recipe.unlockCollection]?.name ?? recipe.unlockCollection;
+    lines.push(
+      { text: 'LOCKED', color: 'red', bold: true },
+      { text: `Requires ${collectionName} Collection ${need.toLocaleString()}`, color: 'red' },
+      { text: `Progress: ${Math.floor(have).toLocaleString()}/${need.toLocaleString()}`, color: have >= need ? 'green' : 'yellow' },
+      { text: obtainHintForItem(recipe.unlockCollection), color: 'aqua' },
+      { text: '' },
+    );
+  }
+  lines.push(
+    { text: `Crafts ${recipe.result.qty > 1 ? `${recipe.result.qty}× ` : ''}${ITEMS[recipe.result.itemId]?.name ?? recipe.name}`, color: 'gray' },
+    { text: 'Ingredients', color: 'yellow', bold: true },
+  );
+  for (const ingredient of recipe.ingredients) {
+    const have = inventoryCount(ingredient.itemId);
+    const ready = have >= ingredient.qty;
+    lines.push({
+      text: `${ready ? '✔' : '✖'} ${ingredient.qty}× ${ITEMS[ingredient.itemId]?.name ?? ingredient.itemId}  (${have})`,
+      color: ready ? 'green' : 'red',
+    });
+  }
+  lines.push({ text: '' });
+  if (unlocked) {
+    const canCraft = recipe.ingredients.every((ingredient) => inventoryCount(ingredient.itemId) >= ingredient.qty);
+    lines.push({ text: canCraft ? 'Click to craft!' : 'Missing ingredients', color: canCraft ? 'yellow' : 'red' });
+  } else {
+    lines.push({ text: 'Collect the requirement above to craft this.', color: 'dark_gray' });
+  }
+  return lines;
 }

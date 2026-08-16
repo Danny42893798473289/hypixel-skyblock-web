@@ -1,4 +1,7 @@
 import type { ItemId } from './items.js';
+import { ITEMS } from './items.js';
+import { ZONES } from './locations.js';
+import { MOBS } from './content.js';
 
 export interface CollectionTier {
   amount: number;
@@ -145,4 +148,39 @@ export function isRecipeUnlocked(
   if (!unlockCollection) return true;
   const have = collections[unlockCollection] ?? 0;
   return have >= (unlockAmount ?? 0);
+}
+
+function uniqueNames(names: string[], limit = 3): string[] {
+  return [...new Set(names)].slice(0, limit);
+}
+
+/** Where to gather a collection item so locked recipes can explain how to unlock. */
+export function obtainHintForItem(itemId: ItemId): string {
+  const collection = COLLECTIONS.find((entry) => entry.itemId === itemId);
+  const name = ITEMS[itemId]?.name ?? collection?.name ?? itemId;
+  const verb = collection?.category === 'farming' ? 'Harvest'
+    : collection?.category === 'mining' ? 'Mine'
+    : collection?.category === 'foraging' ? 'Chop'
+    : collection?.category === 'fishing' ? 'Fish up'
+    : collection?.category === 'combat' ? 'Collect'
+    : 'Collect';
+
+  const zones = uniqueNames(
+    Object.values(ZONES)
+      .filter((zone) => zone.actions.some((action) => action.target === itemId))
+      .map((zone) => zone.name),
+  );
+  const mobs = uniqueNames(
+    Object.values(MOBS)
+      .filter((mob) => mob.drops.some((drop) => drop.itemId === itemId))
+      .map((mob) => mob.name),
+  );
+
+  if (collection?.category === 'combat' && mobs.length) {
+    const where = zones.length ? ` in ${zones.join(', ')}` : '';
+    return `Kill ${mobs.join(', ')}${where} for ${name}.`;
+  }
+  if (zones.length) return `${verb} ${name} at ${zones.join(', ')}.`;
+  if (mobs.length) return `Dropped by ${mobs.join(', ')}.`;
+  return `${verb} ${name} in the world.`;
 }

@@ -406,11 +406,14 @@ button { color: inherit; }
   image-rendering: pixelated;
 }
 button.mc-slot { cursor: pointer; }
-button.mc-slot:hover:not(:disabled) {
+button.mc-slot:hover {
   background: #b0b0b0;
   z-index: 50;
 }
-button.mc-slot:disabled { filter: grayscale(1) brightness(.65); cursor: not-allowed; }
+button.mc-slot:disabled,
+button.mc-slot.is-locked { filter: grayscale(1) brightness(.65); }
+button.mc-slot:disabled { cursor: not-allowed; }
+button.mc-slot.is-locked { cursor: pointer; }
 .mc-slot.empty { background: #8b8b8b; }
 .mc-slot:nth-child(n+28):nth-child(-n+36) { margin-bottom: 0; }
 .player-inventory .mc-slot:nth-child(n+28) { margin-top: 5px; }
@@ -444,10 +447,11 @@ button.mc-slot:disabled { filter: grayscale(1) brightness(.65); cursor: not-allo
 }
 @keyframes glint { from { background-position: 140% 0; } to { background-position: -140% 0; } }
 
+.lore-tooltip-anchor { display: none; }
 .lore-tooltip {
   display: none;
   position: fixed;
-  z-index: 1000;
+  z-index: 4000;
   left: min(calc(50vw + 245px), calc(100vw - 330px));
   top: 12vh;
   width: max-content;
@@ -460,6 +464,10 @@ button.mc-slot:disabled { filter: grayscale(1) brightness(.65); cursor: not-allo
   border: 3px solid #25005a;
   box-shadow: inset 0 0 0 1px #5a1688, 4px 4px #0008;
   text-shadow: 2px 2px #000;
+}
+.lore-tooltip.lore-tooltip-floating {
+  display: flex;
+  flex-direction: column;
 }
 .mc-slot:hover .lore-tooltip { display: flex; flex-direction: column; }
 .lore-line { min-height: 20px; white-space: pre-wrap; font-size: 19px; line-height: 20px; }
@@ -635,7 +643,7 @@ button.mc-slot:disabled { filter: grayscale(1) brightness(.65); cursor: not-allo
 }
 .inventory-utility-row {
   display: grid;
-  grid-template-columns: repeat(3, var(--slot-size));
+  grid-template-columns: repeat(2, var(--slot-size));
   gap: 0;
 }
 .inventory-craft-tabs {
@@ -663,6 +671,47 @@ button.mc-slot:disabled { filter: grayscale(1) brightness(.65); cursor: not-allo
   grid-template-columns: repeat(3, var(--slot-size));
   grid-template-rows: repeat(3, var(--slot-size));
   gap: 0;
+  flex: 0 0 auto;
+}
+.inventory-craft-row {
+  display: flex;
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+}
+.inventory-craft-selected.mc-slot,
+.mc-slot.inventory-craft-selected {
+  box-shadow: inset 0 0 0 2px var(--mc-yellow);
+}
+.inventory-craft-detail {
+  min-width: 180px;
+  max-width: 280px;
+  max-height: calc(var(--slot-size) * 6);
+  overflow-y: auto;
+  padding: 8px 10px;
+  color: white;
+  background: #100010f2;
+  border: 3px solid #25005a;
+  box-shadow: inset 0 0 0 1px #5a1688;
+  text-shadow: 2px 2px #000;
+}
+.inventory-craft-detail .inventory-label {
+  height: auto;
+  margin: 8px 0 4px;
+  color: #c6c6c6;
+  font-size: 16px;
+  text-shadow: 1px 1px #000;
+}
+.inventory-craft-pattern {
+  display: grid;
+  grid-template-columns: repeat(3, 28px);
+  grid-template-rows: repeat(3, 28px);
+  gap: 0;
+}
+.inventory-craft-pattern .mc-slot {
+  width: 28px;
+  height: 28px;
+  padding: 2px;
 }
 .inventory-craft-pages {
   display: flex;

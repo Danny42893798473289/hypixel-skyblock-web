@@ -42,6 +42,7 @@ function resolveUsersPath(): string {
 
 export const usersPath = resolveUsersPath();
 export const dataDir = path.dirname(usersPath);
+export const auctionsPath = path.join(dataDir, 'auctions.json');
 
 export interface StoredUser {
   id: string;
@@ -75,6 +76,7 @@ export interface StoredUser {
   wardrobe?: WardrobeState;
   dragonFight?: DragonFightState | null;
   kuudraFight?: KuudraFightState | null;
+  backpacks?: Inventory[];
   x?: number;
   y?: number;
   facing?: Facing;
@@ -123,46 +125,143 @@ const emptyFile = (): UsersFile => ({ schemaVersion: 2, users: [], bazaarOrders:
 
 let data: UsersFile = emptyFile();
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+let auctionSaveTimer: ReturnType<typeof setTimeout> | null = null;
+let persistPaused = 0;
+const lockPath = path.join(dataDir, 'server.pid');
 
 function ensureDir(): void {
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 }
 
+function pidIsAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+function releaseDataLock(): void {
+  try {
+    if (fs.readFileSync(lockPath, 'utf8').trim() === String(process.pid)) fs.unlinkSync(lockPath);
+  } catch {
+    /* lock already gone */
+  }
+}
+
+function acquireDataLock(): void {
+  ensureDir();
+  if (fs.existsSync(lockPath)) {
+    const existing = Number(fs.readFileSync(lockPath, 'utf8').trim());
+    if (pidIsAlive(existing) && existing !== process.pid) {
+      throw new Error(
+        `Server already running (pid ${existing}). Stop that process first.\nIf it is leftover from a crash, delete ${lockPath} and try again.`,
+      );
+    }
+  }
+  fs.writeFileSync(lockPath, String(process.pid));
+  process.once('exit', releaseDataLock);
+}
+
+function readJsonFile<T>(filePath: string): T | null {
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8')) as T;
+  } catch {
+    return null;
+  }
+}
+
+function writeJsonFile(filePath: string, value: unknown): void {
+  ensureDir();
+  const tmp = `${filePath}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(value), 'utf8');
+    try {
+      fs.renameSync(tmp, filePath);
+    } catch {
+      fs.copyFileSync(tmp, filePath);
+      fs.unlinkSync(tmp);
+    }
+  } catch (err) {
+    try { fs.unlinkSync(tmp); } catch { /* leftover tmp is harmless */ }
+    throw err;
+  }
+}
+
+function loadAuctions(fromUsersFile: StoredAuction[]): StoredAuction[] {
+  const separate = readJsonFile<StoredAuction[]>(auctionsPath);
+  if (Array.isArray(separate)) return separate;
+  return Array.isArray(fromUsersFile) ? fromUsersFile : [];
+}
+
 export function loadStore(): UsersFile {
+  acquireDataLock();
   ensureDir();
   if (!fs.existsSync(usersPath)) {
     data = emptyFile();
     writeNow();
+    writeAuctionsNow();
     return data;
   }
   try {
-    const raw = fs.readFileSync(usersPath, 'utf8');
-    const parsed = JSON.parse(raw) as Partial<UsersFile> & { schemaVersion?: number };
+    const parsed = readJsonFile<Partial<UsersFile> & { schemaVersion?: number }>(usersPath) ?? {};
     if ((parsed.schemaVersion ?? 1) < 2) {
       const backupPath = path.join(dataDir, 'users.v1.json.bak');
       if (!fs.existsSync(backupPath)) fs.copyFileSync(usersPath, backupPath);
     }
+    const migratedAuctions = Array.isArray(parsed.auctions) ? parsed.auctions : [];
     data = {
       schemaVersion: 2,
       users: Array.isArray(parsed.users) ? parsed.users : [],
       bazaarOrders: Array.isArray(parsed.bazaarOrders) ? parsed.bazaarOrders : [],
-      auctions: Array.isArray(parsed.auctions) ? parsed.auctions : [],
+      auctions: loadAuctions(migratedAuctions),
     };
+    if (!fs.existsSync(auctionsPath) && data.auctions.length) writeAuctionsNow();
+    if (migratedAuctions.length) writeNow();
   } catch {
     data = emptyFile();
     writeNow();
+    writeAuctionsNow();
   }
   return data;
 }
 
 function writeNow(): void {
-  ensureDir();
-  const tmp = `${usersPath}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
-  fs.renameSync(tmp, usersPath);
+  try {
+    writeJsonFile(usersPath, {
+      schemaVersion: data.schemaVersion,
+      users: data.users,
+      bazaarOrders: data.bazaarOrders,
+    });
+  } catch (err) {
+    console.error('[save] failed to write users.json:', err);
+  }
+}
+
+function writeAuctionsNow(): void {
+  try {
+    writeJsonFile(auctionsPath, data.auctions);
+  } catch (err) {
+    console.error('[save] failed to write auctions.json:', err);
+  }
+}
+
+/** Hold disk writes while applying a bulk bazaar/auction update, then flush once. */
+export function withPausedPersist(fn: () => void): void {
+  persistPaused++;
+  try {
+    fn();
+  } finally {
+    persistPaused = Math.max(0, persistPaused - 1);
+    if (persistPaused === 0) persist(true);
+  }
 }
 
 export function persist(immediate = false): void {
+  if (persistPaused > 0) return;
   if (immediate) {
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = null;
@@ -173,7 +272,21 @@ export function persist(immediate = false): void {
   saveTimer = setTimeout(() => {
     saveTimer = null;
     writeNow();
-  }, 80);
+  }, 1500);
+}
+
+export function persistAuctions(immediate = false): void {
+  if (immediate) {
+    if (auctionSaveTimer) clearTimeout(auctionSaveTimer);
+    auctionSaveTimer = null;
+    writeAuctionsNow();
+    return;
+  }
+  if (auctionSaveTimer) return;
+  auctionSaveTimer = setTimeout(() => {
+    auctionSaveTimer = null;
+    writeAuctionsNow();
+  }, 1500);
 }
 
 export function getData(): UsersFile {
@@ -239,7 +352,7 @@ export function removeMirroredAuctions(): number {
   const before = data.auctions.length;
   data.auctions = data.auctions.filter((a) => !a.mirrored);
   const removed = before - data.auctions.length;
-  if (removed > 0) persist(true);
+  if (removed > 0) persistAuctions(true);
   return removed;
 }
 
@@ -253,13 +366,18 @@ export function getAuctions(): StoredAuction[] {
 
 export function addAuction(auction: StoredAuction): void {
   data.auctions.push(auction);
-  persist(true);
+  persistAuctions();
+}
+
+export function replaceMirroredAuctions(next: StoredAuction[]): void {
+  data.auctions = data.auctions.filter((auction) => !auction.mirrored).concat(next);
+  persistAuctions(true);
 }
 
 export function removeAuction(id: string): StoredAuction | undefined {
   const auction = data.auctions.find((entry) => entry.id === id);
   data.auctions = data.auctions.filter((entry) => entry.id !== id);
-  persist(true);
+  persistAuctions(true);
   return auction;
 }
 
@@ -267,6 +385,6 @@ export function updateAuction(id: string, patch: Partial<StoredAuction>): Stored
   const auction = data.auctions.find((entry) => entry.id === id);
   if (!auction) return undefined;
   Object.assign(auction, patch);
-  persist(true);
+  persistAuctions();
   return auction;
 }

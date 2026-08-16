@@ -14,6 +14,7 @@ import {
   findUserByUsername,
   getOrders,
   saveUser,
+  withPausedPersist,
   type StoredUser,
 } from '../store/usersStore.js';
 
@@ -41,6 +42,7 @@ export function seedMarket(): void {
 
   if (getOrders().some((o) => o.playerId === bot.id)) return;
 
+  withPausedPersist(() => {
   const prices: Partial<Record<string, number>> = {
     cobble: 1,
     coal: 4,
@@ -86,4 +88,5 @@ export function seedMarket(): void {
   }
   bot.coins -= buyEscrow;
   saveUser(bot);
+  });
 }

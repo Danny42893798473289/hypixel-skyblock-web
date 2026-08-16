@@ -115,6 +115,8 @@ export interface PlayerState extends PlayerPublic {
   wardrobe: WardrobeState;
   dragonFight: DragonFightState | null;
   kuudraFight: KuudraFightState | null;
+  /** 10 double-chest backpacks (54 slots each). Always unlocked. */
+  backpacks: Inventory[];
   dungeonPartyId?: string | null;
   /** Transient live world mobs — not persisted. */
   worldMobs?: WorldMobInstance[];
@@ -156,7 +158,9 @@ export type MenuId =
   | 'museum'
   | 'wardrobe'
   | 'kuudra'
-  | 'dragons';
+  | 'dragons'
+  | 'backpack'
+  | 'backpack_page';
 
 export interface MenuSlotView {
   slot: number;

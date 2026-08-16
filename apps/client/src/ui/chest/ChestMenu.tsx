@@ -10,6 +10,7 @@ import {
   type PlayerState,
 } from '@aether/shared';
 import { ItemIcon } from './ItemIcon';
+import { ItemSlotButton, LoreTooltip, formatCount } from './slotUtils';
 
 type ClickButton = 'left' | 'right' | 'shift_left' | 'shift_right';
 
@@ -22,6 +23,9 @@ interface Props {
 }
 
 export function ChestMenu({ menu, player, onMenuClick, onClose, onBack }: Props) {
+  const storageMenu = menu.id === 'backpack' || menu.id === 'backpack_page';
+  const cursor = storageMenu ? player.inventoryCursor ?? null : null;
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -45,6 +49,16 @@ export function ChestMenu({ menu, player, onMenuClick, onClose, onBack }: Props)
             <button type="button" onClick={onClose} aria-label="Close menu">✕</button>
           </span>
         </div>
+        {cursor ? (
+          <div className="inventory-cursor-float">
+            <ItemSlotButton
+              stack={cursor}
+              extraLore={[{ text: 'Item on your cursor.', color: 'gray' }]}
+              onClick={() => undefined}
+              className="inventory-held-slot"
+            />
+          </div>
+        ) : null}
         <div className="chest-grid" style={{ gridTemplateRows: `repeat(${menu.rows}, var(--slot-size))` }}>
           {Array.from({ length: menu.rows * 9 }, (_, index) => {
             const view = menuSlots.get(index);
@@ -56,16 +70,28 @@ export function ChestMenu({ menu, player, onMenuClick, onClose, onBack }: Props)
         <div className="inventory-label">Inventory</div>
         <div className="chest-grid player-inventory">
           {player.inventory.map((stack, index) => (
-            <InventorySlot
-              key={index}
-              stack={stack}
-              index={index}
-              sellMenu={menu.id === 'npc_shop' || menu.id === 'bank'}
-              onClick={(button) => onMenuClick(index, button, `inventory:${index}`)}
-            />
+            storageMenu ? (
+              <ItemSlotButton
+                key={index}
+                stack={stack}
+                onClick={(button) => onMenuClick(index, button, `inventoryClick:${index}`)}
+              />
+            ) : (
+              <InventorySlot
+                key={index}
+                stack={stack}
+                index={index}
+                sellMenu={menu.id === 'npc_shop' || menu.id === 'bank'}
+                onClick={(button) => onMenuClick(index, button, `inventory:${index}`)}
+              />
+            )
           ))}
         </div>
-        <div className="menu-hint">Left click · Right click (long-press on touch) · Shift click · Esc closes · Backspace goes back</div>
+        <div className="menu-hint">
+          {storageMenu
+            ? 'Click slots to pick up and place items · Shift-click to move between backpack and inventory · Esc closes'
+            : 'Left click · Right click (long-press on touch) · Shift click · Esc closes · Backspace goes back'}
+        </div>
       </div>
     </div>
   );
@@ -103,17 +129,38 @@ function useLongPress(onClick: (button: ClickButton) => void) {
 }
 
 function MenuSlot({ view, onClick }: { view: MenuSlotView; onClick: (button: ClickButton) => void }) {
-  const { consumeLongPress, ...press } = useLongPress(onClick);
+  const locked = Boolean(view.disabled);
+  const empty = !view.itemId && !view.icon;
+  const { consumeLongPress, ...press } = useLongPress(locked ? () => {} : onClick);
+  if (empty) {
+    return (
+      <button
+        type="button"
+        className="mc-slot empty interactive"
+        aria-label="Empty slot"
+        {...(locked ? {} : press)}
+        onClick={locked ? undefined : (event) => {
+          if (consumeLongPress()) return;
+          onClick(event.shiftKey ? 'shift_left' : 'left');
+        }}
+        onContextMenu={locked ? undefined : (event) => {
+          event.preventDefault();
+          onClick(event.shiftKey ? 'shift_right' : 'right');
+        }}
+      />
+    );
+  }
   return (
     <button
-      className={`mc-slot interactive rarity-${(view.rarity ?? 'common').toLowerCase()} ${view.glint ? 'enchanted' : ''}`}
-      disabled={view.disabled}
-      {...press}
-      onClick={(event) => {
+      type="button"
+      className={`mc-slot interactive rarity-${(view.rarity ?? 'common').toLowerCase()} ${view.glint ? 'enchanted' : ''} ${locked ? 'is-locked' : ''}`}
+      aria-disabled={locked}
+      {...(locked ? {} : press)}
+      onClick={locked ? undefined : (event) => {
         if (consumeLongPress()) return;
         onClick(event.shiftKey ? 'shift_left' : 'left');
       }}
-      onContextMenu={(event) => {
+      onContextMenu={locked ? undefined : (event) => {
         event.preventDefault();
         onClick(event.shiftKey ? 'shift_right' : 'right');
       }}
@@ -162,26 +209,4 @@ function InventorySlot({
       <LoreTooltip name={itemDisplayName(def, stack)} rarity={def.rarity} lore={lore} />
     </button>
   );
-}
-
-function LoreTooltip({ name, rarity, lore }: Pick<MenuSlotView, 'name' | 'rarity' | 'lore'>) {
-  return (
-    <span className="lore-tooltip" role="tooltip">
-      <span className={`lore-line rarity-text-${(rarity ?? 'common').toLowerCase()} bold`}>{name}</span>
-      {lore.map((entry, index) => (
-        <span
-          key={`${index}-${entry.text}`}
-          className={`lore-line mc-${entry.color ?? 'white'} ${entry.bold ? 'bold' : ''} ${entry.italic ? 'italic' : ''}`}
-        >
-          {entry.text || '\u00a0'}
-        </span>
-      ))}
-    </span>
-  );
-}
-
-function formatCount(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}m`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
-  return String(value);
 }

@@ -4,10 +4,13 @@ import {
   RECIPE_CATEGORIES,
   isRecipeUnlocked,
   recipesInCategory,
+  buildRecipeBookLore,
+  countItem,
   type EquipmentSlot,
   type ItemStack,
   type PlayerState,
   type LoreLine,
+  type Recipe,
   type RecipeCategory,
 } from '@aether/shared';
 import {
@@ -16,6 +19,7 @@ import {
   ItemSlotButton,
   MenuOverlay,
 } from '../chest/slotUtils';
+import { ItemIcon } from '../chest/ItemIcon';
 
 /** Armor-only 3×3 equipment grid (no weapon slot — weapons live in the hotbar). */
 const EQUIP_GRID: Array<{ key: EquipmentSlot; label: string; icon: string; previewItemId?: string } | null> = [
@@ -38,6 +42,7 @@ interface Props {
 export function PlayerInventoryPanel({ player, touchMode = false, onMenuClick, onClose, onBack }: Props) {
   const [craftCategory, setCraftCategory] = useState<RecipeCategory>('tools');
   const [craftPage, setCraftPage] = useState(0);
+  const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(null);
   const lastTap = useRef<{ index: number; time: number } | null>(null);
   const cursor = player.inventoryCursor ?? null;
 
@@ -59,6 +64,11 @@ export function PlayerInventoryPanel({ player, touchMode = false, onMenuClick, o
   const craftRecipes = useMemo(() => recipesInCategory(craftCategory), [craftCategory]);
   const craftPages = Math.max(1, Math.ceil(craftRecipes.length / CRAFT_GRID_SIZE));
   const craftVisible = craftRecipes.slice(craftPage * CRAFT_GRID_SIZE, (craftPage + 1) * CRAFT_GRID_SIZE);
+  const selectedRecipe = craftVisible.find((recipe) => recipe.id === selectedRecipeId) ?? craftVisible[0] ?? null;
+
+  useEffect(() => {
+    setSelectedRecipeId(craftVisible[0]?.id ?? null);
+  }, [craftCategory, craftPage, craftVisible[0]?.id]);
 
   function handleInventoryClick(index: number, button: ClickButton) {
     if (button.startsWith('shift')) {
@@ -127,6 +137,15 @@ export function PlayerInventoryPanel({ player, touchMode = false, onMenuClick, o
                 onClick={(button) => onMenuClick(0, button, 'open:accessories')}
               />
               <IconSlotButton
+                icon="chest"
+                name="Storage"
+                lore={[
+                  { text: '10 double chests of extra inventory.', color: 'gray' },
+                  { text: 'Click to open!', color: 'yellow' },
+                ]}
+                onClick={(button) => onMenuClick(0, button, 'open:backpack')}
+              />
+              <IconSlotButton
                 icon="anvil"
                 name="Reforge Anvil"
                 lore={[{ text: 'Click to open!', color: 'yellow' }]}
@@ -159,16 +178,15 @@ export function PlayerInventoryPanel({ player, touchMode = false, onMenuClick, o
                 </button>
               ))}
             </div>
+            <div className="inventory-craft-row">
             <div className="inventory-craft-grid">
               {craftVisible.map((recipe) => {
                 const unlocked = isRecipeUnlocked(recipe.unlockCollection, recipe.unlockAmount, player.collections);
                 const resultDef = ITEMS[recipe.result.itemId];
                 const canCraft = unlocked && recipe.ingredients.every(
-                  (ingredient) => player.inventory.reduce(
-                    (total, stack) => (stack?.itemId === ingredient.itemId ? total + stack.qty : total),
-                    0,
-                  ) >= ingredient.qty,
+                  (ingredient) => countItem(player.inventory, ingredient.itemId) >= ingredient.qty,
                 );
+                const selected = selectedRecipe?.id === recipe.id;
                 return (
                   <IconSlotButton
                     key={recipe.id}
@@ -179,32 +197,22 @@ export function PlayerInventoryPanel({ player, touchMode = false, onMenuClick, o
                     count={recipe.result.qty > 1 ? recipe.result.qty : undefined}
                     disabled={!unlocked}
                     glint={canCraft}
-                    lore={[
-                      { text: 'Ingredients:', color: 'yellow' },
-                      ...recipe.ingredients.map((ingredient): LoreLine => {
-                        const have = player.inventory.reduce(
-                          (total, stack) => (stack?.itemId === ingredient.itemId ? total + stack.qty : total),
-                          0,
-                        );
-                        return {
-                          text: `${have >= ingredient.qty ? '✔' : '✖'} ${ingredient.qty}x ${ITEMS[ingredient.itemId]?.name ?? ingredient.itemId}`,
-                          color: have >= ingredient.qty ? 'green' : 'red',
-                        };
-                      }),
-                      { text: '', color: 'white' },
-                      unlocked
-                        ? { text: canCraft ? 'Click to craft!' : 'Missing ingredients', color: canCraft ? 'yellow' : 'red' }
-                        : { text: `Requires ${recipe.unlockAmount?.toLocaleString()} ${ITEMS[recipe.unlockCollection!]?.name ?? 'collection'}`, color: 'red' },
-                    ]}
-                    onClick={unlocked && canCraft
-                      ? (button) => onMenuClick(0, button, `craft:${recipe.id}`)
-                      : undefined}
+                    className={selected ? 'inventory-craft-selected' : ''}
+                    lore={buildRecipeBookLore(recipe, player.collections, (itemId) => countItem(player.inventory, itemId))}
+                    onClick={() => {
+                      setSelectedRecipeId(recipe.id);
+                      if (unlocked && canCraft) onMenuClick(0, 'left', `craft:${recipe.id}`);
+                    }}
                   />
                 );
               })}
               {Array.from({ length: Math.max(0, CRAFT_GRID_SIZE - craftVisible.length) }).map((_, index) => (
                 <div key={`craft-empty-${index}`} className="mc-slot empty" />
               ))}
+            </div>
+            {selectedRecipe ? (
+              <CraftRecipeDetail recipe={selectedRecipe} player={player} />
+            ) : null}
             </div>
             {craftPages > 1 ? (
               <div className="inventory-craft-pages">
@@ -272,6 +280,39 @@ export function PlayerInventoryPanel({ player, touchMode = false, onMenuClick, o
           : 'Left-click pick up/place · Shift-click armor to equip · Shift-click weapons to hotbar · 1–9 select hotbar'}
       </div>
     </MenuOverlay>
+  );
+}
+
+function CraftRecipeDetail({ recipe, player }: { recipe: Recipe; player: PlayerState }) {
+  const resultDef = ITEMS[recipe.result.itemId];
+  const lore = buildRecipeBookLore(recipe, player.collections, (itemId) => countItem(player.inventory, itemId));
+  const pattern = Array.from({ length: 9 }, (_, index) => recipe.ingredients[index] ?? null);
+
+  return (
+    <div className="inventory-craft-detail">
+      <div className={`lore-line rarity-text-${(resultDef?.rarity ?? 'common').toLowerCase()} bold`}>{recipe.name}</div>
+      {lore.map((entry, index) => (
+        <div
+          key={`${index}-${entry.text}`}
+          className={`lore-line mc-${entry.color ?? 'white'} ${entry.bold ? 'bold' : ''} ${entry.italic ? 'italic' : ''}`}
+        >
+          {entry.text || '\u00a0'}
+        </div>
+      ))}
+      <div className="inventory-label">Pattern</div>
+      <div className="inventory-craft-pattern">
+        {pattern.map((ingredient, index) => {
+          if (!ingredient) return <div key={`empty-${index}`} className="mc-slot empty" />;
+          const def = ITEMS[ingredient.itemId];
+          return (
+            <div key={`${ingredient.itemId}-${index}`} className="mc-slot" title={def?.name ?? ingredient.itemId}>
+              <ItemIcon icon={def?.sprite ?? ''} itemId={ingredient.itemId} rarity={def?.rarity} />
+              {ingredient.qty > 1 ? <span className="stack-count">{ingredient.qty}</span> : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

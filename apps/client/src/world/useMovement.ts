@@ -28,6 +28,8 @@ export function useMovement(player: PlayerState, map: IslandMap, disabled: boole
   const keysRef = useRef(new Set<string>());
   const touchRef = useRef(new Set<MoveDirection>());
   const lastIslandRef = useRef(player.islandId);
+  const mapRef = useRef(map);
+  mapRef.current = map;
 
   useEffect(() => {
     disabledRef.current = disabled;
@@ -136,8 +138,8 @@ export function useMovement(player: PlayerState, map: IslandMap, disabled: boole
         const distance = MOVE_SPEED * delta;
         const nextX = current.x + dx * distance;
         const nextY = current.y + dy * distance;
-        if (canStand(map, nextX, current.y)) current.x = nextX;
-        if (canStand(map, current.x, nextY)) current.y = nextY;
+        if (canStand(mapRef.current, nextX, current.y)) current.x = nextX;
+        if (canStand(mapRef.current, current.x, nextY)) current.y = nextY;
         if (now - lastSentAt >= 55) {
           lastSentAt = now;
           gameSocket.send({ type: 'move', x: current.x, y: current.y, facing: current.facing });
@@ -147,7 +149,7 @@ export function useMovement(player: PlayerState, map: IslandMap, disabled: boole
     };
     frame = requestAnimationFrame(update);
     return () => cancelAnimationFrame(frame);
-  }, [map]);
+  }, []);
 
   const setTouchDirection = useCallback((direction: MoveDirection, active: boolean) => {
     if (active && !disabledRef.current) touchRef.current.add(direction);

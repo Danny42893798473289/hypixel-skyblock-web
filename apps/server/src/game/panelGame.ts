@@ -60,6 +60,9 @@ import {
   countItem,
   swapInventorySlots,
   clickInventorySlot,
+  insertStack,
+  BACKPACK_PAGES,
+  normalizeBackpacks,
   islandMap,
   islandMapForZone,
   districtAt,
@@ -151,6 +154,7 @@ interface Session {
   shieldDefense: number;
   shieldUntil: number;
   lastManaRegenAt: number;
+  statsDirty: boolean;
 }
 
 const sessions = new Map<string, Session>();
@@ -182,18 +186,32 @@ function toast(session: Session, message: string, kind: 'info' | 'error' | 'succ
   emit(session.socket, { type: 'toast', message, kind });
 }
 
+function markStatsDirty(session: Session): void {
+  session.statsDirty = true;
+}
+
+function gainSkillXp(session: Session, skill: keyof PlayerState['skills'], amount: number): void {
+  if (!amount) return;
+  const before = levelFromXp(session.player.skills[skill] ?? 0).level;
+  session.player.skills[skill] += amount;
+  if (levelFromXp(session.player.skills[skill] ?? 0).level > before) markStatsDirty(session);
+}
+
 function pushState(session: Session): void {
   session.player.islandId = islandForZone(session.player.zoneId);
-  session.player.stats = recomputeStats(session.player);
-  session.player.magicalPower = magicalPower(session.player.accessories);
-  session.player.accessoryBagSlots = accessoryBagSlots(session.player.fairySouls);
-  session.player.maxHp = session.player.stats.health;
-  session.player.hp = Math.min(session.player.hp, session.player.maxHp);
-  session.player.maxMana = Math.max(100, Math.round(session.player.stats.intelligence));
-  session.player.mana = Math.min(session.player.mana, session.player.maxMana);
+  if (session.statsDirty) {
+    session.player.stats = recomputeStats(session.player);
+    session.player.magicalPower = magicalPower(session.player.accessories);
+    session.player.accessoryBagSlots = accessoryBagSlots(session.player.fairySouls);
+    session.player.maxHp = session.player.stats.health;
+    session.player.hp = Math.min(session.player.hp, session.player.maxHp);
+    session.player.maxMana = Math.max(100, Math.round(session.player.stats.intelligence));
+    session.player.mana = Math.min(session.player.mana, session.player.maxMana);
+    session.statsDirty = false;
+  }
   session.player.coins = Math.max(0, session.player.coins);
-  savePlayer(session.player);
-  const payload: PlayerState = session.menuOpen && session.currentMenu === 'inventory'
+  const cursorMenus: MenuId[] = ['inventory', 'backpack', 'backpack_page'];
+  const payload: PlayerState = session.menuOpen && cursorMenus.includes(session.currentMenu)
     ? { ...session.player, inventoryCursor: session.inventoryCursor }
     : session.player;
   emit(session.socket, { type: 'state', player: payload });
@@ -210,6 +228,16 @@ function stashInventoryCursor(session: Session): boolean {
   session.player.inventory = next;
   session.inventoryCursor = null;
   return true;
+}
+
+function keepsInventoryCursor(menu: MenuId): boolean {
+  return menu === 'inventory' || menu === 'backpack' || menu === 'backpack_page';
+}
+
+function backpackPageIndex(session: Session): number {
+  const page = Number(session.menuContext.page ?? 0);
+  if (!Number.isFinite(page)) return 0;
+  return Math.max(0, Math.min(BACKPACK_PAGES - 1, page));
 }
 
 /** Respawn with full health at the current district after combat death. */
@@ -254,13 +282,13 @@ function pushMenu(session: Session): void {
 }
 
 function openMenu(session: Session, menu: MenuId, context: Record<string, string | number | boolean> = {}): void {
-  if (session.currentMenu === 'inventory' && menu !== 'inventory') {
+  if (keepsInventoryCursor(session.currentMenu) && !keepsInventoryCursor(menu)) {
     if (!stashInventoryCursor(session)) return;
   }
   session.menuOpen = true;
   session.currentMenu = menu;
   session.menuContext = context;
-  if (menu !== 'inventory') session.inventoryCursor = null;
+  if (!keepsInventoryCursor(menu)) session.inventoryCursor = null;
   if (menu === 'bazaar' || menu === 'bazaar_item') flagQuest(session, 'open_bazaar');
   if (menu === 'npc_shop' && session.player.zoneId === 'hub_plaza') flagQuest(session, 'talk_adventurer');
   if (menu === 'bazaar_item' && typeof context.itemId === 'string') session.bazaarItem = context.itemId;
@@ -416,6 +444,7 @@ export function initGame(serverIo: SocketServer): void {
       shieldDefense: 0,
       shieldUntil: 0,
       lastManaRegenAt: Date.now(),
+      statsDirty: false,
     };
     if (session.player.mana == null || Number.isNaN(session.player.mana)) {
       session.player.mana = session.player.maxMana ?? session.player.stats.intelligence;
@@ -476,7 +505,7 @@ function handleEvent(session: Session, ev: ClientEvent): void {
       openMenu(session, ev.menu, ev.context ?? {});
       break;
     case 'closeMenu':
-      if (session.currentMenu === 'inventory' && !stashInventoryCursor(session)) break;
+      if (keepsInventoryCursor(session.currentMenu) && !stashInventoryCursor(session)) break;
       session.menuOpen = false;
       session.currentMenu = 'skyblock';
       session.menuContext = {};
@@ -755,6 +784,7 @@ function handleWorldInteract(session: Session): void {
     if (session.player.visitedZones.includes(entity.id)) throw new Error('You already found this Fairy Soul');
     session.player.visitedZones.push(entity.id);
     session.player.fairySouls++;
+    markStatsDirty(session);
     const slots = accessoryBagSlots(session.player.fairySouls);
     pushState(session);
     toast(session, `SOUL! Fairy Soul found! (${session.player.fairySouls} total) — Accessory Bag: ${slots} slots`, 'success');
@@ -801,6 +831,15 @@ function handleMenuClick(
     handleInventoryClick(session, Number(value), button);
     return;
   }
+  if (kind === 'backpack') {
+    const [op, arg] = value.split(':');
+    if (op === 'open') {
+      openMenu(session, 'backpack_page', { page: Number(arg) || 0 });
+    } else if (op === 'click') {
+      handleBackpackClick(session, Number(arg), button);
+    }
+    return;
+  }
   if (kind === 'inventoryUseCursor') {
     useHeldItem(session);
     return;
@@ -832,6 +871,7 @@ function handleMenuClick(
     if (!next) throw new Error('Inventory full');
     session.player.inventory = next;
     session.player.equipment[equipmentSlot] = null;
+    markStatsDirty(session);
     pushState(session);
     return;
   }
@@ -843,6 +883,7 @@ function handleMenuClick(
     if (!next) throw new Error('Inventory full');
     session.player.inventory = next;
     session.player.accessories.splice(index, 1);
+    markStatsDirty(session);
     pushState(session);
     return;
   }
@@ -850,6 +891,7 @@ function handleMenuClick(
     const index = Number(value);
     if (!session.player.pets[index]) return;
     session.player.pets.forEach((pet, i) => { pet.active = i === index && !pet.active; });
+    markStatsDirty(session);
     pushState(session);
     toast(session, session.player.pets[index].active ? 'Pet summoned!' : 'Pet despawned.', 'success');
     return;
@@ -941,6 +983,7 @@ function handleMenuClick(
   }
   if (kind === 'hotm') {
     toast(session, unlockHotmPerk(session.player, value), 'success');
+    markStatsDirty(session);
     pushState(session);
     return;
   }
@@ -951,6 +994,7 @@ function handleMenuClick(
   }
   if (kind === 'brew') {
     toast(session, brewPotion(session.player, value), 'success');
+    markStatsDirty(session);
     pushState(session);
     return;
   }
@@ -962,7 +1006,10 @@ function handleMenuClick(
   if (kind === 'wardrobe') {
     const page = Number(value);
     if (button === 'right') toast(session, saveWardrobe(session.player, page), 'success');
-    else toast(session, equipWardrobe(session.player, page), 'success');
+    else {
+      toast(session, equipWardrobe(session.player, page), 'success');
+      markStatsDirty(session);
+    }
     pushState(session);
     return;
   }
@@ -980,6 +1027,7 @@ function handleMenuClick(
   }
   if (kind === 'hatch') {
     toast(session, hatchPetEgg(session.player, value as ItemId), 'success');
+    markStatsDirty(session);
     pushState(session);
     return;
   }
@@ -1157,14 +1205,57 @@ function handleMenuClick(
 }
 
 function handleInventoryClick(session: Session, slot: number, button: 'left' | 'right' | 'shift_left' | 'shift_right'): void {
-  if (session.currentMenu !== 'inventory') return;
-  if (button.startsWith('shift')) {
+  if (!keepsInventoryCursor(session.currentMenu)) return;
+  session.player.backpacks = normalizeBackpacks(session.player.backpacks);
+
+  if (session.currentMenu === 'backpack_page' && button.startsWith('shift')) {
+    const stack = session.player.inventory[slot];
+    if (stack) {
+      const page = backpackPageIndex(session);
+      const next = insertStack(session.player.backpacks[page], stack);
+      if (next) {
+        session.player.backpacks[page] = next;
+        session.player.inventory[slot] = null;
+        pushState(session);
+        return;
+      }
+    }
+  }
+
+  if (session.currentMenu === 'inventory' && button.startsWith('shift')) {
     useInventorySlot(session, slot, button);
     return;
   }
   const clickButton = button === 'right' || button === 'shift_right' ? 'right' : 'left';
   const result = clickInventorySlot(session.player.inventory, session.inventoryCursor, slot, clickButton);
   session.player.inventory = result.inventory;
+  session.inventoryCursor = result.cursor;
+  pushState(session);
+}
+
+function handleBackpackClick(session: Session, slot: number, button: 'left' | 'right' | 'shift_left' | 'shift_right'): void {
+  if (session.currentMenu !== 'backpack_page') return;
+  session.player.backpacks = normalizeBackpacks(session.player.backpacks);
+  const page = backpackPageIndex(session);
+  const pack = session.player.backpacks[page];
+  if (slot < 0 || slot >= pack.length) return;
+
+  if (button.startsWith('shift')) {
+    const stack = pack[slot];
+    if (stack) {
+      const next = insertStack(session.player.inventory, stack);
+      if (next) {
+        session.player.inventory = next;
+        pack[slot] = null;
+        pushState(session);
+        return;
+      }
+    }
+  }
+
+  const clickButton = button === 'right' || button === 'shift_right' ? 'right' : 'left';
+  const result = clickInventorySlot(pack, session.inventoryCursor, slot, clickButton);
+  session.player.backpacks[page] = result.inventory;
   session.inventoryCursor = result.cursor;
   pushState(session);
 }
@@ -1215,6 +1306,7 @@ function useHeldItem(session: Session): void {
     const next = addItem(session.player.inventory, old.itemId, old.qty);
     if (next) session.player.inventory = next;
   }
+  markStatsDirty(session);
   pushState(session);
   toast(session, `Equipped ${def.name}`, 'success');
 }
@@ -1234,7 +1326,8 @@ function applyEnchantToSlot(session: Session, invSlot: number, enchantId: string
   if (session.player.coins < cost) throw new Error(`Need ${cost.toLocaleString()} coins`);
   session.player.coins -= cost;
   stack.enchantments = { ...stack.enchantments, [enchantId]: current + 1 };
-  session.player.skills.enchanting += 25 + current * 10;
+  gainSkillXp(session, 'enchanting', 25 + current * 10);
+  markStatsDirty(session);
   pushState(session);
   openMenu(session, 'enchanting', { slot: invSlot, page: session.menuContext.page ?? 0 });
   toast(session, `${enchantDisplayName(enchantId)} ${toRoman(current + 1)} applied!`, 'success');
@@ -1287,6 +1380,7 @@ function useInventorySlot(session: Session, index: number, button = 'left'): voi
     if (def.type !== 'PET') throw new Error('That is not a pet');
     session.player.pets.push({ itemId: stack.itemId, level: 1, xp: 0, active: session.player.pets.length === 0 });
     session.player.inventory[index] = null;
+    markStatsDirty(session);
     pushState(session);
     return;
   }
@@ -1330,6 +1424,7 @@ function useInventorySlot(session: Session, index: number, button = 'left'): voi
     if (session.player.coins < cost) throw new Error(`Need ${cost.toLocaleString()} coins`);
     session.player.coins -= cost;
     stack.reforge = choices[Math.floor(Math.random() * choices.length)].name;
+    markStatsDirty(session);
     pushState(session);
     toast(session, `Reforged to ${stack.reforge}!`, 'success');
     return;
@@ -1352,6 +1447,7 @@ function useInventorySlot(session: Session, index: number, button = 'left'): voi
   const old = session.player.equipment[equipmentSlot];
   session.player.equipment[equipmentSlot] = { ...stack };
   session.player.inventory[index] = old;
+  markStatsDirty(session);
   pushState(session);
   toast(session, `Equipped ${def.name}`, 'success');
 }
@@ -1493,7 +1589,7 @@ function completeDungeon(session: Session): void {
   if (!run) return;
   const floor = DUNGEON_FLOORS.find((entry) => entry.id === run.floorId);
   if (!floor) return;
-  session.player.skills.dungeoneering += floor.baseCatacombsXp;
+  gainSkillXp(session, 'dungeoneering', floor.baseCatacombsXp);
   session.player.coins += floor.coinReward;
   const drops = rollDungeonDrops(session, floor);
   const stars = 1 + Math.floor(Math.random() * 3) + (currentMayor().id === 'paul' ? 1 : 0) + Math.min(2, Math.floor((run.secretsFound ?? 0) / 2));
@@ -1578,7 +1674,7 @@ function doDungeonMobCombat(session: Session, mobEntityId: string): void {
 
   if (run.mobHp[mobEntityId] <= 0) {
     run.score += 15 + Math.floor(Math.random() * 11);
-    session.player.skills.dungeoneering += 2;
+    gainSkillXp(session, 'dungeoneering', 2);
   }
 
   if (allDungeonMobsDead(run)) {
@@ -1759,7 +1855,7 @@ function giveResource(session: Session, act: NonNullable<ReturnType<typeof findA
   const next = addItem(session.player.inventory, itemId, actualQty);
   if (!next) throw new Error('Inventory full');
   session.player.inventory = next;
-  if (act.skill) session.player.skills[act.skill] += act.xp;
+  if (act.skill) gainSkillXp(session, act.skill, act.xp);
   const before = session.player.collections[itemId] ?? 0;
   session.player.collections[itemId] = before + actualQty;
   noteCollectionMilestone(session, itemId, before, before + actualQty);
@@ -1772,7 +1868,7 @@ function giveResource(session: Session, act: NonNullable<ReturnType<typeof findA
       toast(session, 'Titanium Insanium! +1 Titanium', 'success');
     }
   }
-  awardPetXp(session.player, act.skill, act.xp);
+  awardPetXp(session, act.skill, act.xp);
   pushState(session);
   toast(session, `+${actualQty} ${ITEMS[itemId].name}`, 'success');
   if (act.kind === 'fish' && act.id) {
@@ -1823,9 +1919,9 @@ function doCombatAction(session: Session, act: NonNullable<ReturnType<typeof fin
     }
   }
   const gainedXp = mob?.combatXp ?? act.xp;
-  session.player.skills.combat += gainedXp;
+  gainSkillXp(session, 'combat', gainedXp);
   session.player.coins += mob?.coins ?? 0;
-  awardPetXp(session.player, 'combat', gainedXp);
+  awardPetXp(session, 'combat', gainedXp);
   if (session.player.activeSlayer) {
     const target = SLAYERS.find((slayer) => slayer.id === session.player.activeSlayer?.slayerId)?.targetMob;
     if (target === mob?.id || (target === 'zombie' && mobId === 'husk') || (target === 'spider' && ['weaver', 'crawler'].includes(mobId))) {
@@ -1845,12 +1941,14 @@ function doCombatAction(session: Session, act: NonNullable<ReturnType<typeof fin
   toast(session, `Defeated ${mob?.name ?? mobId}! ${critical ? 'CRITICAL! ' : ''}(${playerDmg.toLocaleString()} dmg, -${received} HP)`, 'success');
 }
 
-function awardPetXp(player: PlayerState, skill: keyof PlayerState['skills'] | undefined, amount: number): void {
-  const pet = player.pets.find((entry) => entry.active);
+function awardPetXp(session: Session, skill: keyof PlayerState['skills'] | undefined, amount: number): void {
+  const pet = session.player.pets.find((entry) => entry.active);
   if (!pet || !skill) return;
+  const before = pet.level;
   pet.xp += amount;
   while (pet.level < 100 && pet.xp >= pet.level * pet.level * 100) pet.level++;
-  player.skills.taming += amount * 0.25;
+  if (pet.level > before) markStatsDirty(session);
+  gainSkillXp(session, 'taming', amount * 0.25);
 }
 
 function equipAccessory(session: Session, stack: ItemStack, inventoryIndex: number): void {
@@ -1866,6 +1964,7 @@ function equipAccessory(session: Session, stack: ItemStack, inventoryIndex: numb
   session.player.accessories.push({ ...stack, qty: 1 });
   stack.qty--;
   if (stack.qty <= 0) session.player.inventory[inventoryIndex] = null;
+  markStatsDirty(session);
   pushState(session);
   toast(session, `Stored ${def.name} in Accessory Bag`, 'success');
 }
@@ -2046,6 +2145,7 @@ function doUseItem(session: Session, slot?: number): void {
   }
   if (PET_EGGS.some((egg) => egg.egg === stack.itemId)) {
     toast(session, hatchPetEgg(session.player, stack.itemId), 'success');
+    markStatsDirty(session);
     pushState(session);
   }
 }
@@ -2247,10 +2347,11 @@ function ensureWorldMobs(session: Session): void {
   const zoneId = session.player.zoneId;
   const current = session.player.worldMobs ?? [];
   const bosses = current.filter((mob) => mob.slayerBoss || mob.mobId === 'ender_dragon' || mob.mobId === 'kuudra');
-  const zoneMobs = current.filter((mob) => !mob.slayerBoss && mob.zoneId === zoneId);
+  const zoneMobs = current.filter((mob) => !mob.slayerBoss && mob.mobId !== 'ender_dragon' && mob.mobId !== 'kuudra' && mob.zoneId === zoneId);
+  const stale = current.some((mob) => !mob.slayerBoss && mob.mobId !== 'ender_dragon' && mob.mobId !== 'kuudra' && mob.zoneId !== zoneId);
   if (zoneMobs.length === 0) {
     session.player.worldMobs = [...bosses, ...spawnMobsForZone(zoneId, islandMap(session.player.islandId))];
-  } else {
+  } else if (stale) {
     session.player.worldMobs = [...bosses, ...zoneMobs];
   }
 }
@@ -2312,14 +2413,17 @@ function grantMobRewards(session: Session, mobId: string): void {
       noteCollectionMilestone(session, drop.itemId, before, before + quantity);
     }
   }
-  session.player.skills.combat += mob.combatXp;
+  gainSkillXp(session, 'combat', mob.combatXp);
   session.player.coins += applyLootingToCoins(session.player, mob.coins);
-  awardPetXp(session.player, 'combat', mob.combatXp);
+  awardPetXp(session, 'combat', mob.combatXp);
   if (!session.player.quests) session.player.quests = emptyQuestBook();
   ensureMidgame(session.player);
   session.player.bestiary.kills[mob.id] = (session.player.bestiary.kills[mob.id] ?? 0) + 1;
   const bestiaryMsg = checkBestiaryMilestone(session.player, mob.id);
-  if (bestiaryMsg) toast(session, bestiaryMsg, 'success');
+  if (bestiaryMsg) {
+    markStatsDirty(session);
+    toast(session, bestiaryMsg, 'success');
+  }
   const egg = PET_EGGS.find((entry) => entry.fromMob === mob.id);
   const eggChance = currentMayor().id === 'diana' ? 0.04 : 0.02;
   if (egg && Math.random() < eggChance) {

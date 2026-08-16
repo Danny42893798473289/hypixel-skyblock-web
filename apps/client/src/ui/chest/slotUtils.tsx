@@ -1,4 +1,5 @@
-import { useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ITEMS,
   buildItemLore,
@@ -55,18 +56,59 @@ export function useLongPress(onClick: (button: ClickButton) => void) {
 }
 
 export function LoreTooltip({ name, rarity, lore }: Pick<MenuSlotView, 'name' | 'rarity' | 'lore'>) {
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const slot = anchorRef.current?.closest('.mc-slot');
+    if (!slot || !(slot instanceof HTMLElement)) return;
+    if (window.matchMedia('(pointer: coarse)').matches) return;
+
+    const place = () => {
+      const rect = slot.getBoundingClientRect();
+      const width = 330;
+      const pad = 8;
+      let x = rect.right + pad;
+      let y = rect.top;
+      if (x + width > window.innerWidth - pad) x = Math.max(pad, rect.left - width - pad);
+      if (y + 280 > window.innerHeight - pad) y = Math.max(pad, window.innerHeight - 280);
+      setPos({ x, y });
+      setOpen(true);
+    };
+    const hide = () => setOpen(false);
+    slot.addEventListener('mouseenter', place);
+    slot.addEventListener('mouseleave', hide);
+    slot.addEventListener('focus', place);
+    slot.addEventListener('blur', hide);
+    return () => {
+      slot.removeEventListener('mouseenter', place);
+      slot.removeEventListener('mouseleave', hide);
+      slot.removeEventListener('focus', place);
+      slot.removeEventListener('blur', hide);
+    };
+  }, [name, lore]);
+
   return (
-    <span className="lore-tooltip" role="tooltip">
-      <span className={`lore-line rarity-text-${(rarity ?? 'common').toLowerCase()} bold`}>{name}</span>
-      {lore.map((entry, index) => (
-        <span
-          key={`${index}-${entry.text}`}
-          className={`lore-line mc-${entry.color ?? 'white'} ${entry.bold ? 'bold' : ''} ${entry.italic ? 'italic' : ''}`}
-        >
-          {entry.text || '\u00a0'}
-        </span>
-      ))}
-    </span>
+    <>
+      <span ref={anchorRef} className="lore-tooltip-anchor" />
+      {open && name
+        ? createPortal(
+          <span className="lore-tooltip lore-tooltip-floating" role="tooltip" style={{ left: pos.x, top: pos.y }}>
+            <span className={`lore-line rarity-text-${(rarity ?? 'common').toLowerCase()} bold`}>{name}</span>
+            {lore.map((entry, index) => (
+              <span
+                key={`${index}-${entry.text}`}
+                className={`lore-line mc-${entry.color ?? 'white'} ${entry.bold ? 'bold' : ''} ${entry.italic ? 'italic' : ''}`}
+              >
+                {entry.text || '\u00a0'}
+              </span>
+            ))}
+          </span>,
+          document.body,
+        )
+        : null}
+    </>
   );
 }
 
@@ -160,8 +202,8 @@ export function IconSlotButton({
   return (
     <button
       type="button"
-      className={`mc-slot interactive ${onClick ? '' : 'empty'} rarity-${(rarity ?? 'common').toLowerCase()} ${glint ? 'enchanted' : ''} ${className}`.trim()}
-      disabled={disabled}
+      className={`mc-slot interactive ${onClick ? '' : 'empty'} rarity-${(rarity ?? 'common').toLowerCase()} ${glint ? 'enchanted' : ''} ${disabled ? 'is-locked' : ''} ${className}`.trim()}
+      aria-disabled={disabled}
       {...(onClick ? press : {})}
       onClick={onClick ? (event) => {
         if (consumeLongPress()) return;

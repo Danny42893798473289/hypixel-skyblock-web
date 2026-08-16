@@ -1,6 +1,6 @@
 import { v4 as uuid } from 'uuid';
 import { BAZAAR_ITEMS, type ItemId } from '@aether/shared';
-import { addOrder, removeOrdersForPlayer } from '../store/usersStore.js';
+import { addOrder, removeOrdersForPlayer, withPausedPersist } from '../store/usersStore.js';
 import { bazaarMirrorDepth, HYPIXEL_BAZAAR_URL } from './config.js';
 import { ensureMarketBot, resetMarketBotCoins } from './bots.js';
 import { getHypixelProductId } from './productMap.js';
@@ -45,19 +45,21 @@ export async function syncBazaarFromHypixel(): Promise<boolean> {
     if (!res.ok) return false;
     const json = (await res.json()) as HypixelBazaarResponse;
     if (!json.success || !json.products) return false;
+    const products = json.products;
 
     const bot = ensureMarketBot();
     const depth = bazaarMirrorDepth();
     const now = Date.now();
     const updatedAt = json.lastUpdated ?? now;
 
+    withPausedPersist(() => {
     removeOrdersForPlayer(bot.id);
 
     let buyEscrow = 0;
     for (const itemId of BAZAAR_ITEMS) {
       const hypixelId = getHypixelProductId(itemId);
       if (!hypixelId) continue;
-      const product = json.products[hypixelId];
+      const product = products[hypixelId];
       if (!product) continue;
 
       recordPriceSnapshot(
@@ -101,6 +103,7 @@ export async function syncBazaarFromHypixel(): Promise<boolean> {
     }
 
     resetMarketBotCoins(buyEscrow + 1_000_000_000);
+    });
     lastUpdated = updatedAt;
     lastSource = 'hypixel';
     notifyBazaarSynced();

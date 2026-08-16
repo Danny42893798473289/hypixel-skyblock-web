@@ -1,5 +1,5 @@
 import { ITEMS, type ItemId } from '@aether/shared';
-import { addAuction, removeMirroredAuctions } from '../store/usersStore.js';
+import { replaceMirroredAuctions } from '../store/usersStore.js';
 import { auctionMirrorMaxListings, HYPIXEL_AUCTIONS_URL } from './config.js';
 import { ensureAuctionMirror } from './bots.js';
 
@@ -60,7 +60,6 @@ function sleep(ms: number): Promise<void> {
 export async function syncAuctionsFromHypixel(): Promise<boolean> {
   try {
     ensureAuctionMirror();
-    removeMirroredAuctions();
 
     const nameMap = buildItemNameMap();
     const max = auctionMirrorMaxListings();
@@ -94,20 +93,18 @@ export async function syncAuctionsFromHypixel(): Promise<boolean> {
     }
 
     const bot = ensureAuctionMirror();
-    for (const { auction, itemId } of listings) {
-      addAuction({
-        id: `mirror-${auction.uuid}`,
-        sellerId: bot.id,
-        sellerName: 'SkyBlock Mirror',
-        item: { itemId, qty: 1 },
-        price: auction.starting_bid,
-        highestBid: 0,
-        bin: true,
-        createdAt: now,
-        expiresAt: auction.end,
-        mirrored: true,
-      });
-    }
+    replaceMirroredAuctions(listings.map(({ auction, itemId }) => ({
+      id: `mirror-${auction.uuid}`,
+      sellerId: bot.id,
+      sellerName: 'SkyBlock Mirror',
+      item: { itemId, qty: 1 },
+      price: auction.starting_bid,
+      highestBid: 0,
+      bin: true,
+      createdAt: now,
+      expiresAt: auction.end,
+      mirrored: true,
+    })));
 
     mirroredCount = listings.length;
     lastAuctionSync = now;

@@ -5,5 +5,7 @@ dist
 .DS_Store
 .env
 apps/server/data/users.json
+apps/server/data/auctions.json
 apps/server/data/*.tmp
+apps/server/data/*.pid
 apps/server/data/*.db*

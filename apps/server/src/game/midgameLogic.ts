@@ -14,6 +14,7 @@ import {
   emptyBestiary,
   emptyMuseum,
   emptyWardrobe,
+  normalizeBackpacks,
   removeItem,
   rollCommissions,
   rollGardenVisitor,
@@ -27,6 +28,7 @@ export function ensureMidgame(player: PlayerState): void {
   if (!player.bestiary) player.bestiary = emptyBestiary();
   if (!player.museum) player.museum = emptyMuseum();
   if (!player.wardrobe || player.wardrobe.pages.length === 0) player.wardrobe = emptyWardrobe();
+  player.backpacks = normalizeBackpacks(player.backpacks);
   if (player.dragonFight === undefined) player.dragonFight = null;
   if (player.kuudraFight === undefined) player.kuudraFight = null;
   if (!player.hotm.commissions.length) player.hotm.commissions = rollCommissions();

@@ -215,3 +215,77 @@ export function starterInventory(): Inventory {
   inv = addItem(inv, 'bread', 8)!;
   return inv;
 }
+
+export const BACKPACK_PAGES = 10;
+export const BACKPACK_SIZE = 54;
+
+function cloneStack(stack: ItemStack): ItemStack {
+  return {
+    ...stack,
+    enchantments: stack.enchantments ? { ...stack.enchantments } : undefined,
+    statBoosts: stack.statBoosts ? { ...stack.statBoosts } : undefined,
+  };
+}
+
+export function emptyBackpackPage(): Inventory {
+  return Array.from({ length: BACKPACK_SIZE }, () => null);
+}
+
+export function emptyBackpacks(): Inventory[] {
+  return Array.from({ length: BACKPACK_PAGES }, emptyBackpackPage);
+}
+
+export function normalizeBackpacks(raw?: Inventory[] | null): Inventory[] {
+  const packs = emptyBackpacks();
+  if (!raw) return packs;
+  for (let i = 0; i < BACKPACK_PAGES; i++) {
+    const src = raw[i];
+    if (!Array.isArray(src)) continue;
+    packs[i] = Array.from({ length: BACKPACK_SIZE }, (_, slot) => src[slot] ?? null);
+  }
+  return packs;
+}
+
+export function backpackSlotsUsed(inv: Inventory): number {
+  return inv.reduce((sum, stack) => (stack ? sum + 1 : sum), 0);
+}
+
+function stacksCompatible(a: ItemStack, b: ItemStack): boolean {
+  if (a.itemId !== b.itemId) return false;
+  if (a.uuid || b.uuid) return false;
+  if ((a.reforge ?? '') !== (b.reforge ?? '')) return false;
+  if ((a.dungeonStars ?? 0) !== (b.dungeonStars ?? 0)) return false;
+  if (JSON.stringify(a.enchantments ?? {}) !== JSON.stringify(b.enchantments ?? {})) return false;
+  return JSON.stringify(a.statBoosts ?? {}) === JSON.stringify(b.statBoosts ?? {});
+}
+
+/** Insert a full stack (preserving enchants/reforges). Returns null if it cannot fit. */
+export function insertStack(inv: Inventory, stack: ItemStack): Inventory | null {
+  const stackSize = ITEMS[stack.itemId]?.stackSize ?? 64;
+  let remaining = stack.qty;
+  for (const slot of inv) {
+    if (!slot) remaining -= Math.min(remaining, stackSize);
+    else if (stacksCompatible(slot, stack)) remaining -= Math.min(remaining, stackSize - slot.qty);
+    if (remaining <= 0) break;
+  }
+  if (remaining > 0) return null;
+
+  const next = inv.map((slot) => (slot ? cloneStack(slot) : null));
+  remaining = stack.qty;
+  for (let i = 0; i < next.length && remaining > 0; i++) {
+    const slot = next[i];
+    if (slot && stacksCompatible(slot, stack) && slot.qty < stackSize) {
+      const add = Math.min(remaining, stackSize - slot.qty);
+      slot.qty += add;
+      remaining -= add;
+    }
+  }
+  for (let i = 0; i < next.length && remaining > 0; i++) {
+    if (!next[i]) {
+      const add = Math.min(remaining, stackSize);
+      next[i] = { ...cloneStack(stack), qty: add };
+      remaining -= add;
+    }
+  }
+  return next;
+}
