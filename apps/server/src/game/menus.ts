@@ -1472,14 +1472,29 @@ function auctionClaimsMenu(player: PlayerState): MenuView {
 }
 
 function leaderboardMenu(player: PlayerState): MenuView {
-  const richest = [...getData().users].sort((a, b) => b.coins - a.coins).slice(0, 14);
+  const netWorth = (user: { coins: number; bank?: { balance?: number } }) =>
+    Math.floor(user.coins + (user.bank?.balance ?? 0));
+  const richest = [...getData().users]
+    .filter((user) => user.username !== 'MarketBot' && user.username !== 'AuctionMirror')
+    .sort((a, b) => netWorth(b) - netWorth(a))
+    .slice(0, 14);
+  const playerTotal = netWorth({ coins: player.coins, bank: player.bank });
   return {
     id: 'leaderboard',
     title: 'Leaderboards',
     rows: 4,
     slots: [
-      slot(4, 'leaderboard', 'Richest Players', [line(`${player.username}: ${Math.floor(player.coins).toLocaleString()} coins`, 'gold'), line('Click a player to view their profile.')]),
-      ...richest.map((user, i) => slot(10 + (i % 7) + Math.floor(i / 7) * 9, 'player_head', `#${i + 1} ${user.username}`, [line(`${Math.floor(user.coins).toLocaleString()} Coins`, 'gold'), line(`Combat ${levelFromXp(user.skills.combat ?? 0).level}`, 'red'), line(`Mining ${levelFromXp(user.skills.mining ?? 0).level}`, 'aqua'), line('Click to view profile!', 'yellow')], `profile:${user.id}`)),
+      slot(4, 'leaderboard', 'Richest Players', [
+        line(`${player.username}: ${playerTotal.toLocaleString()} coins (purse + bank)`, 'gold'),
+        line('Click a player to view their profile.'),
+      ]),
+      ...richest.map((user, i) => slot(10 + (i % 7) + Math.floor(i / 7) * 9, 'player_head', `#${i + 1} ${user.username}`, [
+        line(`${netWorth(user).toLocaleString()} Coins`, 'gold'),
+        line(`Purse ${Math.floor(user.coins).toLocaleString()} · Bank ${Math.floor(user.bank?.balance ?? 0).toLocaleString()}`, 'gray'),
+        line(`Combat ${levelFromXp(user.skills.combat ?? 0).level}`, 'red'),
+        line(`Mining ${levelFromXp(user.skills.mining ?? 0).level}`, 'aqua'),
+        line('Click to view profile!', 'yellow'),
+      ], `profile:${user.id}`)),
       slot(27, 'arrow', 'Go Back', [line('To SkyBlock Menu')], 'open:skyblock'),
       slot(31, 'barrier', 'Close', [line('Close this menu')], 'close'),
     ],

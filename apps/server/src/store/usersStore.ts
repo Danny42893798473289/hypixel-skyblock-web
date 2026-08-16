@@ -105,6 +105,8 @@ export interface StoredAuction {
   bin: boolean;
   createdAt: number;
   expiresAt: number;
+  /** Synced from Hypixel SkyBlock — refreshed hourly. */
+  mirrored?: boolean;
 }
 
 export interface UsersFile {
@@ -220,6 +222,22 @@ export function removeOrder(id: string): StoredOrder | undefined {
   data.bazaarOrders = data.bazaarOrders.filter((x) => x.id !== id);
   persist(true);
   return o;
+}
+
+export function removeOrdersForPlayer(playerId: string): number {
+  const before = data.bazaarOrders.length;
+  data.bazaarOrders = data.bazaarOrders.filter((o) => o.playerId !== playerId);
+  const removed = before - data.bazaarOrders.length;
+  if (removed > 0) persist(true);
+  return removed;
+}
+
+export function removeMirroredAuctions(): number {
+  const before = data.auctions.length;
+  data.auctions = data.auctions.filter((a) => !a.mirrored);
+  const removed = before - data.auctions.length;
+  if (removed > 0) persist(true);
+  return removed;
 }
 
 export function openOrders(itemId: ItemId, side: 'buy' | 'sell'): StoredOrder[] {

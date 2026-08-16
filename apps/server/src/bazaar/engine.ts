@@ -16,10 +16,12 @@ import {
   type OrderBookLevel,
   type PlayerState,
   BAZAAR_ITEMS,
+  BAZAAR_TAX_RATE,
   addItem,
   removeItem,
   canAddItem,
 } from '@aether/shared';
+import { isMarketBot } from '../hypixel/bots.js';
 
 export type BazaarFillListener = (playerId: string) => void;
 const fillListeners = new Set<BazaarFillListener>();
@@ -87,15 +89,21 @@ export function getOrderBook(itemId: ItemId): OrderBookSnapshot {
   };
 }
 
+function afterTax(amount: number): number {
+  return Math.floor(amount * (1 - BAZAAR_TAX_RATE) * 100) / 100;
+}
+
 function creditSeller(playerId: string, amount: number): void {
+  const payout = isMarketBot(playerId) ? amount : afterTax(amount);
   updatePlayer(playerId, (p) => {
-    p.coins += amount;
+    p.coins += payout;
     savePlayer(p);
   });
   notifyFill(playerId);
 }
 
 function deliverToBuyer(playerId: string, itemId: ItemId, qty: number): boolean {
+  if (isMarketBot(playerId)) return true;
   let ok = false;
   updatePlayer(playerId, (p) => {
     if (!canAddItem(p.inventory, itemId, qty)) return;
@@ -207,7 +215,7 @@ export function placeSellOrder(
     const take = Math.min(remaining(buy), remainingQty);
     const tradeCost = take * buy.price;
     if (!deliverToBuyer(buy.playerId, itemId, take)) continue;
-    coins += tradeCost;
+    coins += afterTax(tradeCost);
     remainingQty -= take;
     patchOrder(buy.id, buy.filled + take, buy.qty);
   }
@@ -312,7 +320,8 @@ export function instantSell(
     const take = Math.min(remaining(buy), need);
     const revenue = take * buy.price;
     if (!deliverToBuyer(buy.playerId, itemId, take)) continue;
-    earned += revenue;
+    const payout = afterTax(revenue);
+    earned += payout;
     sold += take;
     need -= take;
     patchOrder(buy.id, buy.filled + take, buy.qty);

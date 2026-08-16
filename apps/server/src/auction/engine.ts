@@ -86,10 +86,12 @@ export function buyBin(player: PlayerState, auctionId: string): PlayerState {
   removeAuction(auctionId);
   player.coins -= auction.price;
   player.inventory = inventory;
-  updatePlayer(auction.sellerId, (seller) => {
-    seller.coins += Math.floor(auction.price * 0.99);
-    savePlayer(seller);
-  });
+  if (!auction.mirrored) {
+    updatePlayer(auction.sellerId, (seller) => {
+      seller.coins += Math.floor(auction.price * 0.99);
+      savePlayer(seller);
+    });
+  }
   savePlayer(player);
   return player;
 }
@@ -158,6 +160,7 @@ export function cancelListing(player: PlayerState, auctionId: string): PlayerSta
   const auction = auctionById(auctionId);
   if (!auction) throw new Error('Auction not found');
   if (auction.sellerId !== player.id) throw new Error('Not your auction');
+  if (auction.mirrored) throw new Error('Mirrored listings cannot be cancelled');
   if (auction.highestBidderId && !auction.bin) {
     throw new Error('Cannot cancel — a player has already bid');
   }
@@ -184,4 +187,52 @@ export function formatTimeLeft(expiresAt: number): string {
   if (hours >= 24) return `${Math.floor(hours / 24)}d ${hours % 24}h`;
   if (hours > 0) return `${hours}h ${mins}m`;
   return `${mins}m`;
+}
+
+export type AuctionSort = 'price_asc' | 'price_desc' | 'ending' | 'newest';
+
+export function listAuctions(options: {
+  search?: string;
+  sort?: AuctionSort;
+  page?: number;
+  pageSize?: number;
+} = {}) {
+  const search = options.search?.trim().toLowerCase() ?? '';
+  const sort = options.sort ?? 'ending';
+  const page = Math.max(0, options.page ?? 0);
+  const pageSize = Math.min(48, Math.max(1, options.pageSize ?? 24));
+  const now = Date.now();
+
+  let rows = activeAuctions();
+  if (search) {
+    rows = rows.filter((auction) => {
+      const def = ITEMS[auction.item.itemId];
+      const hay = `${def?.name ?? auction.item.itemId} ${auction.sellerName}`.toLowerCase();
+      return hay.includes(search);
+    });
+  }
+
+  rows = [...rows].sort((a, b) => {
+    const priceA = a.bin ? a.price : a.highestBid;
+    const priceB = b.bin ? b.price : b.highestBid;
+    if (sort === 'price_asc') return priceA - priceB;
+    if (sort === 'price_desc') return priceB - priceA;
+    if (sort === 'newest') return b.createdAt - a.createdAt;
+    return a.expiresAt - b.expiresAt;
+  });
+
+  const total = rows.length;
+  const listings = rows.slice(page * pageSize, (page + 1) * pageSize).map((auction) => ({
+    id: auction.id,
+    sellerName: auction.sellerName,
+    itemId: auction.item.itemId,
+    qty: auction.item.qty,
+    price: auction.bin ? auction.price : auction.highestBid,
+    highestBid: auction.highestBid,
+    bin: auction.bin,
+    expiresAt: auction.expiresAt,
+    mirrored: Boolean(auction.mirrored),
+  }));
+
+  return { listings, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
 }
