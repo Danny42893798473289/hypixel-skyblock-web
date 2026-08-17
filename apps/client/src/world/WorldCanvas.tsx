@@ -5,6 +5,7 @@ import {
   buildDungeonRoomMap,
   dungeonPhase,
   islandMap,
+  islandContentStamp,
   nearestEntity,
   overlayLiveWorld,
   playerWorldMap,
@@ -71,7 +72,7 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, chatFocused, t
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const collisionKey = player.zoneId === DUNGEON_ZONE
     ? dungeonCollisionKey(player)
-    : `${player.islandId}:${islandBlocksKey(player)}`;
+    : `${player.islandId}:${islandBlocksKey(player)}:${islandContentStamp(player.islandId)}`;
   // collisionKey covers island + dungeon floor/phase/room, not object identity.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const collisionMap = useMemo((): IslandMap => {
@@ -219,6 +220,13 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, chatFocused, t
         if (entity.kind === 'sign') {
           drawables.push({ y: entity.y + 0.01, draw: () => drawNameplate(ctx, entity.label, entity.x, entity.y - 0.85, '#ffd24a') });
         }
+        if (entity.kind === 'resource') {
+          const selected = entity.id === nearest?.id;
+          drawables.push({
+            y: entity.y + 0.02,
+            draw: () => drawNameplate(ctx, entity.label, entity.x, entity.y - 0.95, selected ? '#55ffff' : '#d0d0d0'),
+          });
+        }
       }
 
       for (const remote of remotesRef.current.values()) {
@@ -243,7 +251,7 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, chatFocused, t
       drawables.sort((a, b) => a.y - b.y);
       for (const drawable of drawables) drawable.draw();
 
-      if (nearest && nearest.kind !== 'sign') {
+      if (nearest && nearest.kind !== 'sign' && nearest.kind !== 'resource') {
         drawNameplate(ctx, nearest.label, nearest.x, nearest.y - 1.3, '#55ffff');
       }
       animationFrame = requestAnimationFrame(render);

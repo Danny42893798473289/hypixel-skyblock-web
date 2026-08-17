@@ -12,6 +12,8 @@ import {
   JACOB_CONTEST_MS,
   emptyHotm,
   emptyBestiary,
+  hotmMiningFortune,
+  hotmMiningSpeed,
   emptyMuseum,
   emptyWardrobe,
   normalizeBackpacks,
@@ -71,8 +73,23 @@ export function unlockHotmPerk(player: PlayerState, perkId: string): string {
   if (!perk) throw new Error('Unknown perk');
   const level = player.hotm.perks[perkId] ?? 0;
   if (level >= perk.max) throw new Error('Already maxed');
-  if (player.hotm.tokens < perk.cost) throw new Error(`Need ${perk.cost} HotM tokens`);
-  player.hotm.tokens -= perk.cost;
+  if (perk.parent) {
+    const need = perk.parentLevel ?? 1;
+    const have = player.hotm.perks[perk.parent] ?? 0;
+    if (have < need) {
+      const parent = HOTM_PERKS.find((entry) => entry.id === perk.parent);
+      throw new Error(`Unlock ${parent?.name ?? perk.parent}${need > 1 ? ` ${need}` : ''} first`);
+    }
+  }
+  if (level === 0) {
+    if (player.hotm.tokens < perk.cost) throw new Error(`Need ${perk.cost} HotM token${perk.cost === 1 ? '' : 's'}`);
+    player.hotm.tokens -= perk.cost;
+    player.hotm.perks[perkId] = 1;
+    return `Unlocked ${perk.name}!`;
+  }
+  const powder = perk.powderCost * (level + 1);
+  if (player.hotm.mithrilPowder < powder) throw new Error(`Need ${powder.toLocaleString()} Mithril Powder`);
+  player.hotm.mithrilPowder -= powder;
   player.hotm.perks[perkId] = level + 1;
   return `${perk.name} is now level ${level + 1}.`;
 }
@@ -95,7 +112,10 @@ export function noteMiningCommission(player: PlayerState, itemId: ItemId, qty: n
   for (const job of player.hotm.commissions) {
     if (job.itemId === itemId) job.have = Math.min(job.need, job.have + qty);
   }
-  if (itemId === 'mithril') player.hotm.mithrilPowder += qty;
+  if (itemId === 'mithril') {
+    const daily = player.hotm.perks.daily_powder ?? 0;
+    player.hotm.mithrilPowder += qty + daily;
+  }
 }
 
 export function brewPotion(player: PlayerState, recipeId: string): string {
@@ -203,12 +223,10 @@ export function npcSellMultiplier(player: PlayerState): number {
 
 export function miningFortuneFromHotm(player: PlayerState): number {
   ensureMidgame(player);
-  const fortune = (player.hotm.perks.mining_fortune ?? 0) * 5;
-  const cole = currentMayor().id === 'cole' ? 15 : 0;
-  return fortune + cole;
+  return hotmMiningFortune(player.hotm.perks, currentMayor().id === 'cole');
 }
 
 export function miningSpeedFromHotm(player: PlayerState): number {
   ensureMidgame(player);
-  return (player.hotm.perks.mining_speed ?? 0) * 20;
+  return hotmMiningSpeed(player.hotm.perks);
 }

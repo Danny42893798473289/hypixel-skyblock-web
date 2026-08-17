@@ -33,7 +33,13 @@ export interface HotmPerk {
   id: string;
   name: string;
   max: number;
+  /** Tokens spent to unlock (0 → 1). Further levels cost mithril powder. */
   cost: number;
+  powderCost: number;
+  parent?: string;
+  parentLevel?: number;
+  slot: number;
+  icon: string;
   description: string;
 }
 
@@ -88,10 +94,116 @@ export interface WardrobeState {
 }
 
 export const HOTM_PERKS: HotmPerk[] = [
-  { id: 'mining_speed', name: 'Mining Speed', max: 10, cost: 1, description: '+20 Mining Speed per level.' },
-  { id: 'mining_fortune', name: 'Mining Fortune', max: 10, cost: 1, description: '+5 Mining Fortune per level.' },
-  { id: 'titanium_insanium', name: 'Titanium Insanium', max: 5, cost: 2, description: 'Chance for extra Titanium.' },
-  { id: 'sky_mall', name: 'Sky Mall', max: 1, cost: 3, description: 'Daily mining bonus while a mining mayor is elected.' },
+  {
+    id: 'mining_speed',
+    name: 'Mining Speed',
+    max: 20,
+    cost: 1,
+    powderCost: 40,
+    slot: 31,
+    icon: 'golden_pickaxe',
+    description: '+20 Mining Speed per level. The Heart of the Mountain starts here.',
+  },
+  {
+    id: 'mining_fortune',
+    name: 'Mining Fortune',
+    max: 20,
+    cost: 1,
+    powderCost: 50,
+    parent: 'mining_speed',
+    slot: 22,
+    icon: 'gold_ingot',
+    description: '+5 Mining Fortune per level.',
+  },
+  {
+    id: 'titanium_insanium',
+    name: 'Titanium Insanium',
+    max: 10,
+    cost: 1,
+    powderCost: 80,
+    parent: 'mining_speed',
+    slot: 23,
+    icon: 'iron_ingot',
+    description: 'Chance to find extra Titanium while mining Mithril.',
+  },
+  {
+    id: 'daily_powder',
+    name: 'Daily Powder',
+    max: 10,
+    cost: 1,
+    powderCost: 45,
+    parent: 'mining_speed',
+    slot: 39,
+    icon: 'glowstone_dust',
+    description: 'Gain extra Mithril Powder from mithril you mine.',
+  },
+  {
+    id: 'sky_mall',
+    name: 'Sky Mall',
+    max: 1,
+    cost: 1,
+    powderCost: 0,
+    parent: 'mining_fortune',
+    slot: 12,
+    icon: 'nether_star',
+    description: 'Permanent +20 Mining Fortune. Extra +15 while Cole is mayor.',
+  },
+  {
+    id: 'luck_of_the_cave',
+    name: 'Luck of the Cave',
+    max: 10,
+    cost: 1,
+    powderCost: 55,
+    parent: 'mining_fortune',
+    slot: 21,
+    icon: 'emerald',
+    description: '+6 Mining Fortune per level in the Dwarven Mines and Crystal Hollows.',
+  },
+  {
+    id: 'efficient_miner',
+    name: 'Efficient Miner',
+    max: 10,
+    cost: 1,
+    powderCost: 60,
+    parent: 'mining_fortune',
+    slot: 14,
+    icon: 'cobble',
+    description: '+8 Mining Fortune per level. Extra cobble and ore from each swing.',
+  },
+  {
+    id: 'mining_speed_2',
+    name: 'Mining Speed 2',
+    max: 10,
+    cost: 2,
+    powderCost: 90,
+    parent: 'mining_speed',
+    parentLevel: 5,
+    slot: 13,
+    icon: 'diamond_pickaxe',
+    description: '+40 Mining Speed per level. Requires Mining Speed V.',
+  },
+  {
+    id: 'goblin_killer',
+    name: 'Goblin Killer',
+    max: 5,
+    cost: 1,
+    powderCost: 70,
+    parent: 'titanium_insanium',
+    slot: 40,
+    icon: 'golden_sword',
+    description: 'Earn extra coins while mining in the Dwarven Mines.',
+  },
+  {
+    id: 'front_loaded',
+    name: 'Front Loaded',
+    max: 5,
+    cost: 1,
+    powderCost: 75,
+    parent: 'titanium_insanium',
+    slot: 41,
+    icon: 'chest',
+    description: 'Chance for bonus Mithril from each mithril vein.',
+  },
 ];
 
 export const GARDEN_CROPS: ItemId[] = ['wheat', 'carrot', 'potato', 'pumpkin', 'melon', 'sugar_cane', 'cactus', 'cocoa_beans', 'mushroom', 'nether_wart'];
@@ -171,15 +283,55 @@ export function rollGardenVisitor(): GardenVisitor {
 }
 
 export function emptyHotm(): HotmState {
-  return { tokens: 0, mithrilPowder: 0, perks: {}, commissions: rollCommissions() };
+  return {
+    tokens: 0,
+    mithrilPowder: 0,
+    perks: {},
+    commissions: rollCommissions(),
+  };
+}
+
+export function hotmUnlockedCount(perks: Record<string, number>): number {
+  return Object.values(perks).filter((level) => level > 0).length;
+}
+
+export function hotmMiningFortune(perks: Record<string, number>, coleMayor: boolean): number {
+  return (perks.mining_fortune ?? 0) * 5
+    + (perks.efficient_miner ?? 0) * 8
+    + ((perks.sky_mall ?? 0) > 0 ? 20 : 0)
+    + (coleMayor ? 15 : 0);
+}
+
+export function hotmMiningSpeed(perks: Record<string, number>): number {
+  return (perks.mining_speed ?? 0) * 20
+    + (perks.mining_speed_2 ?? 0) * 40;
+}
+
+export function hotmPerkLocked(perks: Record<string, number>, perk: HotmPerk): boolean {
+  if (!perk.parent) return false;
+  return (perks[perk.parent] ?? 0) < (perk.parentLevel ?? 1);
+}
+
+export function hotmPowderCost(perk: HotmPerk, nextLevel: number): number {
+  if (nextLevel <= 1) return 0;
+  return perk.powderCost * nextLevel;
 }
 
 export function rollCommissions(): HotmCommission[] {
-  return [
-    { id: 'c_mithril', label: 'Mine Mithril', itemId: 'mithril', need: 50, have: 0, rewardTokens: 1, rewardCoins: 250 },
-    { id: 'c_titanium', label: 'Mine Titanium', itemId: 'titanium', need: 10, have: 0, rewardTokens: 2, rewardCoins: 400 },
-    { id: 'c_cobble', label: 'Mine Cobblestone', itemId: 'cobble', need: 100, have: 0, rewardTokens: 1, rewardCoins: 80 },
+  const pool: HotmCommission[] = [
+    { id: 'c_mithril', label: 'Mithril Miner', itemId: 'mithril', need: 50, have: 0, rewardTokens: 1, rewardCoins: 250 },
+    { id: 'c_titanium', label: 'Titanium Miner', itemId: 'titanium', need: 10, have: 0, rewardTokens: 2, rewardCoins: 400 },
+    { id: 'c_cobble', label: 'Cobblestone Collector', itemId: 'cobble', need: 80, have: 0, rewardTokens: 1, rewardCoins: 80 },
+    { id: 'c_hard_stone', label: 'Hard Stone Miner', itemId: 'hard_stone', need: 40, have: 0, rewardTokens: 1, rewardCoins: 120 },
+    { id: 'c_glacite', label: 'Glacite Walker', itemId: 'glacite', need: 20, have: 0, rewardTokens: 1, rewardCoins: 180 },
   ];
+  const picked: HotmCommission[] = [];
+  const remaining = [...pool];
+  while (picked.length < 3 && remaining.length) {
+    const index = Math.floor(Math.random() * remaining.length);
+    picked.push({ ...remaining.splice(index, 1)[0]!, have: 0 });
+  }
+  return picked;
 }
 
 export function emptyBestiary(): BestiaryState {

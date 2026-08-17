@@ -1201,7 +1201,9 @@ export const ZONES: Record<string, ZoneDef> = {
     description: 'Commissions and the Heart of the Mountain.',
     icon: 'cavern',
     links: ['dwarven_mithril', 'dwarven_titanium', 'dwarven_glacite'],
-    actions: [],
+    actions: [
+      mine('mine_cobble_dw', 'Mine Cobblestone', 'cobble', 6, 2, 1, 700, 'Gray dwarven cobble around the village.'),
+    ],
     stations: ['warp', 'hotm'],
     skillReq: { skill: 'mining', level: 12 },
     npc: {
@@ -1223,6 +1225,7 @@ export const ZONES: Record<string, ZoneDef> = {
     icon: 'mithril',
     links: ['dwarven_village'],
     actions: [
+      mine('mine_cobble_mithril', 'Mine Cobblestone', 'cobble', 8, 3, 1, 720, 'Loose cobble in the mithril caves.'),
       mine('mine_mithril_dw', 'Mine Mithril', 'mithril', 12, 2, 3, 900, 'Commission mithril.'),
       mine('mine_hard_stone', 'Mine Hard Stone', 'hard_stone', 8, 3, 3, 800, 'Dense dwarven stone.'),
       mine('mine_tungsten', 'Mine Tungsten', 'tungsten', 16, 1, 4, 1100, 'Heavy tungsten ore.'),
@@ -1247,7 +1250,10 @@ export const ZONES: Record<string, ZoneDef> = {
     icon: 'cavern',
     links: ['dwarven_village'],
     skillReq: { skill: 'mining', level: 14 },
-    actions: [mine('mine_glacite', 'Mine Glacite', 'glacite', 16, 2, 3, 1000, 'Blue glacite veins.')],
+    actions: [
+      mine('mine_cobble_glacite', 'Mine Cobblestone', 'cobble', 6, 2, 1, 700, 'Broken cobble in the ice tunnels.'),
+      mine('mine_glacite', 'Mine Glacite', 'glacite', 16, 2, 3, 1000, 'Blue glacite veins.'),
+    ],
   },
 
   crystal_camp: {

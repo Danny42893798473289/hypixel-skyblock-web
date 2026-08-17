@@ -170,6 +170,7 @@ export function drawTile(
 /** Rock body colour, gem colour, gem highlight — one row per ore type. */
 const ORES: Record<string, [string, string, string]> = {
   ore_stone: ['#6b7075', '#9ca1a5', '#c3c8cc'],
+  ore_cobble: ['#5a5a5a', '#8a8a8a', '#c4c4c4'],
   ore_coal: ['#5a5f63', '#141618', '#3a3f44'],
   ore_iron: ['#767b80', '#d3a074', '#f0c79c'],
   ore_gold: ['#7d7a68', '#ffcc22', '#fff08a'],
@@ -178,6 +179,8 @@ const ORES: Record<string, [string, string, string]> = {
   ore_diamond: ['#6b7580', '#38e0e0', '#a8ffff'],
   ore_emerald: ['#66756b', '#17c246', '#7dffa0'],
   ore_mithril: ['#5f7076', '#6fd7d0', '#c2fffb'],
+  ore_titanium: ['#6a6e74', '#d8dce4', '#ffffff'],
+  ore_glacite: ['#5a6b78', '#7ec8ff', '#e8f6ff'],
   ore_ruby: ['#4c3b45', '#e02352', '#ff89a9'],
   ore_jade: ['#3f4d40', '#4bd97a', '#b6ffc8'],
 };
@@ -243,7 +246,8 @@ export function drawEntity(
   }
 
   const sprite = entity.sprite;
-  if (ORES[sprite]) drawOre(ctx, ORES[sprite]);
+  if (sprite === 'ore_cobble') drawCobble(ctx);
+  else if (ORES[sprite]) drawOre(ctx, ORES[sprite]);
   else if (CROPS[sprite]) drawCrop(ctx, CROPS[sprite], sprite);
   else if (TREES[sprite]) drawTree(ctx, TREES[sprite], sprite === 'tree_jungle');
   else if (NPCS[sprite]) drawNpc(ctx, NPCS[sprite]);
@@ -363,6 +367,25 @@ function drawOre(ctx: CanvasRenderingContext2D, [rock, gem, glint]: [string, str
   ctx.fillRect(2, -1, 2, 2);
   ctx.fillStyle = '#ffffff22';
   ctx.fillRect(-8, -9, 16, 2);
+}
+
+function drawCobble(ctx: CanvasRenderingContext2D): void {
+  ctx.fillStyle = '#3f3f3f';
+  ctx.fillRect(-8, -9, 16, 15);
+  const stones: Array<[number, number, number, number, string]> = [
+    [-7, -8, 7, 5, '#8d8d8d'],
+    [1, -8, 6, 4, '#7a7a7a'],
+    [-7, -2, 5, 5, '#9a9a9a'],
+    [-1, -3, 8, 5, '#6e6e6e'],
+    [1, 3, 6, 2, '#858585'],
+    [-7, 4, 7, 1, '#747474'],
+  ];
+  for (const [x, y, w, h, color] of stones) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = '#ffffff33';
+    ctx.fillRect(x, y, Math.max(1, w - 3), 1);
+  }
 }
 
 function drawCrop(ctx: CanvasRenderingContext2D, [stalk, fruit, glint]: [string, string, string], sprite: string): void {

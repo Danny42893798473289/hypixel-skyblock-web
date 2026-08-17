@@ -13,6 +13,9 @@ import {
   countItem,
   currentMayor,
   currentQuestStep,
+  hotmPerkLocked,
+  hotmPowderCost,
+  hotmUnlockedCount,
   plotGrowRemainingMs,
   plotReady,
   skyblockLevelFromXp,
@@ -308,33 +311,101 @@ export function dungeonStarsMenu(player: PlayerState): MenuView {
 
 export function hotmMenu(player: PlayerState): MenuView {
   const hotm = player.hotm;
+  const unlocked = hotmUnlockedCount(hotm.perks);
+  const slots: MenuSlotView[] = [
+    slot(4, 'mithril', 'Heart of the Mountain', [
+      line(`Tokens: ${hotm.tokens}`, 'aqua'),
+      line(`Mithril Powder: ${hotm.mithrilPowder.toLocaleString()}`, 'green'),
+      line(`Perks unlocked: ${unlocked}/${HOTM_PERKS.length}`, 'yellow'),
+      line('Unlock the root perk, then branch outward.', 'gray'),
+      line('Tokens unlock a perk. Powder levels it up.', 'gray'),
+    ]),
+  ];
+
+  for (const perk of HOTM_PERKS) {
+    const level = hotm.perks[perk.id] ?? 0;
+    const locked = hotmPerkLocked(hotm.perks, perk);
+    const maxed = level >= perk.max;
+    const parent = perk.parent ? HOTM_PERKS.find((entry) => entry.id === perk.parent) : undefined;
+    const lore: LoreLine[] = [line(perk.description)];
+    if (locked && parent) {
+      const need = perk.parentLevel ?? 1;
+      lore.push(line(`Requires ${parent.name}${need > 1 ? ` ${romanHotm(need)}` : ''} first`, 'red'));
+    } else if (level === 0) {
+      lore.push(line(`Unlock: ${perk.cost} HotM token${perk.cost === 1 ? '' : 's'}`, 'yellow'));
+      lore.push(line(hotm.tokens >= perk.cost ? 'Click to unlock!' : `Need ${perk.cost} token${perk.cost === 1 ? '' : 's'}`, hotm.tokens >= perk.cost ? 'green' : 'red'));
+    } else {
+      lore.push(line(`Level ${romanHotm(level)} / ${romanHotm(perk.max)}`, maxed ? 'green' : 'aqua'));
+      if (!maxed) {
+        const powder = hotmPowderCost(perk, level + 1);
+        lore.push(line(`Next: ${powder.toLocaleString()} Mithril Powder`, 'yellow'));
+        lore.push(line(hotm.mithrilPowder >= powder ? 'Click to upgrade!' : 'Not enough powder', hotm.mithrilPowder >= powder ? 'green' : 'red'));
+      } else {
+        lore.push(line('MAXED', 'green', true));
+      }
+    }
+    const clickable = !locked && !maxed;
+    slots.push(slot(
+      perk.slot,
+      locked ? 'coal' : perk.icon,
+      locked ? `???` : `${perk.name}${level > 0 ? ` ${romanHotm(level)}` : ''}`,
+      lore,
+      clickable ? `hotm:${perk.id}` : undefined,
+      {
+        glint: level > 0,
+        disabled: locked,
+        rarity: maxed ? 'LEGENDARY' : level > 0 ? 'RARE' : 'COMMON',
+      },
+    ));
+  }
+
+  const branches: Array<{ slot: number; from: string }> = [
+    { slot: 11, from: 'mining_fortune' },
+    { slot: 15, from: 'mining_fortune' },
+    { slot: 20, from: 'mining_fortune' },
+    { slot: 24, from: 'titanium_insanium' },
+    { slot: 29, from: 'mining_speed' },
+    { slot: 30, from: 'mining_speed' },
+    { slot: 32, from: 'mining_speed' },
+    { slot: 33, from: 'mining_speed' },
+    { slot: 38, from: 'mining_speed' },
+    { slot: 42, from: 'titanium_insanium' },
+  ];
+  for (const branch of branches) {
+    const open = (hotm.perks[branch.from] ?? 0) > 0;
+    slots.push(slot(
+      branch.slot,
+      open ? 'cyan_stained_glass_pane' : 'gray_stained_glass_pane',
+      ' ',
+      [line(open ? 'Unlocked path' : 'Locked path', open ? 'aqua' : 'dark_gray')],
+    ));
+  }
+
+  hotm.commissions.forEach((job, i) => {
+    slots.push(slot(46 + i, job.itemId, job.label, [
+      line(`${job.have}/${job.need} ${ITEMS[job.itemId]?.name ?? job.itemId}`, 'yellow'),
+      line(`+${job.rewardTokens} token, +${job.rewardCoins} coins`, 'gold'),
+      job.have >= job.need ? line('Click to claim!', 'green') : line('Mine this in the Dwarven Mines.', 'gray'),
+    ], job.have >= job.need ? `commission:${job.id}` : undefined, {
+      itemId: job.itemId,
+      glint: job.have >= job.need,
+    }));
+  });
+
+  slots.push(back(), close());
   return {
     id: 'hotm',
     title: 'Heart of the Mountain',
     rows: 6,
-    slots: [
-      slot(4, 'mithril', 'Heart of the Mountain', [
-        line(`Tokens: ${hotm.tokens}`, 'aqua'),
-        line(`Mithril Powder: ${hotm.mithrilPowder}`, 'green'),
-      ]),
-      ...HOTM_PERKS.map((perk, i) => {
-        const level = hotm.perks[perk.id] ?? 0;
-        return slot(10 + i, 'crystal', `${perk.name} ${level}/${perk.max}`, [
-          line(perk.description),
-          line(`Cost: ${perk.cost} token${perk.cost === 1 ? '' : 's'}`, 'yellow'),
-          level >= perk.max ? line('Maxed', 'green') : line('Click to unlock / upgrade', 'yellow'),
-        ], level >= perk.max ? undefined : `hotm:${perk.id}`);
-      }),
-      ...hotm.commissions.map((job, i) => slot(28 + i, job.itemId, job.label, [
-        line(`${job.have}/${job.need} ${ITEMS[job.itemId]?.name ?? job.itemId}`, 'yellow'),
-        line(`+${job.rewardTokens} token, +${job.rewardCoins} coins`, 'gold'),
-        job.have >= job.need ? line('Click to claim!', 'green') : line('Mine this ore in the Dwarven Mines.', 'gray'),
-      ], job.have >= job.need ? `commission:${job.id}` : undefined)),
-      back(),
-      close(),
-    ],
+    slots,
     parent: 'skyblock',
   };
+}
+
+const HOTM_ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX'];
+
+function romanHotm(level: number): string {
+  return HOTM_ROMAN[level] ?? String(level);
 }
 
 export function alchemyMenu(player: PlayerState): MenuView {

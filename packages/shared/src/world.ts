@@ -581,13 +581,20 @@ export function buildIslandMap(islandId: IslandId): IslandMap {
   };
 }
 
-const islandMapCache = new Map<IslandId, IslandMap>();
+const islandMapCache = new Map<string, IslandMap>();
+
+export function islandContentStamp(islandId: IslandId): string {
+  return zonesOnIsland(islandId)
+    .map((zone) => `${zone.id}:${zone.actions.map((action) => action.id).join('+')}`)
+    .join('/');
+}
 
 export function islandMap(islandId: IslandId): IslandMap {
-  let map = islandMapCache.get(islandId);
+  const key = `${islandId}:${islandContentStamp(islandId)}`;
+  let map = islandMapCache.get(key);
   if (!map) {
     map = buildIslandMap(islandId);
-    islandMapCache.set(islandId, map);
+    islandMapCache.set(key, map);
   }
   return map;
 }
@@ -642,8 +649,14 @@ function resourceSprite(kind: string, itemId?: string): string {
     if (itemId.includes('diamond')) return 'ore_diamond';
     if (itemId.includes('emerald')) return 'ore_emerald';
     if (itemId.includes('mithril')) return 'ore_mithril';
+    if (itemId.includes('titanium')) return 'ore_titanium';
+    if (itemId.includes('glacite')) return 'ore_glacite';
+    if (itemId.includes('tungsten')) return 'ore_iron';
+    if (itemId.includes('starfall')) return 'ore_gold';
     if (itemId.includes('ruby')) return 'ore_ruby';
     if (itemId.includes('jade')) return 'ore_jade';
+    if (itemId.includes('cobble')) return 'ore_cobble';
+    if (itemId.includes('hard_stone')) return 'ore_stone';
     return 'ore_stone';
   }
   if (kind === 'farm') {

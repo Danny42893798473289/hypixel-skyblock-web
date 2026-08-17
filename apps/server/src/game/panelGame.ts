@@ -6,6 +6,7 @@ import {
   type PlayerState,
   type PlayerPublic,
   type ItemStack,
+  type StatBlock,
   type ItemId,
   type IslandId,
   type MenuId,
@@ -103,7 +104,7 @@ import { BANK_TIERS, accrueBankInterest, bankTier, depositLimit, nextBankTier } 
 import * as bazaar from '../bazaar/engine.js';
 import { registerLivePlayer, unregisterLivePlayer } from './livePlayers.js';
 import { buildMenu } from './menus.js';
-import { magicalPower, recomputeStats } from './profile.js';
+import { magicalPower, recomputeStats, stackStats } from './profile.js';
 import { buyBin, cancelListing, claimAuction, createListing, durationOptions, placeBid } from '../auction/engine.js';
 import { onBazaarSynced } from '../hypixel/broadcast.js';
 import { getBazaarSyncMeta } from '../hypixel/bazaarSync.js';
@@ -495,6 +496,36 @@ function meetsSkillReq(player: PlayerState, req?: { skill: keyof PlayerState['sk
   return skillLevel(player, req.skill) >= req.level;
 }
 
+function bestToolStack(
+  player: PlayerState,
+  toolType: 'pickaxe' | 'axe' | 'hoe' | 'sword' | 'rod',
+): ItemStack | null {
+  let best: ItemStack | null = null;
+  let bestTier = -1;
+  let bestDamage = -1;
+  for (const stack of player.inventory) {
+    if (!stack) continue;
+    const def = ITEMS[stack.itemId];
+    if (!def || def.toolType !== toolType) continue;
+    const tier = def.toolTier ?? 0;
+    const damage = def.damage ?? 0;
+    if (tier > bestTier || (tier === bestTier && damage > bestDamage)) {
+      best = stack;
+      bestTier = tier;
+      bestDamage = damage;
+    }
+  }
+  return best;
+}
+
+function toolStatsForSkill(player: PlayerState, skill?: string): Partial<StatBlock> {
+  const type = skill === 'mining' ? 'pickaxe' : skill === 'foraging' ? 'axe' : skill === 'farming' ? 'hoe' : null;
+  if (!type) return {};
+  const held = hotbarStack(player.inventory, player.hotbarSlot);
+  if (held && ITEMS[held.itemId]?.toolType === type) return {};
+  return stackStats(bestToolStack(player, type));
+}
+
 function bestTool(
   player: PlayerState,
   toolType?: 'pickaxe' | 'axe' | 'hoe' | 'sword' | 'rod',
@@ -692,6 +723,7 @@ function handleEvent(session: Session, ev: ClientEvent): void {
     case 'setHotbar':
       if (ev.slot >= 0 && ev.slot < HOTBAR_SIZE) {
         session.player.hotbarSlot = ev.slot;
+        markStatsDirty(session);
         pushState(session);
       }
       break;
@@ -2222,7 +2254,10 @@ function runSingleAction(session: Session, act: ReturnType<typeof findAction>): 
   const last = session.lastActionAt[key] ?? 0;
 
   let cooldown = act.cooldownMs;
-  if (act.skill === 'mining') cooldown /= miningSpeedBonus(skillLevel(session.player, 'mining'));
+  if (act.skill === 'mining') {
+    const extraSpeed = toolStatsForSkill(session.player, 'mining').miningSpeed ?? 0;
+    cooldown /= miningSpeedBonus(skillLevel(session.player, 'mining')) * (1 + (session.player.stats.miningSpeed + extraSpeed) / 400);
+  }
   if (act.skill === 'foraging') cooldown /= foragingSpeedBonus(skillLevel(session.player, 'foraging'));
 
   if (now - last < cooldown * 0.85) throw new Error('Slow down!');
@@ -2274,13 +2309,18 @@ function runSingleAction(session: Session, act: ReturnType<typeof findAction>): 
 function giveResource(session: Session, act: NonNullable<ReturnType<typeof findAction>>, qty: number): void {
   if (!act.target || typeof act.target !== 'string') return;
   const itemId = act.target as ItemId;
-  const fortune = act.skill === 'mining'
-    ? session.player.stats.miningFortune
+  const island = session.player.islandId;
+  const dwarvenOrCrystal = island === 'dwarven_mines' || island === 'crystal_hollows';
+  let fortune = act.skill === 'mining'
+    ? session.player.stats.miningFortune + (toolStatsForSkill(session.player, 'mining').miningFortune ?? 0)
     : act.skill === 'farming'
-      ? session.player.stats.farmingFortune
+      ? session.player.stats.farmingFortune + (toolStatsForSkill(session.player, 'farming').farmingFortune ?? 0)
       : act.skill === 'foraging'
-        ? session.player.stats.foragingFortune
+        ? session.player.stats.foragingFortune + (toolStatsForSkill(session.player, 'foraging').foragingFortune ?? 0)
         : 0;
+  if (act.skill === 'mining' && dwarvenOrCrystal) {
+    fortune += (session.player.hotm?.perks.luck_of_the_cave ?? 0) * 6;
+  }
   const actualQty = rollFortune(fortune, qty);
   const next = addItem(session.player.inventory, itemId, actualQty);
   if (!next) throw new Error('Inventory full');
@@ -2297,6 +2337,22 @@ function giveResource(session: Session, act: NonNullable<ReturnType<typeof findA
       session.player.inventory = extra;
       toast(session, 'Titanium Insanium! +1 Titanium', 'success');
     }
+  }
+  if (itemId === 'mithril') {
+    const loaded = session.player.hotm?.perks.front_loaded ?? 0;
+    if (loaded > 0 && Math.random() < 0.08 * loaded) {
+      const bonus = addItem(session.player.inventory, 'mithril', 1);
+      if (bonus) {
+        session.player.inventory = bonus;
+        session.player.collections.mithril = (session.player.collections.mithril ?? 0) + 1;
+        noteMiningCommission(session.player, 'mithril', 1);
+        toast(session, 'Front Loaded! +1 Mithril', 'success');
+      }
+    }
+  }
+  if (act.skill === 'mining' && island === 'dwarven_mines') {
+    const goblin = session.player.hotm?.perks.goblin_killer ?? 0;
+    if (goblin > 0) session.player.coins += goblin * 3;
   }
   awardPetXp(session, act.skill, act.xp);
   pushState(session);
@@ -2701,6 +2757,7 @@ function doCraft(session: Session, recipeId: string): void {
   const added = addItem(inv, recipe.result.itemId, recipe.result.qty);
   if (!added) throw new Error('Inventory full');
   session.player.inventory = added;
+  addCollection(session, recipe.result.itemId, recipe.result.qty);
   flagQuest(session, 'craft_item');
   grantCarpentryXp(session, recipe.ingredients.length);
   pushState(session);
@@ -3096,7 +3153,10 @@ function damageNearbyWorldMobs(session: Session, damage: number, radius = 3.2): 
 
 function gatherDurationMs(session: Session, act: NonNullable<ReturnType<typeof findAction>>): number {
   let ms = act.cooldownMs ?? 800;
-  if (act.skill === 'mining') ms /= miningSpeedBonus(skillLevel(session.player, 'mining')) * (1 + session.player.stats.miningSpeed / 400);
+  if (act.skill === 'mining') {
+    const extraSpeed = toolStatsForSkill(session.player, 'mining').miningSpeed ?? 0;
+    ms /= miningSpeedBonus(skillLevel(session.player, 'mining')) * (1 + (session.player.stats.miningSpeed + extraSpeed) / 400);
+  }
   if (act.skill === 'foraging') ms /= foragingSpeedBonus(skillLevel(session.player, 'foraging'));
   if (act.skill === 'farming') ms = Math.max(280, 650 / (1 + session.player.stats.farmingFortune / 250));
   return Math.max(280, Math.min(4500, ms));
@@ -3180,6 +3240,14 @@ function handleFishing(session: Session, entityId: string, act: NonNullable<Retu
   }
   const qty = act.id === 'fish_lake' && Math.random() < 0.5 ? 2 : act.qty;
   giveResource(session, act, qty);
+}
+
+function addCollection(session: Session, itemId: ItemId, qty: number): void {
+  if (qty <= 0 || !COLLECTIONS.some((entry) => entry.itemId === itemId)) return;
+  const before = session.player.collections[itemId] ?? 0;
+  const after = before + qty;
+  session.player.collections[itemId] = after;
+  noteCollectionMilestone(session, itemId, before, after);
 }
 
 function noteCollectionMilestone(session: Session, itemId: ItemId, before: number, after: number): void {
