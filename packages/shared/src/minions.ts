@@ -50,6 +50,60 @@ export const MINIONS: Record<MinionType, MinionDef> = {
     storageCap: 64,
     color: '#8b5a2b',
   },
+  iron: {
+    type: 'iron',
+    itemId: 'minion_iron',
+    produces: 'iron_ingot',
+    name: 'Iron Minion',
+    intervalSec: 12,
+    storageCap: 64,
+    color: '#d8d8d8',
+  },
+  gold: {
+    type: 'gold',
+    itemId: 'minion_gold',
+    produces: 'gold_ingot',
+    name: 'Gold Minion',
+    intervalSec: 14,
+    storageCap: 64,
+    color: '#ffaa00',
+  },
+  diamond: {
+    type: 'diamond',
+    itemId: 'minion_diamond',
+    produces: 'diamond',
+    name: 'Diamond Minion',
+    intervalSec: 16,
+    storageCap: 64,
+    color: '#55ffff',
+  },
+  carrot: {
+    type: 'carrot',
+    itemId: 'minion_carrot',
+    produces: 'carrot',
+    name: 'Carrot Minion',
+    intervalSec: 10,
+    storageCap: 64,
+    color: '#ff8800',
+  },
+  potato: {
+    type: 'potato',
+    itemId: 'minion_potato',
+    produces: 'potato',
+    name: 'Potato Minion',
+    intervalSec: 10,
+    storageCap: 64,
+    color: '#d6b35a',
+  },
+  zombie: {
+    type: 'zombie',
+    itemId: 'minion_zombie',
+    produces: 'rotten_flesh',
+    name: 'Zombie Minion',
+    intervalSec: 13,
+    storageCap: 64,
+    color: '#6b8f4e',
+  },
 };
 
 export function ensureMinionDef(type: MinionType, produces?: ItemId, name?: string, color?: string): MinionDef {
@@ -86,6 +140,11 @@ export function minionIntervalSec(type: MinionType, tier: number): number {
 
 export function minionStorageCap(type: MinionType, tier: number): number {
   return MINIONS[type].storageCap * (1 + Math.floor((Math.max(1, tier) - 1) / 2));
+}
+
+/** 5 slots at SB 0, +1 every 5 SkyBlock levels, cap 10. */
+export function maxMinionSlots(skyblockLevel: number): number {
+  return Math.min(10, 5 + Math.floor(Math.max(0, skyblockLevel) / 5));
 }
 
 export interface PlacedMinion {

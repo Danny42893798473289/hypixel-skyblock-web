@@ -159,6 +159,72 @@ export const RECIPES: Recipe[] = [
     unlockCollection: 'oak_log',
     unlockAmount: 100,
   },
+  {
+    id: 'minion_iron',
+    name: 'Iron Minion',
+    result: { itemId: 'minion_iron', qty: 1 },
+    ingredients: [
+      { itemId: 'iron_ingot', qty: 80 },
+      { itemId: 'stone_pickaxe', qty: 1 },
+    ],
+    unlockCollection: 'iron_ore',
+    unlockAmount: 100,
+  },
+  {
+    id: 'minion_gold',
+    name: 'Gold Minion',
+    result: { itemId: 'minion_gold', qty: 1 },
+    ingredients: [
+      { itemId: 'gold_ingot', qty: 80 },
+      { itemId: 'stone_pickaxe', qty: 1 },
+    ],
+    unlockCollection: 'gold_ingot',
+    unlockAmount: 100,
+  },
+  {
+    id: 'minion_diamond',
+    name: 'Diamond Minion',
+    result: { itemId: 'minion_diamond', qty: 1 },
+    ingredients: [
+      { itemId: 'diamond', qty: 80 },
+      { itemId: 'iron_pickaxe', qty: 1 },
+    ],
+    unlockCollection: 'diamond',
+    unlockAmount: 100,
+  },
+  {
+    id: 'minion_carrot',
+    name: 'Carrot Minion',
+    result: { itemId: 'minion_carrot', qty: 1 },
+    ingredients: [
+      { itemId: 'carrot', qty: 80 },
+      { itemId: 'wooden_hoe', qty: 1 },
+    ],
+    unlockCollection: 'carrot',
+    unlockAmount: 100,
+  },
+  {
+    id: 'minion_potato',
+    name: 'Potato Minion',
+    result: { itemId: 'minion_potato', qty: 1 },
+    ingredients: [
+      { itemId: 'potato', qty: 80 },
+      { itemId: 'wooden_hoe', qty: 1 },
+    ],
+    unlockCollection: 'potato',
+    unlockAmount: 100,
+  },
+  {
+    id: 'minion_zombie',
+    name: 'Zombie Minion',
+    result: { itemId: 'minion_zombie', qty: 1 },
+    ingredients: [
+      { itemId: 'rotten_flesh', qty: 80 },
+      { itemId: 'wooden_sword', qty: 1 },
+    ],
+    unlockCollection: 'rotten_flesh',
+    unlockAmount: 100,
+  },
 ];
 
 RECIPES.push(

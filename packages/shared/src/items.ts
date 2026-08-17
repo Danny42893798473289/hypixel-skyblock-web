@@ -351,6 +351,12 @@ function skyblockItem(
 }
 
 Object.assign(ITEMS, {
+  minion_iron: skyblockItem('minion_iron', 'Iron Minion', 'COMMON', 'MINION', { color: '#d8d8d8', bazaarable: false, description: 'Produces iron ingots on your island.' }),
+  minion_gold: skyblockItem('minion_gold', 'Gold Minion', 'COMMON', 'MINION', { color: '#ffaa00', bazaarable: false, description: 'Produces gold ingots on your island.' }),
+  minion_diamond: skyblockItem('minion_diamond', 'Diamond Minion', 'COMMON', 'MINION', { color: '#55ffff', bazaarable: false, description: 'Produces diamonds on your island.' }),
+  minion_carrot: skyblockItem('minion_carrot', 'Carrot Minion', 'COMMON', 'MINION', { color: '#ff8800', bazaarable: false, description: 'Produces carrots on your island.' }),
+  minion_potato: skyblockItem('minion_potato', 'Potato Minion', 'COMMON', 'MINION', { color: '#d6b35a', bazaarable: false, description: 'Produces potatoes on your island.' }),
+  minion_zombie: skyblockItem('minion_zombie', 'Zombie Minion', 'COMMON', 'MINION', { color: '#6b8f4e', bazaarable: false, description: 'Produces rotten flesh on your island.' }),
   enchanted_cobble: skyblockItem('enchanted_cobble', 'Enchanted Cobblestone', 'UNCOMMON', 'MATERIAL', { color: '#55aa55', npcSell: 160 }),
   enchanted_cobble_block: skyblockItem('enchanted_cobble_block', 'Enchanted Cobblestone Block', 'RARE', 'MATERIAL', { color: '#55aaff', npcSell: 25600 }),
   enchanted_coal: skyblockItem('enchanted_coal', 'Enchanted Coal', 'UNCOMMON', 'MATERIAL', { color: '#444444', npcSell: 320 }),

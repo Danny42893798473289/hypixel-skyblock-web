@@ -59,6 +59,10 @@ import {
   PET_EGGS,
   minionTypeFromItem,
   ensureMinionDef,
+  maxMinionSlots,
+  skyblockXp,
+  skyblockLevelFromXp,
+  REFORGES,
 } from '@aether/shared';
 import { activeAuctions, auctionById, auctionsBySeller, durationOptions, expiredAuctionsFor, formatTimeLeft } from '../auction/engine.js';
 import { getData } from '../store/usersStore.js';
@@ -206,6 +210,7 @@ export function buildMenu(
     case 'garden_plant': return gardenPlantMenu(player, context);
     case 'garden_compost': return gardenCompostMenu(player);
     case 'dungeon_stars': return dungeonStarsMenu(player);
+    case 'dungeon_chest': return dungeonChestMenu(player);
     case 'trade': return tradeMenu(player, context);
     case 'hotm': return hotmMenu(player);
     case 'alchemy': return alchemyMenu(player);
@@ -905,6 +910,14 @@ function npcMenu(player: PlayerState): MenuView {
 }
 
 function minionsMenu(player: PlayerState): MenuView {
+  const slotsMax = maxMinionSlots(skyblockLevelFromXp(skyblockXp({
+    skills: player.skills,
+    collections: player.collections,
+    slayerXp: player.slayerXp,
+    fairySouls: player.fairySouls,
+    museumDonated: player.museum?.donated.length ?? 0,
+    bestiaryKills: Object.values(player.bestiary?.kills ?? {}).reduce((sum, n) => sum + n, 0),
+  })).level);
   const deploySlots: MenuSlotView[] = [];
   const seen = new Set<string>();
   for (const stack of player.inventory) {
@@ -925,21 +938,24 @@ function minionsMenu(player: PlayerState): MenuView {
     line(`Stored resources: ${minion.storage}`, 'yellow'),
     line(`Tier: ${minion.tier}/11`, 'aqua'),
     line(`Upgrades: ${minion.upgrades?.length ? minion.upgrades.join(', ') : 'none'}`, 'gray'),
-    line('Left-click to collect', 'yellow'),
+    line(minion.fuel && minion.fuel.expiresAt > Date.now() ? 'Fuel active' : 'No fuel', minion.fuel && minion.fuel.expiresAt > Date.now() ? 'green' : 'gray'),
+    line('Left-click to collect · click then use fuel/upgrades from inventory', 'yellow'),
     line('Right-click to upgrade tier', 'yellow'),
     line('Shift-click to pick up', 'yellow'),
   ], `minion:${minion.id}`));
 
   const upgradeSlots: MenuSlotView[] = [];
-  const first = player.minions[0];
-  if (first) {
-    for (const [upgradeId, label] of [['super_compactor', 'Install Super Compactor'], ['diamond_spreading', 'Install Diamond Spreading']] as const) {
+  for (const minion of player.minions) {
+    for (const [upgradeId, label] of [['super_compactor', 'Super Compactor'], ['diamond_spreading', 'Diamond Spreading']] as const) {
       if (countItem(player.inventory, upgradeId) <= 0) continue;
-      upgradeSlots.push(slot(37 + upgradeSlots.length, upgradeId, label, [
-        line(`Applies to ${pretty(first.type)} Minion`, 'gray'),
-        line('Click to install on your first minion.', 'yellow'),
-      ], `minionUpgrade:${first.id}/${upgradeId}`));
+      if (minion.upgrades?.includes(upgradeId)) continue;
+      if (upgradeSlots.length >= 4) break;
+      upgradeSlots.push(slot(37 + upgradeSlots.length, upgradeId, `Install ${label}`, [
+        line(`On ${pretty(minion.type)} Minion T${minion.tier}`, 'gray'),
+        line('Click to install on this minion.', 'yellow'),
+      ], `minionUpgrade:${minion.id}/${upgradeId}`));
     }
+    if (upgradeSlots.length >= 4) break;
   }
 
   const emptyHint = player.minions.length === 0 && deploySlots.length === 0
@@ -954,6 +970,10 @@ function minionsMenu(player: PlayerState): MenuView {
     title: 'Your Minions',
     rows: 6,
     slots: [
+      slot(8, 'minion', 'Minion Slots', [
+        line(`${player.minions.length} / ${slotsMax} placed`, 'aqua'),
+        line('Gain extra slots every 5 SkyBlock levels (max 10).', 'gray'),
+      ]),
       ...deploySlots,
       ...deployed,
       ...upgradeSlots,
@@ -1032,6 +1052,8 @@ function slayersMenu(player: PlayerState): MenuView {
         const blocked = Boolean(player.activeSlayer);
         return slot(11 + i * 2, `${slayer.targetMob}_head`, slayer.name, [
           line(`Slayer XP: ${(player.slayerXp[slayer.id] ?? 0).toLocaleString()}`, 'light_purple'),
+          line(`RNG Meter: ${Math.floor(player.slayerRngMeter?.[slayer.id] ?? 0)}/100`, 'aqua'),
+          line('Fill the meter for a guaranteed rare drop.', 'gray'),
           ...slayer.tiers.map((tier) => line(`Tier ${roman(tier.tier)}: ${tier.health.toLocaleString()} ❤ — ${tier.cost.toLocaleString()} coins`, 'gray')),
           line('Left-click: Start Tier I', 'yellow'),
           line('Right-click: Start highest affordable tier', 'yellow'),
@@ -1090,6 +1112,13 @@ function dungeonsMenu(player: PlayerState, context: Context = {}): MenuView {
         line(Object.entries(player.essence ?? {}).map(([type, qty]) => `${type}: ${qty}`).join(' · ') || 'No essence yet — clear floors to earn some.', 'aqua'),
         click(),
       ], 'open:dungeon_stars'),
+      ...(player.pendingDungeonChest?.drops.length
+        ? [slot(16, 'chest', 'Unclaimed Dungeon Chest', [
+          line(player.pendingDungeonChest.floorName, 'gold'),
+          line(`${player.pendingDungeonChest.drops.length} item(s) waiting`, 'yellow'),
+          click(),
+        ], 'open:dungeon_chest', { glint: true })]
+        : []),
       ...(['berserk', 'archer', 'mage', 'tank', 'healer'] as const).map((dungeonClass, i) => slot(11 + i, dungeonClass, `${player.selectedDungeonClass === dungeonClass ? '▶ ' : ''}${pretty(dungeonClass)}`, [
         line('Click to select class!', 'yellow'),
       ], `class:${dungeonClass}`, { glint: player.selectedDungeonClass === dungeonClass })),
@@ -1133,6 +1162,53 @@ function dungeonsMenu(player: PlayerState, context: Context = {}): MenuView {
       close(),
     ],
     parent: 'skyblock',
+  };
+}
+
+function dungeonChestMenu(player: PlayerState): MenuView {
+  const chest = player.pendingDungeonChest;
+  if (!chest) {
+    return {
+      id: 'dungeon_chest',
+      title: 'Dungeon Chest',
+      rows: 3,
+      slots: [
+        slot(13, 'barrier', 'Already claimed', [line('Clear another floor for a new chest.')]),
+        slot(18, 'arrow', 'Go Back', [line('Catacombs')], 'open:dungeons'),
+        close(),
+      ],
+      parent: 'dungeons',
+    };
+  }
+  const dropSlots = chest.drops.slice(0, 7).map((drop, i) => {
+    const def = ITEMS[drop.itemId];
+    return slot(19 + i, drop.itemId, def?.name ?? drop.itemId, [
+      line(`${drop.qty}x`, 'yellow'),
+      line(def?.rarity ?? 'COMMON', 'gold'),
+      line('Click the chest to claim everything.', 'gray'),
+    ], 'dungeonChest:claim', {
+      itemId: drop.itemId,
+      count: drop.qty,
+      rarity: def?.rarity ?? 'COMMON',
+      glint: ['RARE', 'EPIC', 'LEGENDARY', 'MYTHIC', 'DIVINE'].includes(def?.rarity ?? ''),
+    });
+  });
+  return {
+    id: 'dungeon_chest',
+    title: `${chest.floorName} Chest`,
+    rows: 4,
+    slots: [
+      slot(4, 'chest', 'Dungeon Reward Chest', [
+        line(`+${chest.xp} Catacombs XP already granted`, 'aqua'),
+        line(`+${chest.coins.toLocaleString()} coins already granted`, 'gold'),
+        line(chest.starLabel ?? 'No gear was starred this run', chest.starLabel ? 'light_purple' : 'gray'),
+        line(chest.drops.length ? 'Click to claim drops!' : 'Empty chest', 'yellow'),
+      ], 'dungeonChest:claim', { glint: chest.drops.length > 0 }),
+      ...dropSlots,
+      slot(27, 'arrow', 'Go Back', [line('Catacombs')], 'open:dungeons'),
+      close(),
+    ],
+    parent: 'dungeons',
   };
 }
 
@@ -1359,12 +1435,25 @@ function reforgeMenu(_player: PlayerState): MenuView {
   return {
     id: 'reforge',
     title: 'Reforge Anvil',
-    rows: 4,
+    rows: 6,
     slots: [
-      slot(4, 'anvil', 'Blacksmith', [line('Reforge weapons, armor, accessories and tools.'), line('The reforge and cost scale with rarity.')]),
-      slot(13, 'anvil', 'Reforge Selected Item', [line('Left-click an item in your inventory below.'), line('Applies a random compatible reforge.', 'green')], 'reforge:selected'),
-      slot(27, 'arrow', 'Go Back', [line('To Equipment')], 'open:inventory'),
-      slot(31, 'barrier', 'Close', [line('Close this menu')], 'close'),
+      slot(4, 'anvil', 'Blacksmith', [
+        line('Left-click a weapon, armor piece, accessory or tool below.', 'yellow'),
+        line('Cost scales with rarity. Combat rolls: Spicy, Sharp, Fierce, Pure.', 'gray'),
+      ]),
+      ...REFORGES.slice(0, 10).map((reforge, i) => {
+        const sample = reforge.statsByRarity.RARE ?? reforge.statsByRarity.UNCOMMON ?? {};
+        const combat = reforge.appliesTo === 'weapon' || reforge.appliesTo === 'armor';
+        return slot(10 + (i % 7) + Math.floor(i / 7) * 9, 'anvil', reforge.name, [
+          line(`${pretty(reforge.appliesTo)}${combat ? ' · combat' : ''}`, combat ? 'red' : 'gray'),
+          ...Object.entries(sample).map(([key, amount]) => line(`+${amount} ${pretty(key)} at RARE`, 'aqua')),
+        ]);
+      }),
+      slot(40, 'anvil', 'Reforge Selected Item', [
+        line('Click an item in your inventory to roll a random compatible reforge.', 'green'),
+      ], 'reforge:selected'),
+      slot(45, 'arrow', 'Go Back', [line('To Equipment')], 'open:inventory'),
+      close(),
     ],
     parent: 'inventory',
   };

@@ -669,6 +669,8 @@ button.mc-slot.is-locked { cursor: pointer; }
 }
 .toast.success { color: var(--mc-green); border-color: var(--mc-dark-green); }
 .toast.error { color: var(--mc-red); border-color: var(--mc-dark-red); }
+.toast.rare { color: var(--mc-blue); border-color: #5555ff; font-weight: 700; }
+.toast.loot { color: var(--mc-gold); border-color: var(--mc-gold); font-weight: 700; }
 .logout-button {
   border: 0;
   color: #ffffffaa;

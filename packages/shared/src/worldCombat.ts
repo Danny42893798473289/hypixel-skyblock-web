@@ -134,11 +134,13 @@ export const SLAYER_DROPS: Record<string, DropDef[]> = {
     { itemId: 'rotten_flesh' as ItemId, chance: 1, min: 2, max: 5 },
     { itemId: 'revenant_catalyst' as ItemId, chance: 0.08, min: 1, max: 1 },
     { itemId: 'undead_catalyst' as ItemId, chance: 0.05, min: 1, max: 1 },
+    { itemId: 'revenant_falchion' as ItemId, chance: 0.02, min: 1, max: 1 },
   ],
   tarantula: [
     { itemId: 'tarantula_web' as ItemId, chance: 1, min: 1, max: 3 },
     { itemId: 'string' as ItemId, chance: 1, min: 2, max: 6 },
     { itemId: 'spider_catalyst' as ItemId, chance: 0.08, min: 1, max: 1 },
+    { itemId: 'tarantula_web' as ItemId, chance: 0.04, min: 8, max: 16 },
   ],
   sven: [
     { itemId: 'wolf_tooth' as ItemId, chance: 1, min: 1, max: 3 },

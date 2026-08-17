@@ -79,6 +79,7 @@ export interface StoredUser {
   kuudraFight?: KuudraFightState | null;
   backpacks?: Inventory[];
   islandBlocks?: Record<string, TileKind>;
+  pendingDungeonChest?: import('@aether/shared').DungeonChestReward | null;
   x?: number;
   y?: number;
   facing?: Facing;

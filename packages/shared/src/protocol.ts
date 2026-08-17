@@ -129,6 +129,17 @@ export interface PlayerState extends PlayerPublic {
   inventoryCursor?: ItemStack | null;
   /** Transient — snap the local camera to x/y (warps, death). Not persisted. */
   resetPosition?: boolean;
+  /** Unclaimed dungeon chest — kept until you click Claim. */
+  pendingDungeonChest?: DungeonChestReward | null;
+}
+
+export interface DungeonChestReward {
+  floorName: string;
+  coins: number;
+  xp: number;
+  stars: number;
+  starLabel?: string;
+  drops: Array<{ itemId: ItemId; qty: number }>;
 }
 
 export type MenuId =
@@ -151,6 +162,7 @@ export type MenuId =
   | 'slayers'
   | 'dungeons'
   | 'dungeon_stars'
+  | 'dungeon_chest'
   | 'trade'
   | 'accessories'
   | 'enchanting'
@@ -283,7 +295,7 @@ export type ServerEvent =
   | { type: 'bazaarBook'; book: OrderBookSnapshot }
   | { type: 'bazaarOrders'; orders: BazaarOrder[] }
   | { type: 'bazaarMeta'; meta: BazaarMeta }
-  | { type: 'toast'; message: string; kind?: 'info' | 'error' | 'success' }
+  | { type: 'toast'; message: string; kind?: 'info' | 'error' | 'success' | 'loot' | 'rare' }
   | { type: 'chat'; message: ChatMessage }
   | { type: 'damageNumber'; x: number; y: number; amount: number; critical?: boolean }
   | { type: 'seaCreatureSpawn'; name: string; mobId: string }

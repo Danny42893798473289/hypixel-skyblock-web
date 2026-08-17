@@ -342,6 +342,14 @@ export function App() {
           bestiaryKills: Object.values(player.bestiary?.kills ?? {}).reduce((sum, n) => sum + n, 0),
         })).level}</strong></div>
         <div><span>Mayor</span><strong>{currentMayor().name}</strong></div>
+        {player.hotm && (player.hotm.tokens > 0 || player.hotm.mithrilPowder > 0 || player.hotm.commissions.length > 0) && (
+          <>
+            <div><span>HotM</span><strong className="mc-aqua">{player.hotm.tokens} token{player.hotm.tokens === 1 ? '' : 's'} · {player.hotm.mithrilPowder.toLocaleString()} powder</strong></div>
+            {player.hotm.commissions.slice(0, 2).map((job) => (
+              <div key={job.id}><span>{job.label}</span><strong className={job.have >= job.need ? 'mc-green' : 'mc-yellow'}>{job.have}/{job.need}</strong></div>
+            ))}
+          </>
+        )}
       </aside>
 
       <div className="actionbar">

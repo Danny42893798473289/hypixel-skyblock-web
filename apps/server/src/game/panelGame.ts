@@ -25,6 +25,7 @@ import {
   minionTypeFromItem,
   minionIntervalSec,
   minionStorageCap,
+  maxMinionSlots,
   MINIONS,
   HOTBAR_SIZE,
   hotbarInventoryIndex,
@@ -97,6 +98,8 @@ import {
   starterQuestComplete,
   currentMayor,
   plotReady,
+  skyblockXp,
+  skyblockLevelFromXp,
 } from '@aether/shared';
 import { parseChatCommand, findTradePartnerId, getTrade, cancelTrade, setTradeCoins, setTradeItem } from '../trade/engine.js';
 import { loadPlayer, savePlayer, takeOfflineInterest, verifyToken } from '../auth/index.js';
@@ -210,8 +213,63 @@ function emit(socket: Socket, event: ServerEvent): void {
   socket.emit('game', event);
 }
 
-function toast(session: Session, message: string, kind: 'info' | 'error' | 'success' = 'info'): void {
+type ToastKind = 'info' | 'error' | 'success' | 'loot' | 'rare';
+
+function toast(session: Session, message: string, kind: ToastKind = 'info'): void {
   emit(session.socket, { type: 'toast', message, kind });
+}
+
+function rarityToastKind(rarity: string | undefined): 'loot' | 'rare' | 'success' {
+  if (rarity === 'LEGENDARY' || rarity === 'MYTHIC' || rarity === 'DIVINE') return 'loot';
+  if (rarity === 'RARE' || rarity === 'EPIC') return 'rare';
+  return 'success';
+}
+
+function isRareRarity(rarity: string | undefined): boolean {
+  return ['RARE', 'EPIC', 'LEGENDARY', 'MYTHIC', 'DIVINE', 'SPECIAL', 'VERY_SPECIAL'].includes(rarity ?? '');
+}
+
+function grantDropStack(session: Session, itemId: ItemId, qty: number, magicFind = 0): boolean {
+  const next = addItem(session.player.inventory, itemId, qty);
+  if (!next) return false;
+  session.player.inventory = next;
+  const before = session.player.collections[itemId] ?? 0;
+  session.player.collections[itemId] = before + qty;
+  noteCollectionMilestone(session, itemId, before, before + qty);
+  const def = ITEMS[itemId];
+  if (isRareRarity(def?.rarity)) {
+    const mf = magicFind > 0 ? ` (Magic Find: ${magicFind.toFixed(1)})` : '';
+    toast(session, `RARE DROP! ${def?.name ?? itemId}${mf}`, rarityToastKind(def?.rarity));
+  }
+  return true;
+}
+
+function rollDropTable(
+  session: Session,
+  drops: Array<{ itemId: string; chance: number; min: number; max: number }>,
+  opts: { guaranteedRare?: boolean } = {},
+): Array<{ itemId: ItemId; qty: number }> {
+  const magicFind = session.player.stats.magicFind ?? 0;
+  const won: Array<{ itemId: ItemId; qty: number }> = [];
+  for (const drop of drops) {
+    const rare = drop.chance < 0.2;
+    const chance = (opts.guaranteedRare && rare ? 1 : drop.chance) * (1 + magicFind / 100);
+    if (Math.random() > chance) continue;
+    const qty = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
+    won.push({ itemId: drop.itemId as ItemId, qty });
+  }
+  return won;
+}
+
+function playerSkyblockLevel(player: PlayerState): number {
+  return skyblockLevelFromXp(skyblockXp({
+    skills: player.skills,
+    collections: player.collections,
+    slayerXp: player.slayerXp,
+    fairySouls: player.fairySouls,
+    museumDonated: player.museum?.donated.length ?? 0,
+    bestiaryKills: Object.values(player.bestiary?.kills ?? {}).reduce((sum, n) => sum + n, 0),
+  })).level;
 }
 
 function markStatsDirty(session: Session): void {
@@ -420,7 +478,7 @@ function cancelActiveTrade(session: Session, message = 'Trade cancelled'): void 
 
 function featureHelpers(session: Session) {
   return {
-    toast: (s: { player: PlayerState }, msg: string, kind?: string) => toast(s as Session, msg, kind as 'info' | 'error' | 'success'),
+    toast: (s: { player: PlayerState }, msg: string, kind?: string) => toast(s as Session, msg, kind as ToastKind),
     pushState: (s: { player: PlayerState }, opts?: { resetPosition?: boolean }) => pushState(s as Session, opts),
     warpPrivateIsland: (s: { player: PlayerState }, host: PlayerState) => {
       beginPositionSnap(s as Session);
@@ -560,17 +618,24 @@ function swapInventoryWithHotbar(session: Session, inventoryIndex: number, hotba
   pushState(session);
 }
 
-function catchUpMinions(player: PlayerState): void {
+function catchUpMinions(player: PlayerState): Array<{ name: string; gained: number; storage: number; cap: number }> {
   const now = Date.now();
+  const report: Array<{ name: string; gained: number; storage: number; cap: number }> = [];
   for (const m of player.minions) {
+    const def = ensureMinionDef(m.type);
     const interval = minionIntervalSec(m.type, m.tier) * 1000;
+    const speed = m.fuel && m.fuel.expiresAt > now ? m.fuel.speedMultiplier : 1;
     const cap = minionStorageCap(m.type, m.tier);
-    while (m.lastTickAt + interval <= now && m.storage < cap) {
-      m.lastTickAt += interval;
+    const before = m.storage;
+    while (m.lastTickAt + interval / speed <= now && m.storage < cap) {
+      m.lastTickAt += interval / speed;
       m.storage += 1;
     }
     if (m.storage >= cap) m.lastTickAt = now;
+    const gained = m.storage - before;
+    if (gained > 0) report.push({ name: def.name, gained, storage: m.storage, cap });
   }
+  return report;
 }
 
 export function initGame(serverIo: SocketServer): void {
@@ -643,13 +708,20 @@ export function initGame(serverIo: SocketServer): void {
         if (result) session.player = result;
       },
     );
-    catchUpMinions(session.player);
+    const minionReport = catchUpMinions(session.player);
     savePlayer(session.player);
     emit(socket, { type: 'welcome', player: session.player, token: token! });
     emit(socket, { type: 'bazaarMeta', meta: getBazaarSyncMeta() });
     const offlineInterest = takeOfflineInterest(userId);
     if (offlineInterest > 0) {
       toast(session, `Your bank earned ${offlineInterest.toLocaleString()} coins of interest while you were away!`, 'success');
+    }
+    if (minionReport.length) {
+      const summary = minionReport.map((entry) => `${entry.name} +${entry.gained}`).join(', ');
+      toast(session, `Your minions worked while you were away: ${summary}`, 'loot');
+      if (minionReport.some((entry) => entry.storage >= entry.cap)) {
+        toast(session, 'A minion is full — collect it on your island!', 'success');
+      }
     }
     broadcastZonePresence();
 
@@ -1296,9 +1368,14 @@ function handleMenuClick(
     return;
   }
   if (kind === 'minion') {
+    session.menuContext.selectedMinionId = value;
     if (button === 'right') doUpgradeMinion(session, value);
     else if (button.startsWith('shift')) doPickupMinion(session, value);
     else doCollectMinion(session, value);
+    return;
+  }
+  if (kind === 'dungeonChest') {
+    claimDungeonChest(session);
     return;
   }
   if (kind === 'placeMinion') {
@@ -1831,7 +1908,8 @@ function useInventorySlot(session: Session, index: number, button = 'left'): voi
     return;
   }
   if (session.currentMenu === 'minions') {
-    const minion = session.player.minions[0];
+    const selectedId = typeof session.menuContext.selectedMinionId === 'string' ? session.menuContext.selectedMinionId : null;
+    const minion = session.player.minions.find((entry) => entry.id === selectedId) ?? session.player.minions[0];
     if (!minion) throw new Error('Place a minion first');
     if (stack.itemId === 'enchanted_coal_fuel' || stack.itemId === 'enchanted_coal') {
       minion.fuel = { itemId: stack.itemId, expiresAt: Date.now() + 24 * 60 * 60 * 1000, speedMultiplier: 1.1 };
@@ -1860,10 +1938,18 @@ function useInventorySlot(session: Session, index: number, button = 'left'): voi
     const cost = 250 * (['COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY', 'MYTHIC'].indexOf(def.rarity ?? 'COMMON') + 1);
     if (session.player.coins < cost) throw new Error(`Need ${cost.toLocaleString()} coins`);
     session.player.coins -= cost;
-    stack.reforge = choices[Math.floor(Math.random() * choices.length)].name;
+    const previous = stack.reforge ?? 'none';
+    const rolled = choices[Math.floor(Math.random() * choices.length)]!;
+    stack.reforge = rolled.name;
     markStatsDirty(session);
     pushState(session);
-    toast(session, `Reforged to ${stack.reforge}!`, 'success');
+    const rarity = def.rarity ?? 'COMMON';
+    const bonus = rolled.statsByRarity[rarity];
+    const bonusText = bonus
+      ? Object.entries(bonus).map(([key, amount]) => `+${amount} ${key}`).join(', ')
+      : rolled.name;
+    const combat = rolled.appliesTo === 'weapon' || rolled.appliesTo === 'armor' ? ' · combat roll' : '';
+    toast(session, `Reforged ${previous} → ${rolled.name}! ${bonusText}${combat}`, 'success');
     return;
   }
 
@@ -2030,18 +2116,24 @@ function leaveActiveRun(session: Session): boolean {
   return true;
 }
 
-function rollDungeonDrops(session: Session, floor: { drops?: Array<{ itemId: string; chance: number; min: number; max: number }> }): string[] {
-  const won: string[] = [];
-  for (const drop of floor.drops ?? []) {
-    if (Math.random() >= drop.chance) continue;
-    const qty = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
-    const next = addItem(session.player.inventory, drop.itemId, qty);
-    if (next) {
-      session.player.inventory = next;
-      won.push(`${qty}x ${ITEMS[drop.itemId]?.name ?? drop.itemId}`);
+function claimDungeonChest(session: Session): void {
+  const chest = session.player.pendingDungeonChest;
+  if (!chest) throw new Error('No dungeon chest to claim');
+  const leftover: typeof chest.drops = [];
+  for (const drop of chest.drops) {
+    if (!grantDropStack(session, drop.itemId, drop.qty, session.player.stats.magicFind ?? 0)) {
+      leftover.push(drop);
     }
   }
-  return won;
+  if (leftover.length) {
+    session.player.pendingDungeonChest = { ...chest, drops: leftover };
+    pushState(session);
+    throw new Error('Inventory full — claimed what would fit. Make room and claim again.');
+  }
+  session.player.pendingDungeonChest = null;
+  pushState(session);
+  toast(session, chest.drops.length ? 'Claimed dungeon chest!' : 'Chest was empty — better luck next floor.', 'success');
+  openMenu(session, 'dungeons');
 }
 
 function completeDungeon(session: Session): void {
@@ -2051,20 +2143,31 @@ function completeDungeon(session: Session): void {
   if (!floor) return;
   gainSkillXp(session, 'dungeoneering', floor.baseCatacombsXp);
   session.player.coins += floor.coinReward;
-  const drops = rollDungeonDrops(session, floor);
+  const rolled = rollDropTable(session, floor.drops ?? []);
   const stars = 1 + Math.floor(Math.random() * 3) + (currentMayor().id === 'paul' ? 1 : 0) + Math.min(2, Math.floor((run.secretsFound ?? 0) / 2));
+  let starLabel: string | undefined;
   for (const stack of session.player.inventory) {
     const type = stack ? ITEMS[stack.itemId]?.type : undefined;
     if (stack && type && ['SWORD', 'BOW', 'HELMET', 'CHESTPLATE', 'LEGGINGS', 'BOOTS'].includes(type)) {
       stack.dungeonStars = Math.min(5, (stack.dungeonStars ?? 0) + stars);
+      starLabel = `${ITEMS[stack.itemId]?.name ?? stack.itemId} ✪${stack.dungeonStars} (+${stack.dungeonStars * 10}% dungeon stats)`;
       break;
     }
   }
   grantEssenceOnDungeonComplete(session, run.floorId);
   session.player.dungeonRun = null;
+  session.player.pendingDungeonChest = {
+    floorName: floor.shortName ?? floor.name,
+    coins: floor.coinReward,
+    xp: floor.baseCatacombsXp,
+    stars,
+    starLabel,
+    drops: rolled,
+  };
   doTravel(session, 'dungeon_hub');
-  const dropMsg = drops.length ? ` Drops: ${drops.join(', ')}` : '';
-  toast(session, `Dungeon complete! Score ${run.score} — +${floor.baseCatacombsXp} Catacombs XP, +${floor.coinReward.toLocaleString()} coins.${dropMsg}`, 'success');
+  if (starLabel) toast(session, `Starred ${starLabel}`, 'loot');
+  toast(session, `Dungeon complete! Score ${run.score} — click the chest to claim drops.`, 'success');
+  openMenu(session, 'dungeon_chest');
 }
 
 function allDungeonMobsDead(run: NonNullable<PlayerState['dungeonRun']>): boolean {
@@ -2359,7 +2462,7 @@ function giveResource(session: Session, act: NonNullable<ReturnType<typeof findA
   toast(session, `+${actualQty} ${ITEMS[itemId].name}`, 'success');
   if (act.kind === 'fish' && act.id) {
     afterFishCatch(session, act.id, skillLevel(session.player, 'fishing'), {
-      toast: (s, msg, kind) => toast(s as Session, msg, kind as 'info' | 'error' | 'success'),
+      toast: (s, msg, kind) => toast(s as Session, msg, kind as ToastKind),
       pushState: (s) => pushState(s as Session),
     });
   }
@@ -2393,16 +2496,9 @@ function doCombatAction(session: Session, act: NonNullable<ReturnType<typeof fin
   const received = Math.round(incomingDamage(mobDmg, effectiveDefense(session.player, abilitySessionView(session))));
 
   const drops = mob?.drops ?? (COMBAT_DROPS[mobId] ? [{ itemId: COMBAT_DROPS[mobId], chance: 1, min: 1, max: 1 }] : []);
-  for (const drop of drops) {
-    if (Math.random() > drop.chance * (1 + session.player.stats.magicFind / 100)) continue;
-    const quantity = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
-    const next = addItem(session.player.inventory, drop.itemId, quantity);
-    if (next) {
-      session.player.inventory = next;
-      const before = session.player.collections[drop.itemId] ?? 0;
-      session.player.collections[drop.itemId] = before + quantity;
-      noteCollectionMilestone(session, drop.itemId, before, before + quantity);
-    }
+  const magicFind = session.player.stats.magicFind ?? 0;
+  for (const drop of rollDropTable(session, drops)) {
+    grantDropStack(session, drop.itemId, drop.qty, magicFind);
   }
   const gainedXp = mob?.combatXp ?? act.xp;
   gainSkillXp(session, 'combat', gainedXp);
@@ -2767,7 +2863,9 @@ function doCraft(session: Session, recipeId: string): void {
 function doPlaceMinion(session: Session, minionType: string): void {
   const z = zone(session.player.zoneId);
   if (!z.hasMinions) throw new Error('Go to Minion Platform on your island');
-  if (session.player.minions.length >= 6) throw new Error('Max 6 minions');
+  if (session.player.minions.length >= maxMinionSlots(playerSkyblockLevel(session.player))) {
+    throw new Error(`Max ${maxMinionSlots(playerSkyblockLevel(session.player))} minions — level up SkyBlock for more slots`);
+  }
   const def = ensureMinionDef(minionType);
   const removed = removeItem(session.player.inventory, def.itemId, 1);
   if (!removed) throw new Error(`Need ${def.name} in inventory`);
@@ -2978,7 +3076,7 @@ function worldMobTick(): void {
   }
 }
 
-function playerMelee(session: Session, mobId = 'zombie', mobMaxHp = 100): { damage: number; critical: boolean } {
+function playerMelee(session: Session, mobId = 'zombie', mobMaxHp = 100): { damage: number; critical: boolean; thunderBonus: number } {
   const tool = bestTool(session.player, 'sword');
   const baseCrit = rollCrit(session.player.stats.critChance);
   const base = Math.round(meleeDamage(
@@ -2990,21 +3088,15 @@ function playerMelee(session: Session, mobId = 'zombie', mobMaxHp = 100): { dama
   ));
   const proc = procCombatDamage(session.player, base, mobId, mobMaxHp);
   emit(session.socket, { type: 'damageNumber', x: session.player.x, y: session.player.y, amount: proc.damage, critical: proc.critical });
-  return { damage: proc.damage, critical: proc.critical || baseCrit };
+  if (proc.thunderBonus > 0) toast(session, `THUNDERLORD! +${proc.thunderBonus} dmg`, 'loot');
+  return { damage: proc.damage, critical: proc.critical || baseCrit, thunderBonus: proc.thunderBonus };
 }
 
 function grantMobRewards(session: Session, mobId: string): void {
   const mob = MOBS[mobId] ?? MOBS.zombie;
-  for (const drop of mob.drops) {
-    if (Math.random() > drop.chance * (1 + session.player.stats.magicFind / 100)) continue;
-    const quantity = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
-    const next = addItem(session.player.inventory, drop.itemId, quantity);
-    if (next) {
-      session.player.inventory = next;
-      const before = session.player.collections[drop.itemId] ?? 0;
-      session.player.collections[drop.itemId] = before + quantity;
-      noteCollectionMilestone(session, drop.itemId, before, before + quantity);
-    }
+  const magicFind = session.player.stats.magicFind ?? 0;
+  for (const drop of rollDropTable(session, mob.drops)) {
+    grantDropStack(session, drop.itemId, drop.qty, magicFind);
   }
   gainSkillXp(session, 'combat', mob.combatXp);
   session.player.coins += applyLootingToCoins(session.player, mob.coins);
@@ -3023,7 +3115,7 @@ function grantMobRewards(session: Session, mobId: string): void {
     const next = addItem(session.player.inventory, egg.egg, 1);
     if (next) {
       session.player.inventory = next;
-      toast(session, `A ${ITEMS[egg.egg]?.name} dropped! Hatch it in the Pets menu.`, 'success');
+      toast(session, `RARE DROP! ${ITEMS[egg.egg]?.name} — hatch it in the Pets menu.`, 'loot');
     }
   }
   if (slayerMatchesMob('zombie', mob.id)) {
@@ -3086,18 +3178,11 @@ function defeatSlayerBoss(session: Session): void {
   session.player.slayerXp[slayer.id] = (session.player.slayerXp[slayer.id] ?? 0) + tier.xp;
   session.player.coins += Math.round(tier.cost * 0.25);
   const guaranteedDrop = incrementSlayerRng(session.player, slayer.id, 20);
-  for (const drop of SLAYER_DROPS[slayer.id] ?? []) {
-    const chance = (guaranteedDrop && drop.chance < 0.2 ? 1 : drop.chance) * (1 + session.player.stats.magicFind / 100);
-    if (Math.random() > chance) continue;
-    const quantity = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
-    const next = addItem(session.player.inventory, drop.itemId, quantity);
-    if (next) {
-      session.player.inventory = next;
-      const before = session.player.collections[drop.itemId] ?? 0;
-      session.player.collections[drop.itemId] = before + quantity;
-      noteCollectionMilestone(session, drop.itemId, before, before + quantity);
-    }
+  const magicFind = session.player.stats.magicFind ?? 0;
+  for (const drop of rollDropTable(session, SLAYER_DROPS[slayer.id] ?? [], { guaranteedRare: guaranteedDrop })) {
+    grantDropStack(session, drop.itemId, drop.qty, magicFind);
   }
+  if (guaranteedDrop) toast(session, 'RNG Meter filled — a rare slayer drop is guaranteed!', 'loot');
   session.player.worldMobs = (session.player.worldMobs ?? []).filter((mob) => !mob.slayerBoss);
   session.player.activeSlayer = null;
   toast(session, `${slayer.name} defeated! +${tier.xp} Slayer XP — check your inventory for drops.`, 'success');
