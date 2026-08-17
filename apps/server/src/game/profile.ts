@@ -41,6 +41,14 @@ function stackStats(stack: ItemStack | null | undefined): Partial<StatBlock> {
   for (const [key, amount] of Object.entries(enchantStats) as Array<[keyof StatBlock, number]>) {
     stats[key] = (stats[key] ?? 0) + amount;
   }
+  const stars = stack.dungeonStars ?? 0;
+  if (stars > 0) {
+    const mult = 1 + 0.1 * stars;
+    for (const key of Object.keys(stats) as Array<keyof StatBlock>) {
+      const value = stats[key];
+      if (typeof value === 'number') stats[key] = Math.round(value * mult * 10) / 10;
+    }
+  }
   return stats;
 }
 

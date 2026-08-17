@@ -95,8 +95,9 @@ import {
   ensureMinionDef,
   starterQuestComplete,
   currentMayor,
+  plotReady,
 } from '@aether/shared';
-import { parseChatCommand } from '../trade/engine.js';
+import { parseChatCommand, findTradePartnerId, getTrade, cancelTrade, setTradeCoins, setTradeItem } from '../trade/engine.js';
 import { loadPlayer, savePlayer, takeOfflineInterest, verifyToken } from '../auth/index.js';
 import { BANK_TIERS, accrueBankInterest, bankTier, depositLimit, nextBankTier } from './bank.js';
 import * as bazaar from '../bazaar/engine.js';
@@ -129,6 +130,14 @@ import {
   isOnCooldown,
   teleportForward,
 } from './abilities.js';
+import {
+  plantCrop,
+  waterPlot,
+  harvestPlot,
+  compostCrop,
+  upgradeGearStars,
+  ensureGardenPlots,
+} from './gardenLogic.js';
 import {
   brewPotion,
   claimCommission,
@@ -354,6 +363,86 @@ function openMenu(session: Session, menu: MenuId, context: Record<string, string
   pushMenu(session);
 }
 
+function emitTradeOpen(target: Session, partner: Session): void {
+  const trade = getTrade(target.player.id, partner.player.id);
+  if (!trade) return;
+  emit(target.socket, {
+    type: 'tradeOpen',
+    partnerUsername: partner.player.username,
+    yourOffer: trade.offers[target.player.id] ?? { coins: 0, items: [null, null, null, null] },
+    theirOffer: trade.offers[partner.player.id] ?? { coins: 0, items: [null, null, null, null] },
+    yourConfirmed: Boolean(trade.confirmed[target.player.id]),
+    theirConfirmed: Boolean(trade.confirmed[partner.player.id]),
+  });
+}
+
+function refreshTradeMenus(session: Session): void {
+  const partnerId = findTradePartnerId(session.player.id);
+  if (!partnerId) return;
+  const partner = sessions.get(partnerId);
+  if (!partner) return;
+  emitTradeOpen(session, partner);
+  emitTradeOpen(partner, session);
+  openMenu(session, 'trade', {
+    partnerId,
+    partnerUsername: partner.player.username,
+    selectedTradeSlot: session.menuContext.selectedTradeSlot ?? '',
+  });
+  openMenu(partner, 'trade', {
+    partnerId: session.player.id,
+    partnerUsername: session.player.username,
+    selectedTradeSlot: partner.menuContext.selectedTradeSlot ?? '',
+  });
+}
+
+function closeTradeUi(session: Session): void {
+  emit(session.socket, { type: 'tradeClose' });
+  if (session.currentMenu === 'trade') {
+    session.menuOpen = false;
+    session.currentMenu = 'skyblock';
+    session.menuContext = {};
+  }
+}
+
+function cancelActiveTrade(session: Session, message = 'Trade cancelled'): void {
+  const partnerId = findTradePartnerId(session.player.id);
+  if (!partnerId) return;
+  const partner = sessions.get(partnerId);
+  cancelTrade(session.player.id, partnerId);
+  closeTradeUi(session);
+  toast(session, message, 'info');
+  if (partner) {
+    closeTradeUi(partner);
+    toast(partner, `${session.player.username} cancelled the trade`, 'info');
+  }
+}
+
+function featureHelpers(session: Session) {
+  return {
+    toast: (s: { player: PlayerState }, msg: string, kind?: string) => toast(s as Session, msg, kind as 'info' | 'error' | 'success'),
+    pushState: (s: { player: PlayerState }, opts?: { resetPosition?: boolean }) => pushState(s as Session, opts),
+    warpPrivateIsland: (s: { player: PlayerState }, host: PlayerState) => {
+      beginPositionSnap(s as Session);
+      s.player.zoneId = 'island_minions';
+      s.player.islandId = 'private_island';
+      s.player.x = 8;
+      s.player.y = 8;
+      void host;
+    },
+    leaveVisit: () => {},
+    openMenu: (s: { player: PlayerState }, menu: MenuId, context?: Record<string, string | number | boolean>) => {
+      openMenu(s as Session, menu, context ?? {});
+    },
+    closeMenu: (s: { player: PlayerState }) => {
+      const target = s as Session;
+      target.menuOpen = false;
+      target.currentMenu = 'skyblock';
+      target.menuContext = {};
+    },
+    refreshTrade: (s: { player: PlayerState }) => refreshTradeMenus(s as Session),
+  };
+}
+
 /** Everyone on the same island shares one walkable map, so presence is island-wide. */
 function broadcastZonePresence(): void {
   for (const s of sessions.values()) {
@@ -566,6 +655,7 @@ function handleEvent(session: Session, ev: ClientEvent): void {
       openMenu(session, ev.menu, ev.context ?? {});
       break;
     case 'closeMenu':
+      if (session.currentMenu === 'trade') cancelActiveTrade(session);
       if (keepsInventoryCursor(session.currentMenu) && !stashInventoryCursor(session)) break;
       session.menuOpen = false;
       session.currentMenu = 'skyblock';
@@ -698,10 +788,7 @@ function handleEvent(session: Session, ev: ClientEvent): void {
         break;
       }
       if (handleSkyblockChat(session, text)) break;
-      if (handleFeatureChat(session, text, sessions, {
-        toast: (s, msg, kind) => toast(s as Session, msg, kind as 'info' | 'error' | 'success'),
-        pushState: (s, opts) => pushState(s as Session, opts),
-      })) break;
+      if (handleFeatureChat(session, text, sessions, featureHelpers(session))) break;
       const message = { id: uuid(), username: session.player.username, text, at: Date.now() };
       for (const s of sessions.values()) {
         if (s.player.islandId === session.player.islandId) {
@@ -720,18 +807,7 @@ function handleEvent(session: Session, ev: ClientEvent): void {
       break;
     }
     default:
-      if (handleFeatureEvent(session, ev, sessions, {
-        toast: (s, msg, kind) => toast(s as Session, msg, kind as 'info' | 'error' | 'success'),
-        pushState: (s, opts) => pushState(s as Session, opts),
-        warpPrivateIsland: (s, host) => {
-          beginPositionSnap(s as Session);
-          s.player.zoneId = 'island_minions';
-          s.player.islandId = 'private_island';
-          s.player.x = 8;
-          s.player.y = 8;
-        },
-        leaveVisit: () => {},
-      })) break;
+      if (handleFeatureEvent(session, ev, sessions, featureHelpers(session))) break;
   }
 }
 
@@ -992,6 +1068,9 @@ function handleMenuClick(
 
   if (kind === 'open') {
     const nextMenu = value as MenuId;
+    if (session.currentMenu === 'trade' && nextMenu !== 'trade') {
+      cancelActiveTrade(session);
+    }
     const context: Record<string, string | number | boolean> = nextMenu === 'bazaar_orders' && session.menuContext.itemId
       ? { itemId: String(session.menuContext.itemId) }
       : {};
@@ -1199,8 +1278,92 @@ function handleMenuClick(
     return;
   }
   if (kind === 'garden') {
-    toast(session, serveGardenVisitor(session.player), 'success');
+    const [op, a, ...cropParts] = value.split(':');
+    const cropId = cropParts.join(':');
+    ensureGardenPlots(session.player);
+    if (op === 'visitor' || !op) {
+      toast(session, serveGardenVisitor(session.player), 'success');
+      pushState(session);
+      if (session.menuOpen) pushMenu(session);
+      return;
+    }
+    if (op === 'plot') {
+      const index = Number(a);
+      const plot = session.player.garden.plots[index];
+      if (!plot?.crop) {
+        openMenu(session, 'garden_plant', { plotIndex: index });
+        return;
+      }
+      if (button === 'right' || button === 'shift_right') {
+        toast(session, waterPlot(session.player, index), 'success');
+      } else if (plotReady(plot)) {
+        toast(session, harvestPlot(session.player, index), 'success');
+      } else {
+        throw new Error('Crop not ready yet — right-click the plot to water it');
+      }
+      pushState(session);
+      openMenu(session, 'garden_plots');
+      return;
+    }
+    if (op === 'sow') {
+      toast(session, plantCrop(session.player, Number(a), cropId as ItemId), 'success');
+      pushState(session);
+      openMenu(session, 'garden_plots');
+      return;
+    }
+    if (op === 'compost') {
+      const crop = a as ItemId;
+      const have = countItem(session.player.inventory, crop);
+      const qty = button === 'right' || button.startsWith('shift') ? Math.min(64, have) : 1;
+      toast(session, compostCrop(session.player, crop, qty), 'success');
+      pushState(session);
+      openMenu(session, 'garden_compost');
+      return;
+    }
+    return;
+  }
+  if (kind === 'stars') {
+    toast(session, upgradeGearStars(session.player, Number(value)), 'success');
+    markStatsDirty(session);
     pushState(session);
+    openMenu(session, 'dungeon_stars');
+    return;
+  }
+  if (kind === 'trade') {
+    const [op, ...rest] = value.split(':');
+    const arg = rest.join(':');
+    const partnerId = findTradePartnerId(session.player.id) ?? String(session.menuContext.partnerId ?? '');
+    if (op === 'cancel') {
+      cancelActiveTrade(session);
+      return;
+    }
+    if (!partnerId) throw new Error('No active trade');
+    if (op === 'confirm') {
+      handleFeatureEvent(session, { type: 'tradeConfirm' }, sessions, featureHelpers(session));
+      return;
+    }
+    if (op === 'select') {
+      session.menuContext = { ...session.menuContext, selectedTradeSlot: Number(arg) };
+      pushMenu(session);
+      return;
+    }
+    if (op === 'clear') {
+      setTradeItem(session.player, partnerId, Number(arg), null);
+      session.menuContext = { ...session.menuContext, selectedTradeSlot: '' };
+      refreshTradeMenus(session);
+      return;
+    }
+    if (op === 'coins') {
+      const trade = getTrade(session.player.id, partnerId);
+      const current = trade?.offers[session.player.id]?.coins ?? 0;
+      let next = current;
+      if (button.startsWith('shift')) next = 0;
+      else if (button === 'right' || button === 'shift_right') next = Math.min(session.player.coins, current + 100);
+      else next = Math.min(session.player.coins, current + 1000);
+      setTradeCoins(session.player, partnerId, next);
+      refreshTradeMenus(session);
+      return;
+    }
     return;
   }
   if (kind === 'hotm') {
@@ -1577,6 +1740,22 @@ function useInventorySlot(session: Session, index: number, button = 'left'): voi
   if (!stack) return;
   const def = ITEMS[stack.itemId];
   if (!def) return;
+
+  if (session.currentMenu === 'trade') {
+    const partnerId = findTradePartnerId(session.player.id) ?? String(session.menuContext.partnerId ?? '');
+    if (!partnerId) throw new Error('No active trade');
+    const trade = getTrade(session.player.id, partnerId);
+    const selectedRaw = session.menuContext.selectedTradeSlot;
+    let slot = selectedRaw === undefined || selectedRaw === '' ? -1 : Number(selectedRaw);
+    if (!Number.isFinite(slot) || slot < 0 || slot > 3) {
+      slot = trade?.offers[session.player.id]?.items.findIndex((item) => !item) ?? 0;
+    }
+    if (slot < 0) slot = 0;
+    setTradeItem(session.player, partnerId, slot, index);
+    session.menuContext = { ...session.menuContext, selectedTradeSlot: '' };
+    refreshTradeMenus(session);
+    return;
+  }
 
   if (session.currentMenu === 'inventory') {
     if (!button.startsWith('shift')) return;

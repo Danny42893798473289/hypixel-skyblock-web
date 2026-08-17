@@ -123,6 +123,16 @@ export function App() {
         case 'chat':
           setChats((current) => [...current.slice(-60), event.message]);
           break;
+        case 'tradeOpen':
+          break;
+        case 'tradeClose':
+          setMenu((current) => {
+            if (current?.id !== 'trade') return current;
+            setMenuVisible(false);
+            setMenuPending(false);
+            return null;
+          });
+          break;
       }
     });
     return () => {
@@ -517,10 +527,25 @@ export function App() {
                 closeMenu();
                 return;
               }
+              if (menu.id === 'trade' && action?.startsWith('inventory:')) {
+                const itemSlot = Number(action.slice('inventory:'.length));
+                const raw = menu.context?.selectedTradeSlot;
+                const selected = raw === undefined || raw === '' ? Number.NaN : Number(raw);
+                if (Number.isFinite(selected) && selected >= 0 && selected <= 3) {
+                  gameSocket.send({ type: 'tradeOffer', coins: -1, slot: selected, itemSlot });
+                  return;
+                }
+              }
               gameSocket.send({ type: 'menuClick', menu: menu.id, slot, button, action });
             }}
             onClose={closeMenu}
-            onBack={() => openMenu(parent, menu.context)}
+            onBack={() => {
+              if (menu.id === 'trade') {
+                gameSocket.send({ type: 'tradeCancel' });
+                return;
+              }
+              openMenu(parent, menu.context);
+            }}
             onSearch={(query) => openMenu('bazaar', query ? { query, page: 0 } : {})}
           />
         )

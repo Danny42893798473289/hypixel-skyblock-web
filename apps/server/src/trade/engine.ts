@@ -62,6 +62,14 @@ export function getTrade(aId: string, bId: string): TradeSession | undefined {
   return trades.get(tradeKey(aId, bId));
 }
 
+export function findTradePartnerId(playerId: string): string | null {
+  for (const session of trades.values()) {
+    if (session.aId === playerId) return session.bId;
+    if (session.bId === playerId) return session.aId;
+  }
+  return null;
+}
+
 export function cancelTrade(aId: string, bId: string): void {
   trades.delete(tradeKey(aId, bId));
 }

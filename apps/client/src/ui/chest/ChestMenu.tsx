@@ -127,7 +127,11 @@ export function ChestMenu({ menu, player, onMenuClick, onClose, onBack, onSearch
         <div className="menu-hint">
           {storageMenu
             ? 'Click slots to pick up and place items · Shift-click or double-tap to move stacks · Esc closes'
-            : 'Left click · Hold for item info · Double-tap to shift-click · Esc closes'}
+            : menu.id === 'garden_plots'
+              ? 'Empty plot: plant · Growing: right-click water · Ready: harvest · Esc closes'
+              : menu.id === 'trade'
+                ? 'Click your offer slots, then inventory items · Confirm when both ready · Esc cancels'
+                : 'Left click · Hold for item info · Double-tap to shift-click · Esc closes'}
         </div>
       </div>
     </div>

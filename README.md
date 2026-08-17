@@ -9,10 +9,11 @@ Implemented systems include:
 - Health, Defense, Strength, Crit, Intelligence, Speed, Fortune, Magic Find and effective-health combat formulas
 - Equipment, armor, item rarities, enchantments, reforges, accessories, Magical Power and pets
 - 12 skills with level caps and progression rewards, collections, recipes and 160x enchanted compression
-- Hub, Private Island, Barn, Mushroom Desert, Gold Mine, Deep Caverns, Spider's Den, The Park, The End, Crimson Isle and Dungeon Hub
+- Hub, Private Island, Barn, Mushroom Desert, Gold Mine, Deep Caverns, Spider's Den, The Park, The End, Crimson Isle, Garden, Dwarven Mines, Crystal Hollows and Dungeon Hub
 - Bazaar limit/instant orders, shared Auction House BIN listings, NPC shops and a bank with offline interest
 - Tier I-XI minions with fuel, upgrades and offline production
-- Slayer quests and bosses plus Catacombs floors F1-F3 with five classes
+- Slayer quests and bosses plus Catacombs floors F1–F7 and Master M1–M7 with five classes
+- Garden 24-plot farming, dungeon gear star upgrades, and player-to-player trade
 - Multiplayer Hub presence and chat
 
 ### Controls

@@ -19,10 +19,14 @@ export function emptyGardenPlots(): GardenPlotCell[] {
   }));
 }
 
-export function plotReady(plot: GardenPlotCell, now = Date.now()): boolean {
-  if (!plot.crop || !plot.plantedAt) return false;
+export function plotGrowRemainingMs(plot: GardenPlotCell, now = Date.now()): number {
+  if (!plot.crop || !plot.plantedAt) return 0;
   const speed = plot.watered ? 0.75 : 1;
-  return now - plot.plantedAt >= GARDEN_GROW_MS * speed;
+  return Math.max(0, GARDEN_GROW_MS * speed - (now - plot.plantedAt));
+}
+
+export function plotReady(plot: GardenPlotCell, now = Date.now()): boolean {
+  return plotGrowRemainingMs(plot, now) <= 0 && Boolean(plot.crop && plot.plantedAt);
 }
 
 export function composterYield(crop: ItemId, qty: number): number {

@@ -19,6 +19,7 @@ import type {
   WardrobeState,
 } from './midgame.js';
 import type { BazaarMeta } from './economy.js';
+import type { TradeOffer } from './gardenPlots.js';
 
 export type EquipmentSlot = 'helmet' | 'chestplate' | 'leggings' | 'boots';
 export type DungeonClass = 'berserk' | 'archer' | 'mage' | 'tank' | 'healer';
@@ -149,12 +150,17 @@ export type MenuId =
   | 'pets'
   | 'slayers'
   | 'dungeons'
+  | 'dungeon_stars'
+  | 'trade'
   | 'accessories'
   | 'enchanting'
   | 'reforge'
   | 'leaderboard'
   | 'quests'
   | 'garden'
+  | 'garden_plots'
+  | 'garden_plant'
+  | 'garden_compost'
   | 'hotm'
   | 'alchemy'
   | 'bestiary'
@@ -284,7 +290,9 @@ export type ServerEvent =
   | { type: 'actionResult'; actionId: string; success: boolean; message: string }
   | { type: 'actionBar'; text: string }
   /** Lightweight position fix — avoids a full state sync that would rubber-band the client. */
-  | { type: 'moveCorrection'; x: number; y: number; facing: Facing; reason?: 'blocked' | 'gate' | 'teleport' };
+  | { type: 'moveCorrection'; x: number; y: number; facing: Facing; reason?: 'blocked' | 'gate' | 'teleport' }
+  | { type: 'tradeOpen'; partnerUsername: string; yourOffer: TradeOffer; theirOffer: TradeOffer; yourConfirmed: boolean; theirConfirmed: boolean }
+  | { type: 'tradeClose' };
 
 export interface AuthResponse {
   token: string;

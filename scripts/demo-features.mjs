@@ -86,6 +86,25 @@ async function main() {
   await new Promise((r) => setTimeout(r, 300));
   check('Garden menu opens', evA.some((e) => e.type === 'menu' && e.menu?.id === 'garden'));
 
+  sockA.emit('game', { type: 'openMenu', menu: 'garden_plots' });
+  await new Promise((r) => setTimeout(r, 300));
+  check('Garden plots menu opens', evA.some((e) => e.type === 'menu' && e.menu?.id === 'garden_plots'));
+
+  sockA.emit('game', { type: 'openMenu', menu: 'dungeon_stars' });
+  await new Promise((r) => setTimeout(r, 300));
+  check('Star upgrades menu opens', evA.some((e) => e.type === 'menu' && e.menu?.id === 'dungeon_stars'));
+
+  sockA.emit('game', { type: 'tradeRequest', targetUsername: userB.player.username });
+  await new Promise((r) => setTimeout(r, 500));
+  sockA.emit('game', { type: 'tradeOffer', coins: 10, slot: 0, itemSlot: null });
+  await new Promise((r) => setTimeout(r, 300));
+  sockA.emit('game', { type: 'tradeConfirm' });
+  sockB.emit('game', { type: 'tradeConfirm' });
+  await new Promise((r) => setTimeout(r, 600));
+  const tradeOpened = evA.some((e) => e.type === 'tradeOpen' || (e.type === 'menu' && e.menu?.id === 'trade'));
+  const tradeDone = evA.some((e) => e.type === 'toast' && String(e.message).includes('Trade complete'));
+  check('Player trade GUI', tradeOpened && tradeDone, tradeDone ? 'opened and completed' : 'opened but not completed');
+
   const history = await api('/api/bazaar/wheat/history');
   check('Bazaar price history API', Array.isArray(history.json.history));
 

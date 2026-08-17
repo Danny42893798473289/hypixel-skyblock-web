@@ -1,22 +1,29 @@
 import {
   ALCHEMY_RECIPES,
   DRAGON_TYPES,
+  ESSENCE_TYPES,
+  GARDEN_CROPS,
+  GARDEN_PLOT_COUNT,
   HOTM_PERKS,
   ITEMS,
   MAYORS,
   MOBS,
   PET_EGGS,
   bestiaryTier,
+  countItem,
   currentMayor,
   currentQuestStep,
+  plotGrowRemainingMs,
   plotReady,
   skyblockLevelFromXp,
   skyblockXp,
+  starUpgradeCost,
   type LoreLine,
   type MenuSlotView,
   type MenuView,
   type PlayerState,
 } from '@aether/shared';
+import { ensureGardenPlots } from './gardenLogic.js';
 
 const line = (text: string, color: LoreLine['color'] = 'gray', bold = false): LoreLine => ({ text, color, bold });
 const click = (): LoreLine => line('Click to open!', 'yellow');
@@ -57,10 +64,17 @@ export function gardenMenu(player: PlayerState): MenuView {
         line('Harvest contest crop on plots to score.', 'gray'),
       ]),
       slot(10, 'hoe', 'Garden Plots', [
-        line(`${ready} / ${garden.plots?.length ?? 24} ready to harvest`, 'green'),
-        line('Use chat: plant/harvest via Garden zone', 'gray'),
+        line(`${ready} / ${garden.plots?.length ?? GARDEN_PLOT_COUNT} ready to harvest`, 'green'),
+        line('Click to plant, water, and harvest.', 'yellow'),
         line(`Composter Lv ${garden.composterLevel ?? 0} · ${garden.organicMatter ?? 0}/100 OM`, 'aqua'),
-      ]),
+        click(),
+      ], 'open:garden_plots'),
+      slot(16, 'dirt', 'Composter', [
+        line(`Level ${garden.composterLevel ?? 0}`, 'aqua'),
+        line(`${garden.organicMatter ?? 0}/100 organic matter`, 'green'),
+        line('Turn extra crops into Farming XP.', 'gray'),
+        click(),
+      ], 'open:garden_compost'),
       visitor
         ? slot(13, 'player_head', `${visitor.name} is visiting`, [
           line(`Wants ${visitor.qty}× ${ITEMS[visitor.wants]?.name ?? visitor.wants}`, 'yellow'),
@@ -77,6 +91,218 @@ export function gardenMenu(player: PlayerState): MenuView {
       close(),
     ],
     parent: 'skyblock',
+  };
+}
+
+const PLOT_SLOTS = [
+  10, 11, 12, 13, 14, 15,
+  19, 20, 21, 22, 23, 24,
+  28, 29, 30, 31, 32, 33,
+  37, 38, 39, 40, 41, 42,
+];
+
+function formatGrowTime(ms: number): string {
+  const sec = Math.max(0, Math.ceil(ms / 1000));
+  if (sec >= 60) return `${Math.floor(sec / 60)}m ${sec % 60}s`;
+  return `${sec}s`;
+}
+
+export function gardenPlotsMenu(player: PlayerState): MenuView {
+  ensureGardenPlots(player);
+  const plots = player.garden.plots;
+  const slots: MenuSlotView[] = [
+    slot(4, 'wheat', 'Garden Plots', [
+      line('Left-click an empty plot to plant.', 'yellow'),
+      line('Right-click a growing crop to water.', 'aqua'),
+      line('Left-click a ready crop to harvest.', 'green'),
+      line(`Jacob crop: ${ITEMS[player.garden.jacobCrop]?.name ?? player.garden.jacobCrop}`, 'gold'),
+    ]),
+    slot(16, 'dirt', 'Composter', [
+      line(`Lv ${player.garden.composterLevel ?? 0} · ${player.garden.organicMatter ?? 0}/100 OM`, 'aqua'),
+      click(),
+    ], 'open:garden_compost'),
+  ];
+
+  for (let i = 0; i < GARDEN_PLOT_COUNT; i++) {
+    const plot = plots[i]!;
+    const slotNumber = PLOT_SLOTS[i] ?? i;
+    if (!plot.crop) {
+      slots.push(slot(slotNumber, 'dirt', `Plot ${i + 1}`, [
+        line('Empty', 'gray'),
+        line('Click to plant a crop.', 'yellow'),
+      ], `garden:plot:${i}`));
+      continue;
+    }
+    const def = ITEMS[plot.crop];
+    const ready = plotReady(plot);
+    const remaining = plotGrowRemainingMs(plot);
+    const lore: LoreLine[] = [
+      line(ready ? 'Ready to harvest!' : `Growing — ${formatGrowTime(remaining)} left`, ready ? 'green' : 'yellow'),
+      line(plot.watered ? 'Watered (25% faster)' : 'Dry — right-click to water', plot.watered ? 'aqua' : 'gray'),
+      line(plot.crop === player.garden.jacobCrop ? "Jacob's contest crop" : '', 'gold'),
+      line(ready ? 'Click to harvest!' : 'Right-click to water', 'yellow'),
+    ].filter((entry) => entry.text);
+    slots.push(slot(slotNumber, plot.crop, def?.name ?? plot.crop, lore, `garden:plot:${i}`, {
+      itemId: plot.crop,
+      glint: ready,
+      rarity: def?.rarity ?? 'COMMON',
+    }));
+  }
+
+  slots.push(
+    slot(45, 'arrow', 'Go Back', [line('The Garden')], 'open:garden'),
+    close(),
+  );
+
+  return {
+    id: 'garden_plots',
+    title: 'Garden Plots',
+    rows: 6,
+    slots,
+    parent: 'garden',
+  };
+}
+
+export function gardenPlantMenu(player: PlayerState, context: Record<string, string | number | boolean> = {}): MenuView {
+  ensureGardenPlots(player);
+  const plotIndex = Number(context.plotIndex ?? 0);
+  const slots: MenuSlotView[] = [
+    slot(4, 'hoe', `Plant Plot ${plotIndex + 1}`, [
+      line('Choose a crop from your inventory.', 'gray'),
+      line('Planting uses 1 of that crop.', 'yellow'),
+    ]),
+  ];
+  GARDEN_CROPS.forEach((crop, i) => {
+    const have = countItem(player.inventory, crop);
+    const def = ITEMS[crop];
+    const contest = crop === player.garden.jacobCrop;
+    slots.push(slot(10 + (i % 7) + Math.floor(i / 7) * 9, crop, def?.name ?? crop, [
+      line(`You have: ${have.toLocaleString()}`, have > 0 ? 'green' : 'red'),
+      line(contest ? "Jacob's contest crop — extra score" : 'Garden crop', contest ? 'gold' : 'gray'),
+      line(have > 0 ? 'Click to plant!' : 'You need 1 to plant', have > 0 ? 'yellow' : 'red'),
+    ], have > 0 ? `garden:sow:${plotIndex}:${crop}` : undefined, {
+      itemId: crop,
+      count: Math.max(1, have),
+      disabled: have <= 0,
+      rarity: def?.rarity ?? 'COMMON',
+    }));
+  });
+  slots.push(
+    slot(45, 'arrow', 'Go Back', [line('Garden Plots')], 'open:garden_plots'),
+    close(),
+  );
+  return {
+    id: 'garden_plant',
+    title: 'Plant Crop',
+    rows: 6,
+    slots,
+    parent: 'garden_plots',
+    context: { plotIndex },
+  };
+}
+
+export function gardenCompostMenu(player: PlayerState): MenuView {
+  ensureGardenPlots(player);
+  const slots: MenuSlotView[] = [
+    slot(4, 'dirt', 'Composter', [
+      line(`Level ${player.garden.composterLevel ?? 0}`, 'aqua'),
+      line(`${player.garden.organicMatter ?? 0}/100 organic matter`, 'green'),
+      line('Left-click: compost 1 · Right-click: up to 64', 'yellow'),
+      line('100 OM raises the composter and grants Farming XP.', 'gray'),
+    ]),
+  ];
+  const owned = GARDEN_CROPS.filter((crop) => countItem(player.inventory, crop) > 0);
+  owned.forEach((crop, i) => {
+    const have = countItem(player.inventory, crop);
+    const def = ITEMS[crop];
+    slots.push(slot(10 + (i % 7) + Math.floor(i / 7) * 9, crop, def?.name ?? crop, [
+      line(`You have: ${have.toLocaleString()}`, 'green'),
+      line('Left-click compost 1', 'yellow'),
+      line('Right-click compost 64', 'yellow'),
+    ], `garden:compost:${crop}`, { itemId: crop, count: have, rarity: def?.rarity ?? 'COMMON' }));
+  });
+  if (!owned.length) {
+    slots.push(slot(22, 'barrier', 'No Crops', [line('Harvest Garden plots first.', 'gray')]));
+  }
+  slots.push(
+    slot(45, 'arrow', 'Go Back', [line('The Garden')], 'open:garden'),
+    close(),
+  );
+  return {
+    id: 'garden_compost',
+    title: 'Composter',
+    rows: 6,
+    slots,
+    parent: 'garden',
+  };
+}
+
+const ESSENCE_ICONS: Record<string, string> = {
+  undead: 'bone',
+  wither: 'wither_skull',
+  dragon: 'ender_pearl',
+  gold: 'gold_ingot',
+  diamond: 'diamond',
+};
+
+const STAR_RARITIES = ['COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY', 'MYTHIC'] as const;
+
+export function dungeonStarsMenu(player: PlayerState): MenuView {
+  const essence = player.essence ?? {};
+  const slots: MenuSlotView[] = [
+    slot(4, 'nether_star', 'Star Upgrades', [
+      line('Spend dungeon essence to star gear (max 5✪).', 'gray'),
+      line('Each star adds +10% weapon damage and armor stats.', 'gold'),
+    ]),
+    ...ESSENCE_TYPES.map((type, i) => slot(11 + i, ESSENCE_ICONS[type] ?? 'nether_star', `${type[0]!.toUpperCase()}${type.slice(1)} Essence`, [
+      line(`${essence[type] ?? 0}`, 'aqua'),
+      line('Earned by clearing Catacombs floors.', 'gray'),
+    ])),
+  ];
+
+  const grid = [19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34, 37, 38, 39, 40, 41, 42, 43];
+  let placed = 0;
+  for (let i = 0; i < player.inventory.length && placed < grid.length; i++) {
+    const stack = player.inventory[i];
+    if (!stack) continue;
+    const def = ITEMS[stack.itemId];
+    if (!def || def.type === 'MATERIAL' || def.type === 'PET' || def.type === 'MINION' || def.type === 'CONSUMABLE') continue;
+    const stars = stack.dungeonStars ?? 0;
+    const rarityIndex = Math.max(0, STAR_RARITIES.indexOf((def.rarity ?? 'COMMON') as typeof STAR_RARITIES[number]));
+    const cost = starUpgradeCost(stars, rarityIndex);
+    const essenceType = ESSENCE_TYPES[rarityIndex % ESSENCE_TYPES.length] ?? 'undead';
+    const haveEssence = essence[essenceType] ?? 0;
+    const maxed = stars >= 5;
+    const canAfford = !maxed && haveEssence >= cost.essence && player.coins >= cost.coins;
+    const lore: LoreLine[] = [
+      line(stars ? `${'✪'.repeat(stars)} (${stars}/5)` : 'No stars yet', stars ? 'gold' : 'gray'),
+      line(maxed ? 'Maximum stars' : `Next: ${cost.essence} ${essenceType} essence + ${cost.coins.toLocaleString()} coins`, maxed ? 'green' : 'yellow'),
+      line(`You have ${haveEssence} ${essenceType} essence`, haveEssence >= (maxed ? 0 : cost.essence) ? 'aqua' : 'red'),
+      line(maxed ? '' : canAfford ? 'Click to upgrade!' : 'Not enough resources', canAfford ? 'yellow' : 'red'),
+    ].filter((entry) => entry.text);
+    const view = slot(grid[placed]!, stack.itemId, def.name, lore, maxed || !canAfford ? undefined : `stars:${i}`, {
+      itemId: stack.itemId,
+      count: stack.qty,
+      rarity: def.rarity ?? 'COMMON',
+      glint: stars > 0 || Boolean(stack.enchantments && Object.keys(stack.enchantments).length),
+      disabled: maxed || !canAfford,
+    });
+    slots.push(view);
+    placed += 1;
+  }
+  if (placed === 0) {
+    slots.push(slot(31, 'barrier', 'No Gear', [line('Put weapons, armor, or tools in your inventory.', 'gray')]));
+  }
+  slots.push(
+    slot(45, 'arrow', 'Go Back', [line('Catacombs')], 'open:dungeons'),
+    close(),
+  );
+  return {
+    id: 'dungeon_stars',
+    title: 'Star Upgrades',
+    rows: 6,
+    slots,
+    parent: 'dungeons',
   };
 }
 

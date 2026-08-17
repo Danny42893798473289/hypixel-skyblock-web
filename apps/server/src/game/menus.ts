@@ -63,11 +63,16 @@ import {
 import { activeAuctions, auctionById, auctionsBySeller, durationOptions, expiredAuctionsFor, formatTimeLeft } from '../auction/engine.js';
 import { getData } from '../store/usersStore.js';
 import { BANK_TIERS, bankTier, msUntilNextInterest, nextBankTier } from './bank.js';
+import { getTrade } from '../trade/engine.js';
 import {
   alchemyMenu,
   bestiaryMenu,
   dragonsMenu,
   gardenMenu,
+  gardenPlotsMenu,
+  gardenPlantMenu,
+  gardenCompostMenu,
+  dungeonStarsMenu,
   hotmMenu,
   kuudraMenu,
   mayorMenu,
@@ -197,6 +202,11 @@ export function buildMenu(
     case 'slayers': return slayersMenu(player);
     case 'quests': return questsMenu(player);
     case 'garden': return gardenMenu(player);
+    case 'garden_plots': return gardenPlotsMenu(player);
+    case 'garden_plant': return gardenPlantMenu(player, context);
+    case 'garden_compost': return gardenCompostMenu(player);
+    case 'dungeon_stars': return dungeonStarsMenu(player);
+    case 'trade': return tradeMenu(player, context);
     case 'hotm': return hotmMenu(player);
     case 'alchemy': return alchemyMenu(player);
     case 'bestiary': return bestiaryMenu(player);
@@ -1075,6 +1085,11 @@ function dungeonsMenu(player: PlayerState, context: Context = {}): MenuView {
     rows: 6,
     context: { mode },
     slots: [
+      slot(4, 'nether_star', 'Star Upgrades', [
+        line('Spend dungeon essence to star your gear.', 'gray'),
+        line(Object.entries(player.essence ?? {}).map(([type, qty]) => `${type}: ${qty}`).join(' · ') || 'No essence yet — clear floors to earn some.', 'aqua'),
+        click(),
+      ], 'open:dungeon_stars'),
       ...(['berserk', 'archer', 'mage', 'tank', 'healer'] as const).map((dungeonClass, i) => slot(11 + i, dungeonClass, `${player.selectedDungeonClass === dungeonClass ? '▶ ' : ''}${pretty(dungeonClass)}`, [
         line('Click to select class!', 'yellow'),
       ], `class:${dungeonClass}`, { glint: player.selectedDungeonClass === dungeonClass })),
@@ -1125,7 +1140,7 @@ function backpackSlotsUsedTotal(player: PlayerState): number {
   return normalizeBackpacks(player.backpacks).reduce((sum, pack) => sum + backpackSlotsUsed(pack), 0);
 }
 
-function stackMenuSlot(slotNumber: number, stack: PlayerState['inventory'][number], action: string): MenuSlotView {
+function stackMenuSlot(slotNumber: number, stack: PlayerState['inventory'][number], action?: string): MenuSlotView {
   if (!stack) return slot(slotNumber, '', '', [], action);
   const def = ITEMS[stack.itemId];
   if (!def) return slot(slotNumber, 'barrier', 'Unknown Item', [line(stack.itemId, 'red')], action);
@@ -1643,6 +1658,75 @@ function leaderboardMenu(player: PlayerState): MenuView {
       slot(31, 'barrier', 'Close', [line('Close this menu')], 'close'),
     ],
     parent: 'skyblock',
+  };
+}
+
+function tradeMenu(player: PlayerState, context: Context = {}): MenuView {
+  const partnerId = String(context.partnerId ?? '');
+  const partnerName = String(context.partnerUsername ?? 'Player');
+  const trade = partnerId ? getTrade(player.id, partnerId) : undefined;
+  const yours = trade?.offers[player.id];
+  const theirs = trade?.offers[partnerId];
+  const youReady = Boolean(trade?.confirmed[player.id]);
+  const theyReady = Boolean(trade?.confirmed[partnerId]);
+  const selected = context.selectedTradeSlot === undefined || context.selectedTradeSlot === ''
+    ? -1
+    : Number(context.selectedTradeSlot);
+
+  const slots: MenuSlotView[] = [
+    slot(4, 'emerald', `Trading with ${partnerName}`, [
+      line(youReady ? 'You confirmed — waiting on them.' : theyReady ? 'They confirmed — confirm to finish.' : 'Put items in the left slots, then confirm.', youReady || theyReady ? 'green' : 'gray'),
+      line('Click your offer slots, then click inventory items.', 'yellow'),
+      line('Left-click coins +1,000 · Right-click +100 · Shift clear', 'aqua'),
+    ]),
+  ];
+
+  for (let i = 0; i < 4; i++) {
+    const stack = yours?.items[i] ?? null;
+    const chosen = selected === i;
+    if (stack) {
+      const view = stackMenuSlot(i, stack, `trade:clear:${i}`);
+      view.lore = [...view.lore, line(''), line('Click to remove from offer', 'yellow')];
+      if (chosen) view.glint = true;
+      slots.push(view);
+    } else {
+      slots.push(slot(i, '', chosen ? 'Selected slot' : `Your offer ${i + 1}`, [
+        line(chosen ? 'Click an inventory item to add it.' : 'Click to select, then click inventory.', 'yellow'),
+      ], `trade:select:${i}`));
+    }
+    const their = theirs?.items[i] ?? null;
+    if (their) {
+      const view = stackMenuSlot(5 + i, their);
+      view.lore = [...view.lore, line(''), line(`${partnerName}'s offer`, 'aqua')];
+      slots.push(view);
+    } else {
+      slots.push(slot(5 + i, '', `${partnerName} slot ${i + 1}`, [line('Waiting…', 'gray')]));
+    }
+  }
+
+  slots.push(
+    slot(9, 'gold_ingot', `Your coins: ${(yours?.coins ?? 0).toLocaleString()}`, [
+      line(`Purse: ${player.coins.toLocaleString()}`, 'gold'),
+      line('Left-click: offer +1,000', 'yellow'),
+      line('Right-click: offer +100', 'yellow'),
+      line('Shift-click: clear coins', 'gray'),
+    ], 'trade:coins'),
+    slot(17, 'gold_ingot', `Their coins: ${(theirs?.coins ?? 0).toLocaleString()}`, [
+      line(`${partnerName} is offering this many coins.`, 'gray'),
+    ]),
+    slot(45, 'barrier', 'Cancel Trade', [line('Close and return items.', 'red')], 'trade:cancel'),
+    slot(49, youReady ? 'lime_dye' : 'emerald', youReady ? 'Waiting…' : 'Confirm Trade', [
+      line(youReady ? 'Waiting for them to confirm.' : theyReady ? 'They are ready — click to complete!' : 'Lock in your offer.', youReady ? 'gray' : 'yellow'),
+    ], youReady ? undefined : 'trade:confirm', { glint: theyReady && !youReady }),
+  );
+
+  return {
+    id: 'trade',
+    title: `Trade — ${partnerName}`,
+    rows: 6,
+    slots,
+    parent: 'skyblock',
+    context,
   };
 }
 

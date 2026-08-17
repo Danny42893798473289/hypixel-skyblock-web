@@ -1,6 +1,6 @@
-import type { ClientEvent, ServerEvent, PlayerState } from '@aether/shared';
+import type { ClientEvent, MenuId, ServerEvent, PlayerState } from '@aether/shared';
 import type { Socket } from 'socket.io';
-import { handlePay, parseChatCommand, startTrade, confirmTrade, getTrade, cancelTrade } from '../trade/engine.js';
+import { handlePay, parseChatCommand, startTrade, confirmTrade, getTrade, cancelTrade, setTradeCoins, setTradeItem, findTradePartnerId } from '../trade/engine.js';
 import { trySpawnSeaCreature } from './seaCreatureSpawn.js';
 import {
   plantCrop,
@@ -37,6 +37,9 @@ export function handleFeatureEvent(
     pushState: (s: { player: PlayerState }, opts?: { resetPosition?: boolean }) => void;
     warpPrivateIsland: (s: { player: PlayerState }, host: PlayerState) => void;
     leaveVisit: (s: { player: PlayerState }) => void;
+    openMenu?: (s: { player: PlayerState }, menu: MenuId, context?: Record<string, string | number | boolean>) => void;
+    closeMenu?: (s: { player: PlayerState }) => void;
+    refreshTrade?: (s: { player: PlayerState }) => void;
   },
 ): boolean {
   switch (ev.type) {
@@ -70,7 +73,18 @@ export function handleFeatureEvent(
       if (partner.player.id === session.player.id) throw new Error('Cannot trade with yourself');
       startTrade(session.player, partner.player);
       helpers.toast(session, `Trade opened with ${partner.player.username}`, 'success');
-      helpers.toast(partner, `${session.player.username} wants to trade — use /trade confirm when ready`, 'info');
+      helpers.toast(partner, `${session.player.username} wants to trade.`, 'info');
+      helpers.refreshTrade?.(session);
+      return true;
+    }
+    case 'tradeOffer': {
+      const partnerId = findTradePartnerId(session.player.id);
+      if (!partnerId) throw new Error('No active trade');
+      setTradeItem(session.player, partnerId, ev.slot, ev.itemSlot);
+      if (Number.isFinite(ev.coins) && ev.coins >= 0) {
+        setTradeCoins(session.player, partnerId, ev.coins);
+      }
+      helpers.refreshTrade?.(session);
       return true;
     }
     case 'tradeConfirm': {
@@ -81,20 +95,32 @@ export function handleFeatureEvent(
       const result = confirmTrade(session.player, partnerSession.player);
       if (result === 'pending') {
         helpers.toast(session, 'Waiting for partner to confirm...', 'info');
+        helpers.refreshTrade?.(session);
       } else {
         savePlayer(partnerSession.player);
         helpers.pushState(partnerSession);
         helpers.toast(session, 'Trade complete!', 'success');
         helpers.toast(partnerSession, 'Trade complete!', 'success');
+        emit(session.socket, { type: 'tradeClose' });
+        emit(partnerSession.socket, { type: 'tradeClose' });
+        helpers.closeMenu?.(session);
+        helpers.closeMenu?.(partnerSession);
+        helpers.pushState(session);
       }
-      helpers.pushState(session);
       return true;
     }
     case 'tradeCancel': {
-      for (const s of sessions.values()) {
-        if (getTrade(session.player.id, s.player.id)) cancelTrade(session.player.id, s.player.id);
-      }
+      const partnerId = findTradePartnerId(session.player.id);
+      const partner = partnerId ? sessions.get(partnerId) ?? [...sessions.values()].find((s) => s.player.id === partnerId) : undefined;
+      if (partnerId) cancelTrade(session.player.id, partnerId);
+      emit(session.socket, { type: 'tradeClose' });
+      helpers.closeMenu?.(session);
       helpers.toast(session, 'Trade cancelled', 'info');
+      if (partner) {
+        emit(partner.socket, { type: 'tradeClose' });
+        helpers.closeMenu?.(partner);
+        helpers.toast(partner, `${session.player.username} cancelled the trade`, 'info');
+      }
       return true;
     }
     case 'gardenPlant':
@@ -155,18 +181,17 @@ export function handleFeatureChat(
     return true;
   }
   if (parsed.cmd === 'trade' && parsed.args[0]) {
+    const helpersFull = {
+      ...helpers,
+      warpPrivateIsland: () => {},
+      leaveVisit: () => {},
+    };
     if (parsed.args[0] === 'confirm') {
-      handleFeatureEvent(session, { type: 'tradeConfirm' }, sessions, {
-        ...helpers,
-        warpPrivateIsland: () => {},
-        leaveVisit: () => {},
-      });
+      handleFeatureEvent(session, { type: 'tradeConfirm' }, sessions, helpersFull);
+    } else if (parsed.args[0] === 'cancel') {
+      handleFeatureEvent(session, { type: 'tradeCancel' }, sessions, helpersFull);
     } else {
-      handleFeatureEvent(session, { type: 'tradeRequest', targetUsername: parsed.args.join(' ') }, sessions, {
-        ...helpers,
-        warpPrivateIsland: () => {},
-        leaveVisit: () => {},
-      });
+      handleFeatureEvent(session, { type: 'tradeRequest', targetUsername: parsed.args.join(' ') }, sessions, helpersFull);
     }
     return true;
   }

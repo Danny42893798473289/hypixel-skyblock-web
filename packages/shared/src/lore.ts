@@ -110,7 +110,7 @@ export function buildItemLore(def: ItemDef, stack?: ItemStack): LoreLine[] {
     lines.push({ text: def.description, color: 'gray' }, { text: '' });
   }
   if (stack?.dungeonStars) {
-    lines.push({ text: `Dungeon Stars: ${'✪'.repeat(stack.dungeonStars)}  (+${stack.dungeonStars * 10}% weapon damage)`, color: 'gold' });
+    lines.push({ text: `Dungeon Stars: ${'✪'.repeat(stack.dungeonStars)}  (+${stack.dungeonStars * 10}% damage and armor stats)`, color: 'gold' });
   }
   if (def.npcSell) lines.push({ text: `NPC Sell Price: ${def.npcSell.toLocaleString()} Coins`, color: 'gray' });
   lines.push({
