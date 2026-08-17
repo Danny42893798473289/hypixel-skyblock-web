@@ -100,7 +100,7 @@ const ARMOR_PREFIX = {
 /** Items whose internal id differs from Hypixel's. */
 const MANUAL = {
   cobble: 'COBBLESTONE',
-  lapis: 'INK_SACK',
+  lapis: 'INK_SACK:4',
   cocoa_beans: 'INK_SACK:3',
   mithril: 'MITHRIL_ORE',
   aspect_of_the_dragons: 'ASPECT_OF_THE_DRAGONS',
@@ -121,6 +121,7 @@ const MANUAL = {
   enchanted_gold_ingot: 'ENCHANTED_GOLD',
   enchanted_iron_ingot: 'ENCHANTED_IRON',
   enchanted_lapis: 'ENCHANTED_LAPIS_LAZULI',
+  enchanted_lapis_block: 'ENCHANTED_LAPIS_LAZULI_BLOCK',
   necron_blade: 'NECRONS_BLADE_HYPERION',
   thorn_bow: 'THORNS_BOW',
   gemstone_ruby: 'ROUGH_RUBY_GEM',
@@ -134,6 +135,9 @@ const MANUAL = {
   wooden_axe: 'WOOD_AXE',
   wooden_hoe: 'WOOD_HOE',
   wooden_sword: 'WOOD_SWORD',
+  wooden_shovel: 'WOOD_SPADE',
+  ink_sac: 'INK_SACK',
+  glow_ink_sac: 'INK_SACK',
   stone_pickaxe: 'STONE_PICKAXE',
   stone_axe: 'STONE_AXE',
   stone_sword: 'STONE_SWORD',

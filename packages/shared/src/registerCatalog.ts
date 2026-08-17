@@ -289,7 +289,6 @@ export function applySkyblockRecipes(): void {
     ['enchanted_glowstone', 'Enchanted Glowstone', 160, 'glowstone_dust', 100],
     ['enchanted_quartz_block', 'Enchanted Quartz Block', 160, 'enchanted_quartz', 100],
     ['enchanted_redstone_block', 'Enchanted Redstone Block', 160, 'enchanted_redstone', 100],
-    ['enchanted_lapis_block', 'Enchanted Lapis Block', 160, 'enchanted_lapis', 100],
     ['enchanted_emerald_block', 'Enchanted Emerald Block', 160, 'enchanted_emerald', 100],
     ['enchanted_gold_block', 'Enchanted Gold Block', 160, 'enchanted_gold_ingot', 100],
   ];

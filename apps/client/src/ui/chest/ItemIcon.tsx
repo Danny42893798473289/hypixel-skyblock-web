@@ -5,12 +5,12 @@ import { PixelIcon } from './PixelIcon';
 
 interface Props {
   icon: string;
-  itemId?: ItemId;
+  itemId?: string;
   rarity?: string;
 }
 
 export function ItemIcon({ icon, itemId, rarity }: Props) {
-  const sources = iconTextureSources(icon, itemId);
+  const sources = iconTextureSources(icon, itemId as ItemId | undefined);
   const [sourceIndex, setSourceIndex] = useState(0);
 
   useEffect(() => {

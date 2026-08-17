@@ -377,6 +377,7 @@ export function App() {
         <div className="dungeon-hud slayer-hud">
           <strong className="mc-red">Kuudra T{player.kuudraFight.tier}</strong>
           <span>{player.kuudraFight.hp.toLocaleString()} / {player.kuudraFight.maxHp.toLocaleString()} ❤</span>
+          <span className="mc-gray">Type /leave to abandon</span>
         </div>
       ) : null}
 
@@ -404,6 +405,7 @@ export function App() {
             {dungeonPhase(player.dungeonRun) === 'boss' && `Boss — ${player.dungeonRun.bossHp?.toLocaleString() ?? '?'} ❤`}
           </span>
           <span className="mc-yellow">Score: {player.dungeonRun.score} · Secrets: {player.dungeonRun.secretsFound ?? 0}</span>
+          <span className="mc-gray">Type /leave to abandon</span>
         </div>
       ) : null}
 
@@ -548,7 +550,10 @@ export function App() {
 /** Keep predicted walk position; only apply server x/y on warps, death, and island changes. */
 function mergeLivePlayer(prev: PlayerState | null, next: PlayerState): PlayerState {
   const { resetPosition: shouldReset, ...rest } = next;
-  if (!prev || shouldReset || rest.islandId !== prev.islandId) return rest;
+  if (!prev || shouldReset || rest.islandId !== prev.islandId) {
+    // Keep the flag so useMovement can snap the camera. Next state without it clears it.
+    return shouldReset ? { ...rest, resetPosition: true } : rest;
+  }
   return { ...rest, x: prev.x, y: prev.y, facing: prev.facing };
 }
 

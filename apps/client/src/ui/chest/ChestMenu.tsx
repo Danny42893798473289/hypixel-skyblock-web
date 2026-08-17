@@ -84,6 +84,13 @@ export function ChestMenu({ menu, player, onMenuClick, onClose, onBack, onSearch
               autoComplete="off"
               spellCheck={false}
             />
+            <button
+                type="button"
+                className="chest-sell-inventory"
+                onClick={() => onMenuClick(31, 'left', 'bazaarSellInventory')}
+              >
+                Sell Inventory
+              </button>
           </form>
         ) : null}
         <div className="chest-grid" style={{ gridTemplateRows: `repeat(${menu.rows}, var(--slot-size))` }}>

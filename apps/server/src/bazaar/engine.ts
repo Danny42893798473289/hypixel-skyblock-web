@@ -339,6 +339,45 @@ export function instantSell(
   return { player, filled: sold, earned };
 }
 
+/** Instant-sell every bazaarable stack in the player's inventory (not backpacks). */
+export function instantSellInventory(player: PlayerState): {
+  player: PlayerState;
+  kinds: number;
+  filled: number;
+  earned: number;
+  itemIds: ItemId[];
+} {
+  const counts = new Map<ItemId, number>();
+  for (const stack of player.inventory) {
+    if (!stack || stack.qty <= 0) continue;
+    if (!BAZAAR_ITEMS.includes(stack.itemId)) continue;
+    counts.set(stack.itemId, (counts.get(stack.itemId) ?? 0) + stack.qty);
+  }
+
+  let kinds = 0;
+  let filled = 0;
+  let earned = 0;
+  const itemIds: ItemId[] = [];
+
+  for (const [itemId, qty] of counts) {
+    const book = getOrderBook(itemId);
+    if (!book.buys.length) continue;
+    try {
+      const result = instantSell(player, itemId, qty);
+      player = result.player;
+      kinds += 1;
+      filled += result.filled;
+      earned += result.earned;
+      itemIds.push(itemId);
+    } catch {
+      // Skip items with a dry book or inventory mismatch.
+    }
+  }
+
+  if (filled <= 0) throw new Error('No bazaar buy orders for your items');
+  return { player, kinds, filled, earned, itemIds };
+}
+
 export function cancelOrder(player: PlayerState, orderId: string): PlayerState {
   const row = getOrders().find((o) => o.id === orderId);
   if (!row) throw new Error('Order not found');

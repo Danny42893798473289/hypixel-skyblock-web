@@ -652,6 +652,12 @@ function bazaarHubMenu(_player: PlayerState, bazaarOrders: BazaarOrder[]): MenuV
         line('Find any product by name — even minion upgrades.', 'gray'),
         line('Use the search bar, or click and type in chat.', 'yellow'),
       ], 'bazaarSearch:'),
+      slot(31, 'gold_ingot', 'Sell Inventory', [
+        line('Instant-sell every bazaar item in your inventory.', 'gray'),
+        line('Keeps tools, armor, and anything not on the Bazaar.', 'dark_gray'),
+        line('1.125% bazaar tax applies.', 'dark_gray'),
+        line('Click to sell all!', 'yellow'),
+      ], 'bazaarSellInventory', { itemId: 'gold_ingot' }),
       openBazaarOrders(_player, bazaarOrders),
       back(),
       close(),
@@ -1105,7 +1111,7 @@ function dungeonsMenu(player: PlayerState, context: Context = {}): MenuView {
             line('Return to your run in-world', 'yellow'),
           ], 'dungeon:continue')
         : slot(22, 'wither_skull', 'No Active Run', [line('Select a floor below to enter.', 'gray'), line('Walk to the Wither Door inside!', 'gray')]),
-      ...(player.dungeonRun ? [slot(24, 'barrier', 'Leave Dungeon', [line('Abandon this run and return to the Dungeon Hub.', 'red')], 'dungeon:leave')] : []),
+      ...(player.dungeonRun ? [slot(24, 'barrier', 'Leave Dungeon', [line('Abandon this run and return to the Dungeon Hub.', 'red'), line('Or type /leave in chat.', 'gray')], 'dungeon:leave')] : []),
       slot(46, 'player_head', 'Host Party', [line('Invite players in the Dungeon Hub to your run.'), click()], 'dungeonParty'),
       slot(47, 'emerald', 'Join Nearby Party', [line('Join the first hosted run in the Hub.'), click()], 'dungeonJoin:nearby'),
       back(),

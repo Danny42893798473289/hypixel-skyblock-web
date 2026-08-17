@@ -82,20 +82,37 @@ const VANILLA: Record<string, string> = {
   wooden_pickaxe: 'items/wood_pickaxe',
   wooden_axe: 'items/wood_axe',
   wooden_hoe: 'items/wood_hoe',
+  wooden_shovel: 'items/wood_shovel',
   stone_sword: 'items/stone_sword',
   stone_pickaxe: 'items/stone_pickaxe',
   stone_axe: 'items/stone_axe',
+  stone_hoe: 'items/stone_hoe',
+  stone_shovel: 'items/stone_shovel',
   iron_sword: 'items/iron_sword',
   iron_pickaxe: 'items/iron_pickaxe',
   iron_axe: 'items/iron_axe',
+  iron_hoe: 'items/iron_hoe',
+  iron_shovel: 'items/iron_shovel',
+  golden_sword: 'items/gold_sword',
+  golden_pickaxe: 'items/gold_pickaxe',
+  golden_axe: 'items/gold_axe',
+  golden_hoe: 'items/gold_hoe',
+  golden_shovel: 'items/gold_shovel',
   diamond_sword: 'items/diamond_sword',
   diamond_pickaxe: 'items/diamond_pickaxe',
+  diamond_axe: 'items/diamond_axe',
+  diamond_hoe: 'items/diamond_hoe',
+  diamond_shovel: 'items/diamond_shovel',
   diamond_helmet: 'items/diamond_helmet',
   diamond_chestplate: 'items/diamond_chestplate',
   diamond_leggings: 'items/diamond_leggings',
   diamond_boots: 'items/diamond_boots',
+  iron_helmet: 'items/iron_helmet',
+  iron_chestplate: 'items/iron_chestplate',
+  iron_leggings: 'items/iron_leggings',
+  iron_boots: 'items/iron_boots',
   bow: 'items/bow_standby',
-  fishing_rod: 'items/fishing_rod',
+  fishing_rod: 'items/fishing_rod_uncast',
   experience_bottle: 'items/experience_bottle',
   enchanted_book: 'items/book_enchanted',
   nether_star: 'items/nether_star',
@@ -116,14 +133,12 @@ const VANILLA: Record<string, string> = {
   paper: 'items/paper',
   mithril: 'items/iron_ingot',
   clay: 'blocks/clay',
-  beetroot: 'items/beetroot',
-  beetroot_seeds: 'items/beetroot_seeds',
-  pumpkin_seeds: 'items/pumpkin_seeds',
-  melon_seeds: 'items/melonsplit',
+  pumpkin_seeds: 'items/seeds_pumpkin',
+  melon_seeds: 'items/seeds_melon',
   ink_sack: 'items/dye_powder_black',
   ink_sac: 'items/dye_powder_black',
-  glow_ink_sac: 'items/dye_powder_black',
-  hay_bale: 'blocks/hay_block',
+  glow_ink_sac: 'items/dye_powder_lime',
+  hay_bale: 'blocks/hay_block_side',
   cookie: 'items/cookie',
   golden_carrot: 'items/carrot_golden',
   golden_apple: 'items/apple_golden',
@@ -135,6 +150,12 @@ const VANILLA: Record<string, string> = {
   jungle_sapling: 'blocks/sapling_jungle',
   acacia_sapling: 'blocks/sapling_acacia',
   dark_oak_sapling: 'blocks/sapling_roofed_oak',
+  cooked_fish: 'items/fish_cod_cooked',
+  cooked_salmon: 'items/fish_salmon_cooked',
+  cooked_beef: 'items/beef_cooked',
+  cooked_porkchop: 'items/porkchop_cooked',
+  cooked_chicken: 'items/chicken_cooked',
+  cooked_mutton: 'items/mutton_cooked',
 };
 
 const map = hypixelMap as Record<string, string>;
@@ -155,6 +176,11 @@ function vanillaCandidates(itemId: ItemId): string[] {
   const out: string[] = [];
   const direct = VANILLA[itemId];
   if (direct) out.push(`${MC_18}/${direct}.png`);
+  const tool = itemId.match(/^(wooden|stone|iron|golden|diamond)_(sword|pickaxe|axe|hoe|shovel)$/);
+  if (tool) {
+    const material = tool[1] === 'wooden' ? 'wood' : tool[1] === 'golden' ? 'gold' : tool[1];
+    out.push(`${MC_18}/items/${material}_${tool[2]}.png`);
+  }
   if (itemId.startsWith('enchanted_')) {
     const base = itemId.replace(/^enchanted_/, '').replace(/_block$/, '');
     const vanillaBase = VANILLA[base];
@@ -329,7 +355,7 @@ const ISLAND_WARP_ITEM: Record<string, ItemId> = {
   rift: 'ender_pearl',
 };
 
-/** Ordered texture URLs — Hypixel SkyBlock icons first, then vanilla Minecraft 1.8.9. */
+/** Ordered texture URLs — Hypixel SkyBlock icons first, then vanilla 1.8.9 fallbacks. */
 export function itemTextureSources(itemId: ItemId): string[] {
   const hypixel = hypixelCandidates(itemId).map((id) => `${COFLNET}/${encodeURIComponent(id)}`);
   const vanilla = vanillaCandidates(itemId);

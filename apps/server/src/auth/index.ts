@@ -30,6 +30,8 @@ import {
   accessoryBagSlots,
   addItem,
   applyIslandBlocks,
+  normalizePlayerLocation,
+  districtEntryBlocked,
   type ItemStack,
   type PlayerState,
 } from '@aether/shared';
@@ -192,6 +194,7 @@ function toPlayer(user: StoredUser): PlayerState {
     player.y = user.y;
   }
   normalizeDungeonRun(player);
+  if (normalizePlayerLocation(player)) player.resetPosition = true;
   player.stats = recomputeStats(player);
   player.maxHp = player.stats.health;
   player.hp = Math.min(player.hp, player.maxHp);

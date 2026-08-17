@@ -34,6 +34,7 @@ export function useMovement(player: PlayerState, map: IslandMap, disabled: boole
   const sprintRef = useRef(false);
   const sprintHoldRef = useRef(false);
   const lastIslandRef = useRef(player.islandId);
+  const lastServerPosRef = useRef({ x: player.x, y: player.y });
   const mapRef = useRef(map);
   const playerRef = useRef(player);
   mapRef.current = map;
@@ -69,10 +70,17 @@ export function useMovement(player: PlayerState, map: IslandMap, disabled: boole
 
   useEffect(() => {
     const islandChanged = lastIslandRef.current !== player.islandId;
-    if (player.resetPosition || islandChanged) {
+    const serverMoved =
+      lastServerPosRef.current.x !== player.x || lastServerPosRef.current.y !== player.y;
+    const desync = Math.hypot(player.x - positionRef.current.x, player.y - positionRef.current.y);
+    // Same-island teleports/warps used to drop resetPosition in mergeLivePlayer, so also
+    // snap when the merged server coords jump away from the predicted walk position.
+    if (player.resetPosition || islandChanged || (serverMoved && desync > HARD_RECONCILE_TILES)) {
       reconcileTo(player.x, player.y, player.facing, true);
+      gameSocket.send({ type: 'move', x: player.x, y: player.y, facing: player.facing });
     }
     lastIslandRef.current = player.islandId;
+    lastServerPosRef.current = { x: player.x, y: player.y };
   }, [player.facing, player.islandId, player.resetPosition, player.x, player.y, reconcileTo]);
 
   useEffect(() => {

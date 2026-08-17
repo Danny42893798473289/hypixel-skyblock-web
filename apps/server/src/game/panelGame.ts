@@ -67,6 +67,7 @@ import {
   islandMapForZone,
   districtAt,
   districtSpawn,
+  districtEntryBlocked,
   canStand,
   nearestEntity,
   ISLAND_BLOCK_CAP,
@@ -157,6 +158,12 @@ interface Session {
   lastMoveAt: number;
   /** How far the player may still move — absorbs burst packets after lag spikes. */
   moveCredit: number;
+  /** Drop predicted walk packets after a teleport/warp so they cannot yank you back. */
+  holdPositionUntil: number;
+  /** Pre-teleport tile — ignore stale walk packets near here after a snap. */
+  rejectMoveUntil: number;
+  rejectMoveX: number;
+  rejectMoveY: number;
   lastGateWarnAt: number;
   menuOpen: boolean;
   inventoryCursor: ItemStack | null;
@@ -230,6 +237,15 @@ function emitMoveCorrection(session: Session, reason: 'blocked' | 'gate' | 'tele
   });
 }
 
+function beginPositionSnap(session: Session): void {
+  session.rejectMoveX = session.player.x;
+  session.rejectMoveY = session.player.y;
+  session.rejectMoveUntil = Date.now() + 5000;
+  session.holdPositionUntil = Date.now() + 3000;
+  session.moveCredit = MOVE_SPEED * 0.25;
+  session.lastMoveAt = Date.now();
+}
+
 function pushState(session: Session, opts?: { resetPosition?: boolean }): void {
   session.player.islandId = islandForZone(session.player.zoneId);
   if (session.statsDirty) {
@@ -247,7 +263,10 @@ function pushState(session: Session, opts?: { resetPosition?: boolean }): void {
   const payload: PlayerState = session.menuOpen && cursorMenus.includes(session.currentMenu)
     ? { ...session.player, inventoryCursor: session.inventoryCursor }
     : { ...session.player };
-  if (opts?.resetPosition) payload.resetPosition = true;
+  if (opts?.resetPosition) {
+    payload.resetPosition = true;
+    emitMoveCorrection(session, 'teleport');
+  }
   emit(session.socket, { type: 'state', player: payload });
   if (session.menuOpen) pushMenu(session);
 }
@@ -279,6 +298,7 @@ function handlePlayerDeath(session: Session, message = 'You died!'): void {
   session.player.hp = session.player.maxHp;
   if (session.player.dungeonRun) {
     const map = buildDungeonRoomMap(session.player.dungeonRun);
+    beginPositionSnap(session);
     session.player.x = map.spawn.x;
     session.player.y = map.spawn.y;
     session.player.facing = 'right';
@@ -294,6 +314,7 @@ function handlePlayerDeath(session: Session, message = 'You died!'): void {
     toast(session, message, 'error');
   }
   const spawn = districtSpawn(mapFor(session), session.player.zoneId);
+  beginPositionSnap(session);
   session.player.x = spawn.x;
   session.player.y = spawn.y;
   session.player.facing = 'down';
@@ -472,6 +493,10 @@ export function initGame(serverIo: SocketServer): void {
       selectedInventorySlot: null,
       lastMoveAt: Date.now(),
       moveCredit: MOVE_SPEED * 0.25,
+      holdPositionUntil: 0,
+      rejectMoveUntil: 0,
+      rejectMoveX: 0,
+      rejectMoveY: 0,
       lastGateWarnAt: 0,
       menuOpen: false,
       inventoryCursor: null,
@@ -699,6 +724,7 @@ function handleEvent(session: Session, ev: ClientEvent): void {
         toast: (s, msg, kind) => toast(s as Session, msg, kind as 'info' | 'error' | 'success'),
         pushState: (s, opts) => pushState(s as Session, opts),
         warpPrivateIsland: (s, host) => {
+          beginPositionSnap(s as Session);
           s.player.zoneId = 'island_minions';
           s.player.islandId = 'private_island';
           s.player.x = 8;
@@ -712,6 +738,16 @@ function handleEvent(session: Session, ev: ClientEvent): void {
 function handleMove(session: Session, x: number, y: number, facing: Facing): void {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return;
   const now = Date.now();
+  if (now < session.rejectMoveUntil) {
+    const nearStale = Math.hypot(x - session.rejectMoveX, y - session.rejectMoveY) < 2.5;
+    if (nearStale) return;
+  }
+  if (now < session.holdPositionUntil) {
+    const away = Math.hypot(x - session.player.x, y - session.player.y);
+    // In-flight walk packets still carry the pre-teleport tile. Ignore those; allow
+    // a couple tiles of real walking from the new spot.
+    if (away > 3) return;
+  }
   const elapsed = Math.max(0, Math.min(1500, now - session.lastMoveAt));
   session.lastMoveAt = now;
 
@@ -857,6 +893,10 @@ function handleSkyblockChat(session: Session, text: string): boolean {
     if (cmd === 'bz' || cmd === 'bazaar') {
       const query = args.join(' ').trim();
       openMenu(session, 'bazaar', query ? { query, page: 0 } : {});
+      return true;
+    }
+    if (cmd === 'leave' || cmd === 'quit') {
+      leaveActiveRun(session);
       return true;
     }
   } catch (err) {
@@ -1076,6 +1116,19 @@ function handleMenuClick(
     toast(session, 'Type an item name in chat to search the Bazaar.', 'info');
     return;
   }
+  if (kind === 'bazaarSellInventory') {
+    const result = bazaar.instantSellInventory(session.player);
+    session.player = result.player;
+    pushState(session);
+    for (const itemId of result.itemIds) publishBazaar(itemId);
+    pushMenu(session);
+    toast(
+      session,
+      `Sold ${result.filled.toLocaleString()} items (${result.kinds} types) for ${result.earned.toFixed(1)} coins`,
+      'success',
+    );
+    return;
+  }
   if (kind === 'dungeonMode') {
     openMenu(session, 'dungeons', { mode: value });
     return;
@@ -1189,6 +1242,10 @@ function handleMenuClick(
     return;
   }
   if (kind === 'kuudra') {
+    if (value === 'leave') {
+      leaveKuudra(session);
+      return;
+    }
     toast(session, startKuudra(session.player, Number(value) || 1), 'success');
     spawnKuudra(session);
     pushState(session);
@@ -1693,6 +1750,7 @@ function warpToDungeonSpawn(session: Session): void {
   const run = session.player.dungeonRun;
   if (!run) return;
   const map = buildDungeonRoomMap(run);
+  beginPositionSnap(session);
   session.player.zoneId = DUNGEON_ZONE;
   session.player.islandId = 'dungeon_hub';
   session.player.x = map.spawn.x;
@@ -1735,8 +1793,30 @@ function resumeDungeon(session: Session): void {
 
 function leaveDungeon(session: Session): void {
   session.player.dungeonRun = null;
+  session.player.dungeonPartyId = null;
   doTravel(session, 'dungeon_hub');
   toast(session, 'You left the Catacombs.', 'info');
+}
+
+function leaveKuudra(session: Session): void {
+  session.player.kuudraFight = null;
+  session.player.worldMobs = (session.player.worldMobs ?? []).filter((mob) => mob.mobId !== 'kuudra');
+  session.menuOpen = false;
+  pushState(session, { resetPosition: true });
+  toast(session, 'You abandoned the Kuudra fight.', 'info');
+}
+
+function leaveActiveRun(session: Session): boolean {
+  if (session.player.dungeonRun) {
+    leaveDungeon(session);
+    return true;
+  }
+  if (session.player.kuudraFight) {
+    leaveKuudra(session);
+    return true;
+  }
+  toast(session, 'No active dungeon or Kuudra run to leave.', 'error');
+  return true;
 }
 
 function rollDungeonDrops(session: Session, floor: { drops?: Array<{ itemId: string; chance: number; min: number; max: number }> }): string[] {
@@ -1908,6 +1988,7 @@ function doTravel(session: Session, zoneId: string): void {
     throw new Error(`Requires ${target.skillReq!.skill} level ${target.skillReq!.level}`);
   }
   const spawn = districtSpawn(islandMap(target.islandId), zoneId);
+  beginPositionSnap(session);
   session.player.zoneId = zoneId;
   session.player.x = spawn.x;
   session.player.y = spawn.y;
@@ -1932,6 +2013,7 @@ function doWarpIsland(session: Session, islandId: IslandId, zoneId?: string): vo
     throw new Error(`Requires ${entry.skillReq!.skill} level ${entry.skillReq!.level}`);
   }
   const spawn = districtSpawn(islandMap(islandId), entry.id);
+  beginPositionSnap(session);
   session.player.zoneId = entry.id;
   session.player.islandId = islandId;
   session.player.x = spawn.x;
@@ -2194,6 +2276,9 @@ function doUseAbility(session: Session): void {
     const distance = kind === 'wither_impact' ? 6 : 8;
     const result = teleportForward(map, session.player.x, session.player.y, session.player.facing, distance);
     if (result.moved === 0) throw new Error('Cannot teleport — path blocked');
+    const blocked = districtEntryBlocked(session.player, map, result.x, result.y, session.player.zoneId);
+    if (blocked) throw new Error(`Cannot teleport — ${blocked}`);
+    beginPositionSnap(session);
     session.player.x = result.x;
     session.player.y = result.y;
     resetPosition = true;
@@ -2256,6 +2341,9 @@ function doUseAbility(session: Session): void {
     if (kind === 'shadow') {
       const result = teleportForward(map, session.player.x, session.player.y, session.player.facing, 3);
       if (result.moved > 0) {
+        const blocked = districtEntryBlocked(session.player, map, result.x, result.y, session.player.zoneId);
+        if (blocked) throw new Error(`Cannot teleport — ${blocked}`);
+        if (!resetPosition) beginPositionSnap(session);
         session.player.x = result.x;
         session.player.y = result.y;
         resetPosition = true;

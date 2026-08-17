@@ -237,6 +237,16 @@ export function registerSkyblockRecipes(): void {
     { itemId: 'gemstone_jade', qty: 64 },
   ], { collection: 'mithril', amount: 5000 });
 
+  // ── Vanilla iron & diamond armor ──
+  craft('craft_iron_helmet', 'iron_helmet', [{ itemId: 'iron_ingot', qty: 5 }], { collection: 'iron_ingot', amount: 50 });
+  craft('craft_iron_chestplate', 'iron_chestplate', [{ itemId: 'iron_ingot', qty: 8 }], { collection: 'iron_ingot', amount: 50 });
+  craft('craft_iron_leggings', 'iron_leggings', [{ itemId: 'iron_ingot', qty: 7 }], { collection: 'iron_ingot', amount: 50 });
+  craft('craft_iron_boots', 'iron_boots', [{ itemId: 'iron_ingot', qty: 4 }], { collection: 'iron_ingot', amount: 50 });
+  craft('craft_diamond_helmet', 'diamond_helmet', [{ itemId: 'diamond', qty: 5 }], { collection: 'diamond', amount: 100 });
+  craft('craft_diamond_chestplate', 'diamond_chestplate', [{ itemId: 'diamond', qty: 8 }], { collection: 'diamond', amount: 100 });
+  craft('craft_diamond_leggings', 'diamond_leggings', [{ itemId: 'diamond', qty: 7 }], { collection: 'diamond', amount: 100 });
+  craft('craft_diamond_boots', 'diamond_boots', [{ itemId: 'diamond', qty: 4 }], { collection: 'diamond', amount: 100 });
+
   // ── Fishing armor ──
   craftArmorSet('angler', ['helmet', 'chestplate', 'leggings', 'boots'], [
     { itemId: 'raw_fish', qty: 32 },

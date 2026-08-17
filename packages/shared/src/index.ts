@@ -18,6 +18,7 @@ export * from './dungeonMap.js';
 export * from './accessories.js';
 export * from './worldCombat.js';
 export * from './quests.js';
+export * from './playerLocation.js';
 export * from './midgame.js';
 export * from './economy.js';
 export * from './seaCreatures.js';

@@ -222,6 +222,7 @@ export function kuudraMenu(player: PlayerState): MenuView {
       slot(13, 'magma', 'Kuudra Hot', [line('Harder. Combat 24+ recommended.'), click()], 'kuudra:2'),
       slot(15, 'magma', 'Kuudra Burning', [line('Endgame Crimson Isle.'), click()], 'kuudra:3'),
       fight ? slot(22, 'sword', 'Active Fight', [line(`${fight.hp.toLocaleString()} / ${fight.maxHp.toLocaleString()} ❤`, 'red'), line('Walk to the volcano and press E on Kuudra.')]) : slot(22, 'barrier', 'No fight', [line('Start a tier above.')]),
+      ...(fight ? [slot(24, 'barrier', 'Leave Kuudra', [line('Abandon this fight.'), line('Or type /leave in chat.', 'gray')], 'kuudra:leave')] : []),
       back(),
       close(),
     ],
