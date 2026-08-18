@@ -11,6 +11,10 @@ export interface QuestPlayerView {
   islandId: string;
   activeSlayer: unknown;
   quests?: QuestBookState;
+  skills?: Record<string, number>;
+  slayerXp?: Record<string, number>;
+  garden?: { harvested?: Record<string, number> };
+  hotm?: { tokens?: number };
 }
 
 export interface QuestBookState {
@@ -18,6 +22,7 @@ export interface QuestBookState {
   counters: Record<string, number>;
   flags: Record<string, boolean>;
   claimed?: boolean;
+  claimedSteps?: string[];
 }
 
 export const STARTER_QUEST_STEPS: QuestStepDef[] = [
@@ -34,7 +39,7 @@ export const STARTER_QUEST_STEPS: QuestStepDef[] = [
 ];
 
 export function emptyQuestBook(): QuestBookState {
-  return { completed: [], counters: {}, flags: {}, claimed: false };
+  return { completed: [], counters: {}, flags: {}, claimed: false, claimedSteps: [] };
 }
 
 export function isQuestStepDone(player: QuestPlayerView, stepId: string): boolean {

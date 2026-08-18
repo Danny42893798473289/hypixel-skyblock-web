@@ -1,6 +1,6 @@
 import type { ItemId } from './items.js';
 import type { ItemStack } from './inventory.js';
-import { emptyGardenPlots, JACOB_CONTEST_MS } from './gardenPlots.js';
+import { emptyGardenPlots, emptyJacobMedals, JACOB_CONTEST_MS, STARTING_GARDEN_PLOTS, type JacobMedals } from './gardenPlots.js';
 
 export interface GardenPlot {
   crop: ItemId;
@@ -27,6 +27,8 @@ export interface GardenState {
   composterLevel: number;
   jacobMedal: 'none' | 'bronze' | 'silver' | 'gold';
   jacobContestEndsAt: number;
+  jacobMedals: JacobMedals;
+  unlockedPlots: number;
 }
 
 export interface HotmPerk {
@@ -41,6 +43,7 @@ export interface HotmPerk {
   slot: number;
   icon: string;
   description: string;
+  powderType?: 'mithril' | 'gemstone';
 }
 
 export interface HotmCommission {
@@ -56,6 +59,7 @@ export interface HotmCommission {
 export interface HotmState {
   tokens: number;
   mithrilPowder: number;
+  gemstonePowder: number;
   perks: Record<string, number>;
   commissions: HotmCommission[];
 }
@@ -204,6 +208,42 @@ export const HOTM_PERKS: HotmPerk[] = [
     icon: 'chest',
     description: 'Chance for bonus Mithril from each mithril vein.',
   },
+  {
+    id: 'mining_madness',
+    name: 'Mining Madness',
+    max: 10,
+    cost: 1,
+    powderCost: 60,
+    parent: 'mining_speed',
+    slot: 32,
+    icon: 'gemstone_ruby',
+    description: '+8 Mining Fortune per level. Costs Gemstone Powder to upgrade.',
+    powderType: 'gemstone',
+  },
+  {
+    id: 'gemstone_infusion',
+    name: 'Gemstone Infusion',
+    max: 10,
+    cost: 1,
+    powderCost: 80,
+    parent: 'mining_madness',
+    slot: 33,
+    icon: 'gemstone_jade',
+    description: '+12 Mining Fortune per level in the Crystal Hollows.',
+    powderType: 'gemstone',
+  },
+  {
+    id: 'powder_buff',
+    name: 'Powder Buff',
+    max: 5,
+    cost: 2,
+    powderCost: 100,
+    parent: 'gemstone_infusion',
+    slot: 34,
+    icon: 'glowstone_dust',
+    description: 'Gain extra Gemstone Powder from gemstone veins.',
+    powderType: 'gemstone',
+  },
 ];
 
 export const GARDEN_CROPS: ItemId[] = ['wheat', 'carrot', 'potato', 'pumpkin', 'melon', 'sugar_cane', 'cactus', 'cocoa_beans', 'mushroom', 'nether_wart'];
@@ -273,6 +313,8 @@ export function emptyGarden(): GardenState {
     composterLevel: 0,
     jacobMedal: 'none',
     jacobContestEndsAt: now + JACOB_CONTEST_MS,
+    jacobMedals: emptyJacobMedals(),
+    unlockedPlots: STARTING_GARDEN_PLOTS,
   };
 }
 
@@ -286,6 +328,7 @@ export function emptyHotm(): HotmState {
   return {
     tokens: 0,
     mithrilPowder: 0,
+    gemstonePowder: 0,
     perks: {},
     commissions: rollCommissions(),
   };
@@ -299,7 +342,21 @@ export function hotmMiningFortune(perks: Record<string, number>, coleMayor: bool
   return (perks.mining_fortune ?? 0) * 5
     + (perks.efficient_miner ?? 0) * 8
     + ((perks.sky_mall ?? 0) > 0 ? 20 : 0)
+    + (perks.mining_madness ?? 0) * 8
     + (coleMayor ? 15 : 0);
+}
+
+export function hotmGemstoneFortune(perks: Record<string, number>): number {
+  return (perks.gemstone_infusion ?? 0) * 12;
+}
+
+export const GEMSTONE_ITEM_IDS = [
+  'gemstone_ruby', 'gemstone_jade', 'gemstone_amethyst', 'gemstone_sapphire',
+  'gemstone_amber', 'gemstone_topaz', 'gemstone_jasper',
+];
+
+export function isGemstoneItem(itemId: string): boolean {
+  return GEMSTONE_ITEM_IDS.includes(itemId);
 }
 
 export function hotmMiningSpeed(perks: Record<string, number>): number {
@@ -315,6 +372,15 @@ export function hotmPerkLocked(perks: Record<string, number>, perk: HotmPerk): b
 export function hotmPowderCost(perk: HotmPerk, nextLevel: number): number {
   if (nextLevel <= 1) return 0;
   return perk.powderCost * nextLevel;
+}
+
+export function hotmPowderBalance(state: HotmState, perk: HotmPerk): number {
+  return perk.powderType === 'gemstone' ? state.gemstonePowder : state.mithrilPowder;
+}
+
+export function spendHotmPowder(state: HotmState, perk: HotmPerk, amount: number): void {
+  if (perk.powderType === 'gemstone') state.gemstonePowder -= amount;
+  else state.mithrilPowder -= amount;
 }
 
 export function rollCommissions(): HotmCommission[] {

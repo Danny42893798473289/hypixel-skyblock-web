@@ -7,6 +7,7 @@ import {
   searchBazaarItems,
   type BazaarSection,
   COLLECTION_CATEGORIES,
+  DUNGEON_CLASS_ABILITIES,
   DUNGEON_COMBAT_REQUIREMENT,
   dungeonPhase,
   masterFloors,
@@ -17,13 +18,15 @@ import {
   ITEMS,
   MOBS,
   RECIPE_CATEGORIES,
+  QUEST_CHAINS,
   SKILLS,
   SLAYERS,
+  SLAYER_UNLOCKS,
   ZONES,
   buildItemLore,
   collectionProgress,
   collectionsInCategory,
-  isRecipeUnlocked,
+  recipeUnlockedFor,
   obtainHintForItem,
   islandForZone,
   levelFromXp,
@@ -53,8 +56,15 @@ import {
   type PlayerState,
   type RecipeCategory,
   STARTER_QUEST_STEPS,
+  chainStepReady,
+  currentChainStep,
   currentQuestStep,
+  dungeonScoreGrade,
   isQuestStepDone,
+  slayerLevelFromXp,
+  slayerTierRequiredLevel,
+  skillLevelRewards,
+  skillRewardKey,
   starterQuestComplete,
   PET_EGGS,
   minionTypeFromItem,
@@ -71,7 +81,11 @@ import { getTrade } from '../trade/engine.js';
 import {
   alchemyMenu,
   bestiaryMenu,
+  communityShopMenu,
+  dailyMenu,
   dragonsMenu,
+  essenceShopMenu,
+  fetchurMenu,
   gardenMenu,
   gardenPlotsMenu,
   gardenPlantMenu,
@@ -80,6 +94,7 @@ import {
   hotmMenu,
   kuudraMenu,
   mayorMenu,
+  medalShopMenu,
   museumMenu,
   profileExtras,
   wardrobeMenu,
@@ -205,6 +220,7 @@ export function buildMenu(
     case 'pets': return petsMenu(player);
     case 'slayers': return slayersMenu(player);
     case 'quests': return questsMenu(player);
+    case 'daily': return dailyMenu(player);
     case 'garden': return gardenMenu(player);
     case 'garden_plots': return gardenPlotsMenu(player);
     case 'garden_plant': return gardenPlantMenu(player, context);
@@ -213,6 +229,10 @@ export function buildMenu(
     case 'dungeon_chest': return dungeonChestMenu(player);
     case 'trade': return tradeMenu(player, context);
     case 'hotm': return hotmMenu(player);
+    case 'community_shop': return communityShopMenu(player);
+    case 'essence_shop': return essenceShopMenu(player);
+    case 'medal_shop': return medalShopMenu(player);
+    case 'fetchur': return fetchurMenu(player);
     case 'alchemy': return alchemyMenu(player);
     case 'bestiary': return bestiaryMenu(player);
     case 'mayor': return mayorMenu();
@@ -261,6 +281,12 @@ function skyblockMenu(player: PlayerState): MenuView {
         line(currentQuestStep(player)?.detail ?? 'Claim your reward.', 'gray'),
         click(),
       ], 'open:quests'),
+      slot(1, 'clock', 'Daily Rewards', [
+        line(`Streak ${player.dailies?.streak ?? 0}`, 'gold'),
+        line(`${player.dailies?.tasks.filter((task) => !task.claimed).length ?? 0} tasks left`, 'yellow'),
+        line(`${(player.bits ?? 0).toLocaleString()} bits`, 'green'),
+        click(),
+      ], 'open:daily'),
       slot(11, 'map', 'Fast Travel', [line(`Location: ${ISLANDS[islandForZone(player.zoneId)]?.name ?? player.islandId}`), click()], 'open:fast_travel'),
       slot(12, 'emerald', 'Bazaar', [line('Buy and sell stackable commodities.'), click()], 'open:bazaar'),
       slot(13, 'gold_ingot', 'Auction House', [line('Trade unique weapons, armor and pets.'), click()], 'open:auction'),
@@ -280,6 +306,7 @@ function skyblockMenu(player: PlayerState): MenuView {
       slot(39, 'book', 'Bestiary', [line('Track every mob you have slain.'), click()], 'open:bestiary'),
       slot(40, 'player_head', 'Mayor', [line('Weekly mayor perks.'), click()], 'open:mayor'),
       slot(41, 'painting', 'Museum', [line(`${player.museum?.donated.length ?? 0} donated`), click()], 'open:museum'),
+      slot(42, 'emerald', 'Community Shop', [line(`${(player.bits ?? 0).toLocaleString()} bits`, 'green'), click()], 'open:community_shop'),
       close(),
     ],
   };
@@ -401,11 +428,21 @@ function skillsMenu(player: PlayerState): MenuView {
     slots: [
       ...Object.values(SKILLS).map((skill, i) => {
         const progress = levelFromXp(player.skills[skill.id] ?? 0, skill.maxLevel);
+        const rewards = skillLevelRewards(skill);
+        const nextRewardLevel = Object.keys(rewards)
+          .map(Number)
+          .sort((a, b) => a - b)
+          .find((level) => progress.level >= level && !player.claimedSkillRewards?.includes(skillRewardKey(skill.id, level)));
+        const reward = nextRewardLevel != null ? rewards[nextRewardLevel] : null;
         return slot(10 + (i % 7) + Math.floor(i / 7) * 9, skill.id, `${skill.name} ${progress.level}`, [
           line(skill.description),
           line(`Progress: ${Math.floor(progress.intoLevel).toLocaleString()}/${progress.need.toLocaleString()}`, 'aqua'),
           line(`Max Level: ${skill.maxLevel}`, 'yellow'),
-        ]);
+          reward
+            ? line(`Claim level ${nextRewardLevel}: +${(reward.coins ?? 0).toLocaleString()} coins`, 'gold')
+            : line('No unclaimed rewards', 'gray'),
+          reward ? line('Click to claim!', 'yellow') : line(''),
+        ], reward ? `skillReward:${skill.id}:${nextRewardLevel}` : undefined, { glint: Boolean(reward) });
       }),
       back(),
       close(),
@@ -497,7 +534,7 @@ function craftingMenu(player: PlayerState, context: Context): MenuView {
 
   const tabs = RECIPE_CATEGORIES.map((entry, i) => {
     const recipes = recipesInCategory(entry.id);
-    const unlocked = recipes.filter((recipe) => isRecipeUnlocked(recipe.unlockCollection, recipe.unlockAmount, player.collections)).length;
+    const unlocked = recipes.filter((recipe) => recipeUnlockedFor(recipe, player)).length;
     return slot(1 + i, entry.icon, `${entry.id === category ? '▶ ' : ''}${entry.name}`, [
       line(`Unlocked: ${unlocked}/${recipes.length}`, 'aqua'),
       line('Click to view!', 'yellow'),
@@ -505,11 +542,14 @@ function craftingMenu(player: PlayerState, context: Context): MenuView {
   });
 
   const items = visible.map((recipe, i) => {
-    const unlocked = isRecipeUnlocked(recipe.unlockCollection, recipe.unlockAmount, player.collections);
+    const unlocked = recipeUnlockedFor(recipe, player);
     const view = itemSlot(GRID[i], recipe.result.itemId, unlocked ? `craft:${recipe.id}` : undefined, recipe.result.qty);
     view.name = recipe.name;
     view.disabled = !unlocked;
-    view.lore = buildRecipeBookLore(recipe, player.collections, (itemId) => countItem(player.inventory, itemId));
+    view.lore = buildRecipeBookLore(recipe, player.collections, (itemId) => countItem(player.inventory, itemId), {
+      slayerXp: player.slayerXp,
+      unlockedRecipes: player.unlockedRecipes,
+    });
     return view;
   });
 
@@ -917,7 +957,7 @@ function minionsMenu(player: PlayerState): MenuView {
     fairySouls: player.fairySouls,
     museumDonated: player.museum?.donated.length ?? 0,
     bestiaryKills: Object.values(player.bestiary?.kills ?? {}).reduce((sum, n) => sum + n, 0),
-  })).level);
+  })).level, player.extraMinionSlots ?? 0);
   const deploySlots: MenuSlotView[] = [];
   const seen = new Set<string>();
   for (const stack of player.inventory) {
@@ -1012,6 +1052,18 @@ function petsMenu(player: PlayerState): MenuView {
 function questsMenu(player: PlayerState): MenuView {
   const current = currentQuestStep(player);
   const done = starterQuestComplete(player);
+  const chainSlots = QUEST_CHAINS.flatMap((chain, chainIndex) => {
+    const currentStep = currentChainStep(player, chain);
+    const readyIndex = chain.steps.findIndex((_, i) => chainStepReady(player, chain, i));
+    const ready = readyIndex >= 0 ? chain.steps[readyIndex] : null;
+    return [
+      slot(28 + chainIndex, chain.icon, chain.name, [
+        line(currentStep ? currentStep.title : 'Chain complete!', currentStep ? 'yellow' : 'green'),
+        line(currentStep?.detail ?? 'All rewards claimed.', 'gray'),
+        ready ? line(`Ready: ${ready.title} — click to claim!`, 'gold') : line(''),
+      ], ready ? `questClaim:${chain.id}:${ready.id}` : undefined, { glint: Boolean(ready) }),
+    ];
+  });
   return {
     id: 'quests',
     title: 'Quest Book',
@@ -1029,10 +1081,11 @@ function questsMenu(player: PlayerState): MenuView {
         ]);
       }),
       done && !player.quests?.claimed
-        ? slot(31, 'gold_ingot', 'Claim Reward', [line('+500 coins and Enchanted Cobblestone', 'gold'), click()], 'questClaim')
-        : slot(31, player.quests?.claimed ? 'emerald' : 'barrier', player.quests?.claimed ? 'Reward Claimed' : 'Keep going', [
+        ? slot(22, 'gold_ingot', 'Claim Reward', [line('+500 coins and Enchanted Cobblestone', 'gold'), click()], 'questClaim')
+        : slot(22, player.quests?.claimed ? 'emerald' : 'barrier', player.quests?.claimed ? 'Reward Claimed' : 'Keep going', [
           line(done ? 'Already claimed.' : 'Finish every step to claim.', 'gray'),
         ]),
+      ...chainSlots,
       back(),
       close(),
     ],
@@ -1047,18 +1100,23 @@ function slayersMenu(player: PlayerState): MenuView {
     rows: 6,
     slots: [
       ...SLAYERS.map((slayer, i) => {
-        const tierOne = slayer.tiers[0];
-        const canAfford = player.coins >= tierOne.cost;
+        const progress = slayerLevelFromXp(player.slayerXp[slayer.id] ?? 0);
+        const unlocks = SLAYER_UNLOCKS[slayer.id] ?? [];
+        const nextUnlock = unlocks.find((entry) => progress.level < entry.level);
         const blocked = Boolean(player.activeSlayer);
+        const t1Level = slayerTierRequiredLevel(1);
+        const canStart = !blocked && progress.level >= t1Level && player.coins >= slayer.tiers[0].cost;
         return slot(11 + i * 2, `${slayer.targetMob}_head`, slayer.name, [
-          line(`Slayer XP: ${(player.slayerXp[slayer.id] ?? 0).toLocaleString()}`, 'light_purple'),
+          line(`Level ${progress.level}  (${progress.into.toLocaleString()}/${progress.need.toLocaleString()} XP)`, 'light_purple'),
           line(`RNG Meter: ${Math.floor(player.slayerRngMeter?.[slayer.id] ?? 0)}/100`, 'aqua'),
-          line('Fill the meter for a guaranteed rare drop.', 'gray'),
-          ...slayer.tiers.map((tier) => line(`Tier ${roman(tier.tier)}: ${tier.health.toLocaleString()} ❤ — ${tier.cost.toLocaleString()} coins`, 'gray')),
-          line('Left-click: Start Tier I', 'yellow'),
-          line('Right-click: Start highest affordable tier', 'yellow'),
-          blocked ? line('Finish your current quest first.', 'red') : !canAfford ? line(`Need ${tierOne.cost.toLocaleString()} coins for Tier I`, 'red') : line('Click to start!', 'green'),
-        ], `slayer:${slayer.id}`, { disabled: blocked || !canAfford });
+          line(nextUnlock ? `Next unlock L${nextUnlock.level}: ${nextUnlock.label}` : 'All recipe unlocks earned', 'yellow'),
+          ...slayer.tiers.map((tier) => {
+            const need = slayerTierRequiredLevel(tier.tier);
+            return line(`T${roman(tier.tier)}: L${need}+ · ${tier.cost.toLocaleString()} coins`, progress.level >= need ? 'gray' : 'red');
+          }),
+          line('Left-click: Start highest unlocked tier you can afford', 'yellow'),
+          blocked ? line('Finish your current quest first.', 'red') : !canStart ? line('Need coins or Slayer level', 'red') : line('Click to start!', 'green'),
+        ], `slayer:${slayer.id}`, { disabled: blocked || !canStart });
       }),
       player.activeSlayer ? slot(31, 'sword', 'Active Quest', [
         line(`${player.activeSlayer.slayerId} Tier ${player.activeSlayer.tier}`, 'red'),
@@ -1112,6 +1170,10 @@ function dungeonsMenu(player: PlayerState, context: Context = {}): MenuView {
         line(Object.entries(player.essence ?? {}).map(([type, qty]) => `${type}: ${qty}`).join(' · ') || 'No essence yet — clear floors to earn some.', 'aqua'),
         click(),
       ], 'open:dungeon_stars'),
+      slot(5, 'chest', 'Essence Shop', [
+        line('Buy dungeon gear with essence.', 'gray'),
+        click(),
+      ], 'open:essence_shop'),
       ...(player.pendingDungeonChest?.drops.length
         ? [slot(16, 'chest', 'Unclaimed Dungeon Chest', [
           line(player.pendingDungeonChest.floorName, 'gold'),
@@ -1119,9 +1181,14 @@ function dungeonsMenu(player: PlayerState, context: Context = {}): MenuView {
           click(),
         ], 'open:dungeon_chest', { glint: true })]
         : []),
-      ...(['berserk', 'archer', 'mage', 'tank', 'healer'] as const).map((dungeonClass, i) => slot(11 + i, dungeonClass, `${player.selectedDungeonClass === dungeonClass ? '▶ ' : ''}${pretty(dungeonClass)}`, [
-        line('Click to select class!', 'yellow'),
-      ], `class:${dungeonClass}`, { glint: player.selectedDungeonClass === dungeonClass })),
+      ...(['berserk', 'archer', 'mage', 'tank', 'healer'] as const).map((dungeonClass, i) => {
+        const ability = DUNGEON_CLASS_ABILITIES[dungeonClass];
+        return slot(11 + i, dungeonClass, `${player.selectedDungeonClass === dungeonClass ? '▶ ' : ''}${pretty(dungeonClass)}`, [
+          line(`${ability.name} — ${ability.manaCost} mana / ${ability.cooldownSec}s`, 'aqua'),
+          line(ability.description, 'gray'),
+          line('Click to select. Use ability in a run if your weapon has none.', 'yellow'),
+        ], `class:${dungeonClass}`, { glint: player.selectedDungeonClass === dungeonClass });
+      }),
       slot(20, mode === 'regular' ? 'lime_dye' : 'gray_dye', 'Regular Mode', [
         line(mode === 'regular' ? 'Currently selected' : 'Switch to Regular F1–F7', mode === 'regular' ? 'green' : 'gray'),
         line('Standard Catacombs floors', 'aqua'),
@@ -1150,7 +1217,7 @@ function dungeonsMenu(player: PlayerState, context: Context = {}): MenuView {
             line(dungeonPhase(player.dungeonRun) === 'rooms'
               ? `Room ${player.dungeonRun.room}/${player.dungeonRun.rooms}${player.dungeonRun.roomCleared ? ' — door unlocked!' : ' — kill mobs first'}`
               : dungeonPhase(player.dungeonRun) === 'boss' ? 'Boss fight!' : 'Starter Room — open Wither Door'),
-            line(`Score: ${player.dungeonRun.score}`, 'yellow'),
+            line(`Score: ${player.dungeonRun.score} (${dungeonScoreGrade(player.dungeonRun.score)})`, 'yellow'),
             line(`Class: ${pretty(player.dungeonRun.dungeonClass)}`, 'gray'),
             line('Return to your run in-world', 'yellow'),
           ], 'dungeon:continue')
@@ -1195,10 +1262,11 @@ function dungeonChestMenu(player: PlayerState): MenuView {
   });
   return {
     id: 'dungeon_chest',
-    title: `${chest.floorName} Chest`,
+    title: `${chest.grade ? `${chest.grade} ` : ''}${chest.floorName} Chest`,
     rows: 4,
     slots: [
       slot(4, 'chest', 'Dungeon Reward Chest', [
+        line(chest.grade ? `Grade ${chest.grade}` : '', 'gold'),
         line(`+${chest.xp} Catacombs XP already granted`, 'aqua'),
         line(`+${chest.coins.toLocaleString()} coins already granted`, 'gold'),
         line(chest.starLabel ?? 'No gear was starred this run', chest.starLabel ? 'light_purple' : 'gray'),
@@ -1266,7 +1334,7 @@ function backpackPageMenu(player: PlayerState, context: Context): MenuView {
 }
 
 function accessoriesMenu(player: PlayerState): MenuView {
-  const limit = accessoryBagSlots(player.fairySouls);
+  const limit = accessoryBagSlots(player.fairySouls, player.extraAccessorySlots ?? 0);
   const nextSoulSlot = limit < 27 ? BASE_ACCESSORY_BAG_SLOTS + Math.floor(player.fairySouls / FAIRY_SOULS_PER_BAG_SLOT) + 1 : null;
   const soulsForNext = nextSoulSlot != null ? nextSoulSlot * FAIRY_SOULS_PER_BAG_SLOT - player.fairySouls : 0;
   const slots: MenuSlotView[] = [];

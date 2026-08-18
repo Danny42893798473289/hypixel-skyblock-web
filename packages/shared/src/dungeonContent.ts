@@ -244,3 +244,41 @@ if (m7) {
     { itemId: 'storm_boots', chance: 0.06, min: 1, max: 1 },
   );
 }
+
+export type DungeonGrade = 'D' | 'C' | 'B' | 'A' | 'S' | 'S+';
+
+export function dungeonScoreGrade(score: number): DungeonGrade {
+  if (score >= 300) return 'S+';
+  if (score >= 270) return 'S';
+  if (score >= 230) return 'A';
+  if (score >= 160) return 'B';
+  if (score >= 100) return 'C';
+  return 'D';
+}
+
+export function dungeonGradeMultiplier(grade: DungeonGrade): number {
+  if (grade === 'S+') return 2;
+  if (grade === 'S') return 1.5;
+  if (grade === 'A') return 1.2;
+  if (grade === 'B') return 1;
+  if (grade === 'C') return 0.8;
+  return 0.6;
+}
+
+export interface DungeonClassAbility {
+  name: string;
+  description: string;
+  manaCost: number;
+  cooldownSec: number;
+  damage?: number;
+  kind: 'aoe' | 'heal' | 'shield';
+}
+
+export const DUNGEON_CLASS_ABILITIES: Record<'berserk' | 'archer' | 'mage' | 'tank' | 'healer', DungeonClassAbility> = {
+  berserk: { name: 'Cleave', description: 'Strike every mob in the room.', manaCost: 40, cooldownSec: 8, damage: 800, kind: 'aoe' },
+  archer: { name: 'Volley', description: 'Rain arrows on every mob in the room.', manaCost: 35, cooldownSec: 10, damage: 700, kind: 'aoe' },
+  mage: { name: 'Mana Beam', description: 'A focused beam that shreds dungeon mobs.', manaCost: 80, cooldownSec: 6, damage: 1400, kind: 'aoe' },
+  tank: { name: 'Protective Aura', description: 'Gain a defense shield and pulse nearby mobs.', manaCost: 50, cooldownSec: 12, damage: 400, kind: 'shield' },
+  healer: { name: 'Healing Pulse', description: 'Restore a large chunk of health.', manaCost: 60, cooldownSec: 8, kind: 'heal' },
+};
+

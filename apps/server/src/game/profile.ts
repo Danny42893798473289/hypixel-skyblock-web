@@ -10,6 +10,8 @@ import {
   addStats,
   enchantStatBonuses,
   hotbarStack,
+  gardenFarmingFortune,
+  hotmGemstoneFortune,
   hotmMiningFortune,
   hotmMiningSpeed,
   levelFromXp,
@@ -60,6 +62,9 @@ export function recomputeStats(player: Pick<PlayerState, 'skills' | 'equipment' 
   bestiary?: { kills: Record<string, number> };
   inventory?: PlayerState['inventory'];
   hotbarSlot?: number;
+  garden?: PlayerState['garden'];
+  extraAccessorySlots?: number;
+  islandId?: string;
 }): StatBlock {
   const skillStats: Partial<StatBlock>[] = [];
   for (const skill of Object.values(SKILLS)) {
@@ -94,9 +99,11 @@ export function recomputeStats(player: Pick<PlayerState, 'skills' | 'equipment' 
   const cole = currentMayor().id === 'cole';
   const bestiaryMf = Object.values(player.bestiary?.kills ?? {}).reduce((sum, kills) => sum + bestiaryTier(kills), 0) * 0.5;
   const hotmStats: Partial<StatBlock> = {
-    miningFortune: hotmMiningFortune(player.hotm?.perks ?? {}, cole),
+    miningFortune: hotmMiningFortune(player.hotm?.perks ?? {}, cole)
+      + (player.islandId === 'crystal_hollows' ? hotmGemstoneFortune(player.hotm?.perks ?? {}) : 0),
     miningSpeed: hotmMiningSpeed(player.hotm?.perks ?? {}),
     magicFind: bestiaryMf,
+    farmingFortune: gardenFarmingFortune(player.garden?.harvested ?? {}),
   };
   return addStats(BASE_STATS, ...skillStats, ...equipmentStats, ...accessoryStats, heldStats, petStats, soulStats, mpStats, hotmStats);
 }

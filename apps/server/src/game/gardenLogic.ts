@@ -4,6 +4,8 @@ import {
   JACOB_CONTEST_MS,
   ITEMS,
   ESSENCE_TYPES,
+  STARTING_GARDEN_PLOTS,
+  emptyJacobMedals,
   composterYield,
   emptyGardenPlots,
   jacobMedalForScore,
@@ -26,6 +28,12 @@ export function ensureGardenPlots(player: PlayerState): void {
     player.garden.jacobContestEndsAt = Date.now() + JACOB_CONTEST_MS;
   }
   if (player.garden.jacobMedal == null) player.garden.jacobMedal = 'none';
+  if (!player.garden.jacobMedals) player.garden.jacobMedals = emptyJacobMedals();
+  if (player.garden.unlockedPlots == null) {
+    const usedGarden = Object.keys(player.garden.harvested ?? {}).length > 0
+      || (player.garden.plots ?? []).some((plot) => Boolean(plot.crop));
+    player.garden.unlockedPlots = usedGarden ? GARDEN_PLOT_COUNT : STARTING_GARDEN_PLOTS;
+  }
   if (player.garden.organicMatter == null) player.garden.organicMatter = 0;
   if (player.garden.composterLevel == null) player.garden.composterLevel = 0;
   tickJacobContest(player);
@@ -37,9 +45,10 @@ function tickJacobContest(player: PlayerState): void {
   const medal = jacobMedalForScore(player.garden.jacobScore);
   if (medal !== 'none') {
     player.coins += jacobMedalReward(medal);
+    player.garden.jacobMedals[medal] += 1;
   }
   player.garden.jacobScore = 0;
-  player.garden.jacobMedal = 'none';
+  player.garden.jacobMedal = medal;
   player.garden.jacobContestEndsAt = now + JACOB_CONTEST_MS;
   player.garden.jacobCrop = GARDEN_CROPS[Math.floor(now / JACOB_CONTEST_MS) % GARDEN_CROPS.length] ?? 'wheat';
 }
@@ -47,6 +56,7 @@ function tickJacobContest(player: PlayerState): void {
 export function plantCrop(player: PlayerState, plotIndex: number, crop: ItemId): string {
   ensureGardenPlots(player);
   if (plotIndex < 0 || plotIndex >= GARDEN_PLOT_COUNT) throw new Error('Invalid plot');
+  if (plotIndex >= (player.garden.unlockedPlots ?? STARTING_GARDEN_PLOTS)) throw new Error('Plot locked — unlock more plots first');
   if (!GARDEN_CROPS.includes(crop)) throw new Error('Not a garden crop');
   const plot = player.garden.plots[plotIndex]!;
   if (plot.crop) throw new Error('Plot already planted');

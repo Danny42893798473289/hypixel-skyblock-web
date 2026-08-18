@@ -1,7 +1,7 @@
 import type { ItemId } from './items.js';
 import { ITEMS } from './items.js';
 import { ZONES } from './locations.js';
-import { MOBS } from './content.js';
+import { MOBS, slayerLevelFromXp } from './content.js';
 
 export interface CollectionTier {
   amount: number;
@@ -148,6 +148,28 @@ export function isRecipeUnlocked(
   if (!unlockCollection) return true;
   const have = collections[unlockCollection] ?? 0;
   return have >= (unlockAmount ?? 0);
+}
+
+export function recipeUnlockedFor(
+  recipe: {
+    id?: string;
+    unlockCollection?: ItemId;
+    unlockAmount?: number;
+    unlockSlayer?: string;
+    unlockSlayerLevel?: number;
+  },
+  player: {
+    collections: CollectionsState;
+    slayerXp?: Record<string, number>;
+    unlockedRecipes?: string[];
+  },
+): boolean {
+  if (recipe.id && player.unlockedRecipes?.includes(recipe.id)) return true;
+  if (recipe.unlockSlayer) {
+    const level = slayerLevelFromXp(player.slayerXp?.[recipe.unlockSlayer] ?? 0).level;
+    if (level < (recipe.unlockSlayerLevel ?? 1)) return false;
+  }
+  return isRecipeUnlocked(recipe.unlockCollection, recipe.unlockAmount, player.collections);
 }
 
 function uniqueNames(names: string[], limit = 3): string[] {

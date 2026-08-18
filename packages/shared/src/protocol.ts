@@ -9,6 +9,8 @@ import type { StatBlock } from './stats.js';
 import type { Facing, TileKind } from './world.js';
 import type { GatherChannel, WorldMobInstance } from './worldCombat.js';
 import type { QuestBookState } from './quests.js';
+import type { DailyState } from './dailies.js';
+import type { SkillId } from './skills.js';
 import type {
   GardenState,
   HotmState,
@@ -105,6 +107,14 @@ export interface PlayerState extends PlayerPublic {
   essence: Partial<Record<import('./gardenPlots.js').EssenceType, number>>;
   /** Recipe ids unlocked via collection milestones. */
   unlockedRecipes: string[];
+  /** Claimed skill level reward keys (`mining:5`). */
+  claimedSkillRewards: string[];
+  /** Bits from dailies, Fetchur, and Community Shop purchases. */
+  bits: number;
+  extraMinionSlots: number;
+  extraAccessorySlots: number;
+  communityPurchases: Record<string, number>;
+  dailies: DailyState;
   dungeonRun: DungeonRunState | null;
   selectedDungeonClass: DungeonClass;
   visitedZones: string[];
@@ -129,6 +139,8 @@ export interface PlayerState extends PlayerPublic {
   inventoryCursor?: ItemStack | null;
   /** Transient — snap the local camera to x/y (warps, death). Not persisted. */
   resetPosition?: boolean;
+  /** Transient skill XP bar after the last gain. Not persisted. */
+  lastSkillGain?: { skillId: SkillId; level: number; intoLevel: number; need: number };
   /** Unclaimed dungeon chest — kept until you click Claim. */
   pendingDungeonChest?: DungeonChestReward | null;
 }
@@ -139,6 +151,7 @@ export interface DungeonChestReward {
   xp: number;
   stars: number;
   starLabel?: string;
+  grade?: string;
   drops: Array<{ itemId: ItemId; qty: number }>;
 }
 
@@ -169,11 +182,16 @@ export type MenuId =
   | 'reforge'
   | 'leaderboard'
   | 'quests'
+  | 'daily'
   | 'garden'
   | 'garden_plots'
   | 'garden_plant'
   | 'garden_compost'
   | 'hotm'
+  | 'community_shop'
+  | 'essence_shop'
+  | 'medal_shop'
+  | 'fetchur'
   | 'alchemy'
   | 'bestiary'
   | 'mayor'

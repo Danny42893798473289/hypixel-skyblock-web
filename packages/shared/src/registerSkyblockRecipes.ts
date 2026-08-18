@@ -10,7 +10,7 @@ function craft(
   id: string,
   result: ItemId,
   ingredients: Array<{ itemId: ItemId; qty: number }>,
-  unlock?: { collection: ItemId; amount: number },
+  unlock?: { collection?: ItemId; amount?: number; slayer?: string; slayerLevel?: number },
 ): void {
   const def = ITEMS[result];
   if (!def) return;
@@ -21,6 +21,8 @@ function craft(
     ingredients,
     unlockCollection: unlock?.collection,
     unlockAmount: unlock?.amount,
+    unlockSlayer: unlock?.slayer,
+    unlockSlayerLevel: unlock?.slayerLevel,
   });
 }
 
@@ -63,20 +65,24 @@ export function registerSkyblockRecipes(): void {
   craft('craft_revenant_falchion', 'revenant_falchion', [
     { itemId: 'rev_flesh', qty: 32 },
     { itemId: 'diamond_sword', qty: 1 },
-  ], { collection: 'rev_flesh', amount: 1 });
+  ], { slayer: 'revenant', slayerLevel: 1 });
+  craft('craft_reaper_falchion', 'reaper_falchion', [
+    { itemId: 'revenant_falchion', qty: 1 },
+    { itemId: 'rev_flesh', qty: 64 },
+  ], { slayer: 'revenant', slayerLevel: 3 });
   craft('craft_scorpion_foil', 'scorpion_foil', [
     { itemId: 'tarantula_web', qty: 32 },
     { itemId: 'stick', qty: 1 },
-  ], { collection: 'tarantula_web', amount: 1 });
+  ], { slayer: 'tarantula', slayerLevel: 1 });
   craft('craft_edible_mace', 'edible_mace', [
     { itemId: 'wolf_tooth', qty: 24 },
     { itemId: 'mutton', qty: 16 },
-  ], { collection: 'wolf_tooth', amount: 1 });
+  ], { slayer: 'sven', slayerLevel: 1 });
   craft('craft_voidedge_katana', 'voidedge_katana', [
     { itemId: 'null_sphere', qty: 16 },
     { itemId: 'enchanted_ender_pearl', qty: 8 },
     { itemId: 'stick', qty: 1 },
-  ], { collection: 'null_sphere', amount: 1 });
+  ], { slayer: 'voidgloom', slayerLevel: 1 });
   craft('craft_silver_fang', 'silver_fang', [
     { itemId: 'stick', qty: 1 },
     { itemId: 'enchanted_rotten_flesh', qty: 2 },

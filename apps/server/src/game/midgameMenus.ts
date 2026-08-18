@@ -2,22 +2,36 @@ import {
   ALCHEMY_RECIPES,
   DRAGON_TYPES,
   ESSENCE_TYPES,
+  COMMUNITY_OFFERS,
+  CROP_MILESTONE_AMOUNTS,
+  ESSENCE_SHOP,
+  FETCHUR_BITS,
   GARDEN_CROPS,
   GARDEN_PLOT_COUNT,
   HOTM_PERKS,
   ITEMS,
+  LOGIN_REWARDS,
   MAYORS,
+  MEDAL_SHOP,
   MOBS,
   PET_EGGS,
+  STARTING_GARDEN_PLOTS,
   bestiaryTier,
   countItem,
+  cropMilestoneTier,
   currentMayor,
   currentQuestStep,
+  dayIndex,
+  fetchurWant,
+  gardenFarmingFortune,
+  gardenLevelFromHarvest,
   hotmPerkLocked,
   hotmPowderCost,
   hotmUnlockedCount,
+  loginRewardForStreak,
   plotGrowRemainingMs,
   plotReady,
+  plotUnlockCost,
   skyblockLevelFromXp,
   skyblockXp,
   starUpgradeCost,
@@ -54,6 +68,8 @@ export function gardenMenu(player: PlayerState): MenuView {
   const garden = player.garden;
   const visitor = garden.visitor;
   const ready = (garden.plots ?? []).filter((p) => p.crop && plotReady(p)).length;
+  const level = gardenLevelFromHarvest(garden.harvested ?? {});
+  const medals = garden.jacobMedals ?? { bronze: 0, silver: 0, gold: 0 };
   return {
     id: 'garden',
     title: 'The Garden',
@@ -62,16 +78,22 @@ export function gardenMenu(player: PlayerState): MenuView {
       slot(4, 'wheat', "Jacob's Contest", [
         line(`Crop: ${ITEMS[garden.jacobCrop]?.name ?? garden.jacobCrop}`, 'yellow'),
         line(`Your score: ${garden.jacobScore}`, 'aqua'),
-        line(`Medal: ${garden.jacobMedal ?? 'none'}`, 'gold'),
+        line(`Last medal: ${garden.jacobMedal ?? 'none'}`, 'gold'),
+        line(`Medals: ${medals.bronze} bronze · ${medals.silver} silver · ${medals.gold} gold`, 'yellow'),
         line(`Ends in: ${Math.max(0, Math.ceil((garden.jacobContestEndsAt - Date.now()) / 60000))}m`, 'gray'),
         line('Harvest contest crop on plots to score.', 'gray'),
       ]),
       slot(10, 'hoe', 'Garden Plots', [
-        line(`${ready} / ${garden.plots?.length ?? GARDEN_PLOT_COUNT} ready to harvest`, 'green'),
+        line(`${ready} / ${garden.unlockedPlots ?? STARTING_GARDEN_PLOTS} plots unlocked`, 'green'),
+        line(`Garden level ${level.level} · ${level.total.toLocaleString()} harvested`, 'aqua'),
         line('Click to plant, water, and harvest.', 'yellow'),
-        line(`Composter Lv ${garden.composterLevel ?? 0} · ${garden.organicMatter ?? 0}/100 OM`, 'aqua'),
         click(),
       ], 'open:garden_plots'),
+      slot(11, 'gold_ingot', 'Anita\'s Shop', [
+        line('Spend Jacob medals on farming tools.', 'gray'),
+        line(`${medals.bronze} bronze · ${medals.silver} silver · ${medals.gold} gold`, 'gold'),
+        click(),
+      ], 'open:medal_shop'),
       slot(16, 'dirt', 'Composter', [
         line(`Level ${garden.composterLevel ?? 0}`, 'aqua'),
         line(`${garden.organicMatter ?? 0}/100 organic matter`, 'green'),
@@ -85,9 +107,10 @@ export function gardenMenu(player: PlayerState): MenuView {
           click(),
         ], 'garden:visitor')
         : slot(13, 'barrier', 'No visitor', [line('A visitor will arrive soon.')]),
-      slot(22, 'hoe', 'Milestones', [
+      slot(22, 'hoe', 'Crop Milestones', [
+        line(`+${gardenFarmingFortune(garden.harvested ?? {})} Farming Fortune from milestones`, 'gold'),
         ...Object.entries(garden.harvested).slice(0, 6).map(([id, qty]) =>
-          line(`${ITEMS[id]?.name ?? id}: ${qty.toLocaleString()}`, 'green')),
+          line(`${ITEMS[id]?.name ?? id}: ${qty.toLocaleString()} (T${cropMilestoneTier(qty)}/${CROP_MILESTONE_AMOUNTS.length})`, 'green')),
         line(Object.keys(garden.harvested).length ? '' : 'Harvest crops in the Garden.', 'gray'),
       ]),
       back(),
@@ -118,6 +141,7 @@ export function gardenPlotsMenu(player: PlayerState): MenuView {
       line('Left-click an empty plot to plant.', 'yellow'),
       line('Right-click a growing crop to water.', 'aqua'),
       line('Left-click a ready crop to harvest.', 'green'),
+      line(`Unlocked: ${player.garden.unlockedPlots ?? STARTING_GARDEN_PLOTS}/${GARDEN_PLOT_COUNT}`, 'aqua'),
       line(`Jacob crop: ${ITEMS[player.garden.jacobCrop]?.name ?? player.garden.jacobCrop}`, 'gold'),
     ]),
     slot(16, 'dirt', 'Composter', [
@@ -129,6 +153,17 @@ export function gardenPlotsMenu(player: PlayerState): MenuView {
   for (let i = 0; i < GARDEN_PLOT_COUNT; i++) {
     const plot = plots[i]!;
     const slotNumber = PLOT_SLOTS[i] ?? i;
+    const unlocked = i < (player.garden.unlockedPlots ?? STARTING_GARDEN_PLOTS);
+    if (!unlocked) {
+      const cost = plotUnlockCost(i);
+      const next = i === (player.garden.unlockedPlots ?? STARTING_GARDEN_PLOTS);
+      slots.push(slot(slotNumber, 'barrier', `Locked Plot ${i + 1}`, [
+        line(`Unlock: ${cost.coins.toLocaleString()} coins + ${cost.compost} compost`, 'yellow'),
+        line(`Requires Garden level ${cost.gardenLevel}`, 'gray'),
+        line(next ? 'Click to unlock this plot.' : 'Unlock earlier plots first.', next ? 'green' : 'red'),
+      ], next ? 'garden:unlock' : undefined, { disabled: !next }));
+      continue;
+    }
     if (!plot.crop) {
       slots.push(slot(slotNumber, 'dirt', `Plot ${i + 1}`, [
         line('Empty', 'gray'),
@@ -316,6 +351,7 @@ export function hotmMenu(player: PlayerState): MenuView {
     slot(4, 'mithril', 'Heart of the Mountain', [
       line(`Tokens: ${hotm.tokens}`, 'aqua'),
       line(`Mithril Powder: ${hotm.mithrilPowder.toLocaleString()}`, 'green'),
+      line(`Gemstone Powder: ${(hotm.gemstonePowder ?? 0).toLocaleString()}`, 'light_purple'),
       line(`Perks unlocked: ${unlocked}/${HOTM_PERKS.length}`, 'yellow'),
       line('Unlock the root perk, then branch outward.', 'gray'),
       line('Tokens unlock a perk. Powder levels it up.', 'gray'),
@@ -338,8 +374,10 @@ export function hotmMenu(player: PlayerState): MenuView {
       lore.push(line(`Level ${romanHotm(level)} / ${romanHotm(perk.max)}`, maxed ? 'green' : 'aqua'));
       if (!maxed) {
         const powder = hotmPowderCost(perk, level + 1);
-        lore.push(line(`Next: ${powder.toLocaleString()} Mithril Powder`, 'yellow'));
-        lore.push(line(hotm.mithrilPowder >= powder ? 'Click to upgrade!' : 'Not enough powder', hotm.mithrilPowder >= powder ? 'green' : 'red'));
+        const kind = perk.powderType === 'gemstone' ? 'Gemstone Powder' : 'Mithril Powder';
+        const have = perk.powderType === 'gemstone' ? (hotm.gemstonePowder ?? 0) : hotm.mithrilPowder;
+        lore.push(line(`Next: ${powder.toLocaleString()} ${kind}`, 'yellow'));
+        lore.push(line(have >= powder ? 'Click to upgrade!' : 'Not enough powder', have >= powder ? 'green' : 'red'));
       } else {
         lore.push(line('MAXED', 'green', true));
       }
@@ -366,10 +404,7 @@ export function hotmMenu(player: PlayerState): MenuView {
     { slot: 24, from: 'titanium_insanium' },
     { slot: 29, from: 'mining_speed' },
     { slot: 30, from: 'mining_speed' },
-    { slot: 32, from: 'mining_speed' },
-    { slot: 33, from: 'mining_speed' },
     { slot: 38, from: 'mining_speed' },
-    { slot: 42, from: 'titanium_insanium' },
   ];
   for (const branch of branches) {
     const open = (hotm.perks[branch.from] ?? 0) > 0;
@@ -569,3 +604,136 @@ export function profileExtras(player: PlayerState): LoreLine[] {
 }
 
 export { PET_EGGS };
+
+export function dailyMenu(player: PlayerState): MenuView {
+  const dailies = player.dailies;
+  const reward = loginRewardForStreak(dailies?.streak ?? 1);
+  const dayOfWeek = ((Math.max(1, dailies?.streak ?? 1) - 1) % 7) + 1;
+  return {
+    id: 'daily',
+    title: 'Daily Calendar',
+    rows: 6,
+    slots: [
+      slot(4, 'clock', `Streak ${dailies?.streak ?? 1}`, [
+        line(`Day ${dayOfWeek} of 7 this week`, 'yellow'),
+        line(dailies?.claimedLogin ? 'Login reward claimed today.' : 'Click to claim your login reward!', dailies?.claimedLogin ? 'green' : 'gold'),
+        line(`Today: +${reward.coins.toLocaleString()} coins, +${reward.bits} bits`, 'aqua'),
+      ], dailies?.claimedLogin ? undefined : 'daily:login', { glint: !dailies?.claimedLogin }),
+      ...LOGIN_REWARDS.map((entry, i) => slot(10 + i, i + 1 === dayOfWeek ? 'gold_ingot' : 'paper', `Day ${i + 1}`, [
+        line(`+${entry.coins.toLocaleString()} coins`, 'gold'),
+        line(`+${entry.bits} bits`, 'green'),
+        line(entry.powder ? `+${entry.powder} mithril powder` : '', 'aqua'),
+        line(i + 1 === dayOfWeek ? 'Today' : '', 'yellow'),
+      ], undefined, { glint: i + 1 === dayOfWeek })),
+      ...(dailies?.tasks ?? []).map((task, i) => slot(28 + i, task.claimed ? 'emerald' : 'book', task.label, [
+        line(task.detail, 'gray'),
+        line(`${task.have}/${task.need}`, task.have >= task.need ? 'green' : 'yellow'),
+        line(`+${task.rewardCoins} coins · +${task.rewardBits} bits`, 'gold'),
+        line(task.claimed ? 'Claimed' : task.have >= task.need ? 'Click to claim!' : 'In progress', task.claimed ? 'green' : task.have >= task.need ? 'yellow' : 'gray'),
+      ], !task.claimed && task.have >= task.need ? `daily:task:${task.id}` : undefined, { glint: !task.claimed && task.have >= task.need })),
+      slot(45, 'arrow', 'Go Back', [line('SkyBlock Menu')], 'open:skyblock'),
+      close(),
+    ],
+    parent: 'skyblock',
+  };
+}
+
+export function communityShopMenu(player: PlayerState): MenuView {
+  return {
+    id: 'community_shop',
+    title: 'Community Shop',
+    rows: 4,
+    slots: [
+      slot(4, 'emerald', 'Elizabeth', [
+        line(`Bits: ${(player.bits ?? 0).toLocaleString()}`, 'green'),
+        line('Spend Bits on permanent upgrades.', 'gray'),
+      ]),
+      ...COMMUNITY_OFFERS.map((offer, i) => {
+        const bought = player.communityPurchases?.[offer.id] ?? 0;
+        const maxed = bought >= offer.maxPurchases;
+        return slot(19 + i * 2, offer.icon, offer.name, [
+          line(offer.detail, 'gray'),
+          line(`${offer.bits} bits  (${bought}/${offer.maxPurchases})`, 'yellow'),
+          line(maxed ? 'Sold out' : (player.bits ?? 0) >= offer.bits ? 'Click to buy!' : 'Not enough bits', maxed ? 'red' : (player.bits ?? 0) >= offer.bits ? 'green' : 'red'),
+        ], maxed ? undefined : `shop:community:${offer.id}`, { disabled: maxed, glint: !maxed && (player.bits ?? 0) >= offer.bits });
+      }),
+      slot(27, 'arrow', 'Go Back', [line('SkyBlock Menu')], 'open:skyblock'),
+      close(),
+    ],
+    parent: 'skyblock',
+  };
+}
+
+export function essenceShopMenu(player: PlayerState): MenuView {
+  return {
+    id: 'essence_shop',
+    title: 'Essence Shop',
+    rows: 4,
+    slots: [
+      slot(4, 'nether_star', 'Dungeon Essence', [
+        line(Object.entries(player.essence ?? {}).map(([type, qty]) => `${type}: ${qty}`).join(' · ') || 'No essence yet.', 'aqua'),
+        line('Spend essence on dungeon gear.', 'gray'),
+      ]),
+      ...ESSENCE_SHOP.map((offer, i) => {
+        const have = player.essence?.[offer.essence] ?? 0;
+        return slot(19 + i, offer.itemId, offer.name, [
+          line(offer.detail, 'gray'),
+          line(`${offer.cost} ${offer.essence} essence`, 'yellow'),
+          line(have >= offer.cost ? 'Click to buy!' : `Have ${have}`, have >= offer.cost ? 'green' : 'red'),
+        ], have >= offer.cost ? `shop:essence:${offer.id}` : undefined, { itemId: offer.itemId, disabled: have < offer.cost });
+      }),
+      slot(27, 'arrow', 'Go Back', [line('Catacombs')], 'open:dungeons'),
+      close(),
+    ],
+    parent: 'dungeons',
+  };
+}
+
+export function medalShopMenu(player: PlayerState): MenuView {
+  const medals = player.garden?.jacobMedals ?? { bronze: 0, silver: 0, gold: 0 };
+  return {
+    id: 'medal_shop',
+    title: "Anita's Shop",
+    rows: 4,
+    slots: [
+      slot(4, 'gold_ingot', 'Jacob Medals', [
+        line(`${medals.bronze} bronze · ${medals.silver} silver · ${medals.gold} gold`, 'gold'),
+        line('Win contests, then spend medals here.', 'gray'),
+      ]),
+      ...MEDAL_SHOP.map((offer, i) => {
+        const have = medals[offer.medal] ?? 0;
+        return slot(19 + i, offer.itemId, offer.name, [
+          line(offer.detail, 'gray'),
+          line(`${offer.cost} ${offer.medal} medal${offer.cost === 1 ? '' : 's'}`, 'yellow'),
+          line(have >= offer.cost ? 'Click to buy!' : `Have ${have}`, have >= offer.cost ? 'green' : 'red'),
+        ], have >= offer.cost ? `shop:medal:${offer.id}` : undefined, { itemId: offer.itemId, disabled: have < offer.cost });
+      }),
+      slot(27, 'arrow', 'Go Back', [line('The Garden')], 'open:garden'),
+      close(),
+    ],
+    parent: 'garden',
+  };
+}
+
+export function fetchurMenu(player: PlayerState): MenuView {
+  const want = fetchurWant();
+  const claimed = player.dailies?.fetchurClaimedDay === dayIndex();
+  const have = countItem(player.inventory, want);
+  return {
+    id: 'fetchur',
+    title: 'Fetchur',
+    rows: 3,
+    slots: [
+      slot(13, want, claimed ? 'Come back tomorrow' : 'Fetchur wants this', [
+        line(claimed ? 'Already paid today.' : `Give 1× ${ITEMS[want]?.name ?? want}`, claimed ? 'green' : 'yellow'),
+        line(`You have ${have}`, have >= 1 ? 'green' : 'red'),
+        line(`Reward: ${FETCHUR_BITS} bits`, 'gold'),
+        line(claimed ? '' : 'Click to hand it over.', 'yellow'),
+      ], claimed ? undefined : 'fetchur:claim', { itemId: want, glint: !claimed && have >= 1, disabled: claimed }),
+      slot(18, 'arrow', 'Go Back', [line('SkyBlock Menu')], 'open:skyblock'),
+      close(),
+    ],
+    parent: 'skyblock',
+  };
+}
+

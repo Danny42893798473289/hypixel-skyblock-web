@@ -227,8 +227,9 @@ export function onCraft(session: { player: PlayerState }, recipeTier = 1): void 
   session.player.skills.carpentry += carpentryXpForCraft(recipeTier);
 }
 
-export function grantEssenceOnDungeonComplete(session: { player: PlayerState }, floorId: string): void {
+export function grantEssenceOnDungeonComplete(session: { player: PlayerState }, floorId: string, grade?: string): void {
   if (!session.player.essence) session.player.essence = {};
   const type = essenceForFloor(floorId);
-  session.player.essence[type] = (session.player.essence[type] ?? 0) + 5 + Math.floor(Math.random() * 10);
+  const bonus = grade === 'S+' ? 12 : grade === 'S' ? 8 : grade === 'A' ? 4 : 0;
+  session.player.essence[type] = (session.player.essence[type] ?? 0) + 5 + Math.floor(Math.random() * 10) + bonus;
 }

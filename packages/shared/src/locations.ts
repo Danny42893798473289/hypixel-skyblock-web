@@ -39,7 +39,10 @@ export type StationKind =
   | 'wardrobe'
   | 'museum'
   | 'kuudra'
-  | 'dragons';
+  | 'dragons'
+  | 'community'
+  | 'fetchur'
+  | 'essence_shop';
 
 export interface ZoneAction {
   id: string;
@@ -507,10 +510,11 @@ export const ZONES: Record<string, ZoneDef> = {
     id: 'hub_community',
     islandId: 'hub',
     name: 'Community House',
-    description: 'Melody plays the harp for anyone who will listen.',
+    description: 'Elizabeth sells Community Shop upgrades. Fetchur is in the Dwarven Village.',
     icon: 'book',
     links: ['hub_plaza'],
     actions: [],
+    stations: ['community'],
     npc: {
       id: 'melody',
       name: 'Melody',
@@ -1141,7 +1145,7 @@ export const ZONES: Record<string, ZoneDef> = {
     links: ['catacombs_entrance'],
     skillReq: { skill: 'combat', level: 12 },
     actions: [],
-    stations: ['warp', 'dungeon'],
+    stations: ['warp', 'dungeon', 'essence_shop'],
     npc: {
       id: 'mort',
       name: 'Mort',
@@ -1204,7 +1208,7 @@ export const ZONES: Record<string, ZoneDef> = {
     actions: [
       mine('mine_cobble_dw', 'Mine Cobblestone', 'cobble', 6, 2, 1, 700, 'Gray dwarven cobble around the village.'),
     ],
-    stations: ['warp', 'hotm'],
+    stations: ['warp', 'hotm', 'fetchur'],
     skillReq: { skill: 'mining', level: 12 },
     npc: {
       id: 'hotm_emissary',

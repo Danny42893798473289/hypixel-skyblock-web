@@ -89,6 +89,12 @@ export interface StoredUser {
   slayerRngMeter?: Record<string, number>;
   essence?: Partial<Record<string, number>>;
   unlockedRecipes?: string[];
+  claimedSkillRewards?: string[];
+  bits?: number;
+  extraMinionSlots?: number;
+  extraAccessorySlots?: number;
+  communityPurchases?: Record<string, number>;
+  dailies?: import('@aether/shared').DailyState;
 }
 
 export interface StoredOrder {

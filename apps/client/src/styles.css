@@ -196,6 +196,7 @@ button { color: inherit; }
 .health-bar .stat-bar-fill { background: linear-gradient(#e05050, #9a1c1c); }
 .defense-bar .stat-bar-fill { background: linear-gradient(#4caf50, #2d6b30); }
 .mana-bar .stat-bar-fill { background: linear-gradient(#55c2ee, #1d6ea8); }
+.skill-bar .stat-bar-fill { background: linear-gradient(#c5a3ff, #6b3fd4); }
 .stat-bar span {
   position: relative;
   z-index: 1;
@@ -266,7 +267,8 @@ button { color: inherit; }
 .mana { color: var(--mc-aqua); }
 .stat-bar .health,
 .stat-bar .defense,
-.stat-bar .mana { color: #fff; }
+.stat-bar .mana,
+.stat-bar .skill-xp { color: #fff; }
 
 .dungeon-hud {
   position: absolute;

@@ -1,6 +1,6 @@
 import { ITEMS, type ItemId } from './items.js';
 import type { LoreLine } from './lore.js';
-import { isRecipeUnlocked, obtainHintForItem, type CollectionsState } from './collections.js';
+import { obtainHintForItem, recipeUnlockedFor, type CollectionsState } from './collections.js';
 
 export interface Recipe {
   id: string;
@@ -10,6 +10,8 @@ export interface Recipe {
   /** Collection unlock key, or null if always available */
   unlockCollection?: ItemId;
   unlockAmount?: number;
+  unlockSlayer?: string;
+  unlockSlayerLevel?: number;
 }
 
 export const RECIPES: Recipe[] = [
@@ -286,10 +288,17 @@ export function buildRecipeBookLore(
   recipe: Recipe,
   collections: CollectionsState,
   inventoryCount: (itemId: ItemId) => number,
+  extra?: { slayerXp?: Record<string, number>; unlockedRecipes?: string[] },
 ): LoreLine[] {
-  const unlocked = isRecipeUnlocked(recipe.unlockCollection, recipe.unlockAmount, collections);
+  const unlocked = recipeUnlockedFor(recipe, { collections, slayerXp: extra?.slayerXp, unlockedRecipes: extra?.unlockedRecipes });
   const lines: LoreLine[] = [];
-  if (!unlocked && recipe.unlockCollection) {
+  if (!unlocked && recipe.unlockSlayer) {
+    lines.push(
+      { text: 'LOCKED', color: 'red', bold: true },
+      { text: `Requires ${recipe.unlockSlayer} Slayer ${recipe.unlockSlayerLevel ?? 1}`, color: 'red' },
+      { text: '' },
+    );
+  } else if (!unlocked && recipe.unlockCollection) {
     const have = collections[recipe.unlockCollection] ?? 0;
     const need = recipe.unlockAmount ?? 0;
     const collectionName = ITEMS[recipe.unlockCollection]?.name ?? recipe.unlockCollection;

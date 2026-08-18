@@ -144,6 +144,9 @@ const STATION_MENUS: Record<StationKind, { menu: MenuId; label: string; sprite: 
   museum: { menu: 'museum', label: 'Museum', sprite: 'auction_stand' },
   kuudra: { menu: 'kuudra', label: 'Kuudra Altar', sprite: 'slayer_altar' },
   dragons: { menu: 'dragons', label: 'Dragon Altar', sprite: 'end_crystal' },
+  community: { menu: 'community_shop', label: 'Community Shop', sprite: 'bazaar_stall' },
+  fetchur: { menu: 'fetchur', label: 'Fetchur', sprite: 'anvil' },
+  essence_shop: { menu: 'essence_shop', label: 'Essence Shop', sprite: 'dungeon_portal' },
 };
 
 function hashString(value: string): number {

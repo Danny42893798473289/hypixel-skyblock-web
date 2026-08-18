@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ITEMS,
   RECIPE_CATEGORIES,
-  isRecipeUnlocked,
+  recipeUnlockedFor,
   recipesInCategory,
   buildRecipeBookLore,
   countItem,
@@ -163,7 +163,7 @@ export function PlayerInventoryPanel({ player, touchMode = false, onMenuClick, o
             <div className="inventory-craft-row">
             <div className="inventory-craft-grid">
               {craftVisible.map((recipe) => {
-                const unlocked = isRecipeUnlocked(recipe.unlockCollection, recipe.unlockAmount, player.collections);
+                const unlocked = recipeUnlockedFor(recipe, player);
                 const resultDef = ITEMS[recipe.result.itemId];
                 const canCraft = unlocked && recipe.ingredients.every(
                   (ingredient) => countItem(player.inventory, ingredient.itemId) >= ingredient.qty,
@@ -180,7 +180,10 @@ export function PlayerInventoryPanel({ player, touchMode = false, onMenuClick, o
                     disabled={!unlocked}
                     glint={canCraft}
                     className={selected ? 'inventory-craft-selected' : ''}
-                    lore={buildRecipeBookLore(recipe, player.collections, (itemId) => countItem(player.inventory, itemId))}
+                    lore={buildRecipeBookLore(recipe, player.collections, (itemId) => countItem(player.inventory, itemId), {
+                      slayerXp: player.slayerXp,
+                      unlockedRecipes: player.unlockedRecipes,
+                    })}
                     onClick={() => {
                       setSelectedRecipeId(recipe.id);
                       if (unlocked && canCraft) onMenuClick(0, 'left', `craft:${recipe.id}`);

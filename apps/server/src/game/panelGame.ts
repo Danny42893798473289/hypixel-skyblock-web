@@ -15,7 +15,7 @@ import {
   RECIPES,
   addItem,
   removeItem,
-  isRecipeUnlocked,
+  recipeUnlockedFor,
   miningSpeedBonus,
   farmingFortuneChance,
   combatDamageBonus,
@@ -39,6 +39,7 @@ import {
   zonesOnIsland,
   warpableIslands,
   DEFAULT_ZONE,
+  DUNGEON_CLASS_ABILITIES,
   DUNGEON_COMBAT_REQUIREMENT,
   REFORGES,
   SLAYERS,
@@ -97,6 +98,10 @@ import {
   ensureMinionDef,
   starterQuestComplete,
   currentMayor,
+  dungeonScoreGrade,
+  dungeonGradeMultiplier,
+  slayerLevelFromXp,
+  slayerTierRequiredLevel,
   plotReady,
   skyblockXp,
   skyblockLevelFromXp,
@@ -144,7 +149,15 @@ import {
 } from './gardenLogic.js';
 import {
   brewPotion,
+  buyCommunityOffer,
+  buyEssenceOffer,
+  buyMedalOffer,
+  claimChainStep,
   claimCommission,
+  claimDailyTask,
+  claimFetchur,
+  claimLoginReward,
+  claimSkillReward,
   donateMuseum,
   ensureMidgame,
   equipWardrobe,
@@ -156,6 +169,7 @@ import {
   saveWardrobe,
   serveGardenVisitor,
   startKuudra,
+  unlockGardenPlot,
   unlockHotmPerk,
 } from './midgameLogic.js';
 
@@ -282,6 +296,12 @@ function gainSkillXp(session: Session, skill: keyof PlayerState['skills'], amoun
   session.player.skills[skill] += amount;
   const after = levelFromXp(session.player.skills[skill] ?? 0);
   if (after.level > before) markStatsDirty(session);
+  session.player.lastSkillGain = {
+    skillId: skill,
+    level: after.level,
+    intoLevel: after.intoLevel,
+    need: after.need,
+  };
   if (skill === 'taming' || skill === 'social') return;
   const name = SKILLS[skill as keyof typeof SKILLS]?.name ?? String(skill);
   const shown = Number.isInteger(amount) ? String(amount) : amount.toFixed(1);
@@ -319,7 +339,7 @@ function pushState(session: Session, opts?: { resetPosition?: boolean }): void {
   if (session.statsDirty) {
     session.player.stats = recomputeStats(session.player);
     session.player.magicalPower = magicalPower(session.player.accessories);
-    session.player.accessoryBagSlots = accessoryBagSlots(session.player.fairySouls);
+    session.player.accessoryBagSlots = accessoryBagSlots(session.player.fairySouls, session.player.extraAccessorySlots);
     session.player.maxHp = session.player.stats.health;
     session.player.hp = Math.min(session.player.hp, session.player.maxHp);
     session.player.maxMana = Math.max(100, Math.round(session.player.stats.intelligence));
@@ -1390,6 +1410,12 @@ function handleMenuClick(
     const [op, a, ...cropParts] = value.split(':');
     const cropId = cropParts.join(':');
     ensureGardenPlots(session.player);
+    if (op === 'unlock') {
+      toast(session, unlockGardenPlot(session.player), 'success');
+      pushState(session);
+      openMenu(session, 'garden_plots');
+      return;
+    }
     if (op === 'visitor' || !op) {
       toast(session, serveGardenVisitor(session.player), 'success');
       pushState(session);
@@ -1486,6 +1512,36 @@ function handleMenuClick(
     pushState(session);
     return;
   }
+  if (kind === 'daily') {
+    if (value === 'login') toast(session, claimLoginReward(session.player), 'loot');
+    else if (value.startsWith('task:')) toast(session, claimDailyTask(session.player, value.slice(5)), 'loot');
+    pushState(session);
+    return;
+  }
+  if (kind === 'skillReward') {
+    const [skillId, levelStr] = value.split(':');
+    toast(session, claimSkillReward(session.player, skillId, Number(levelStr)), 'loot');
+    pushState(session);
+    return;
+  }
+  if (kind === 'shop') {
+    const [shop, offerId] = value.split(':');
+    if (shop === 'community') {
+      toast(session, buyCommunityOffer(session.player, offerId), 'success');
+      markStatsDirty(session);
+    } else if (shop === 'essence') {
+      toast(session, buyEssenceOffer(session.player, offerId), 'loot');
+    } else if (shop === 'medal') {
+      toast(session, buyMedalOffer(session.player, offerId), 'loot');
+    }
+    pushState(session);
+    return;
+  }
+  if (kind === 'fetchur') {
+    toast(session, claimFetchur(session.player), 'loot');
+    pushState(session);
+    return;
+  }
   if (kind === 'brew') {
     toast(session, brewPotion(session.player, value), 'success');
     markStatsDirty(session);
@@ -1542,6 +1598,12 @@ function handleMenuClick(
     return;
   }
   if (kind === 'questClaim') {
+    if (value) {
+      const [chainId, stepId] = value.split(':');
+      toast(session, claimChainStep(session.player, chainId, stepId), 'loot');
+      pushState(session);
+      return;
+    }
     claimStarterQuest(session);
     return;
   }
@@ -1563,11 +1625,17 @@ function handleMenuClick(
     if (session.player.activeSlayer) throw new Error('Finish your current Slayer quest first');
     const slayer = SLAYERS.find((entry) => entry.id === value);
     if (!slayer) return;
-    const affordable = slayer.tiers.filter((tier) => tier.cost <= session.player.coins);
+    const level = slayerLevelFromXp(session.player.slayerXp[slayer.id] ?? 0).level;
+    const unlocked = slayer.tiers.filter((tier) => level >= slayerTierRequiredLevel(tier.tier) && tier.cost <= session.player.coins);
     const tier = button === 'right'
-      ? affordable.at(-1)
-      : (session.player.coins >= slayer.tiers[0].cost ? slayer.tiers[0] : null);
-    if (!tier) throw new Error(`Need ${slayer.tiers[0].cost.toLocaleString()} coins for Tier ${slayer.tiers[0].tier}`);
+      ? unlocked.at(-1)
+      : unlocked.find((entry) => entry.tier === 1) ?? unlocked[0];
+    if (!tier) {
+      const first = slayer.tiers[0]!;
+      const needLevel = slayerTierRequiredLevel(first.tier);
+      if (level < needLevel) throw new Error(`Requires ${slayer.name} Slayer ${needLevel}`);
+      throw new Error(`Need ${first.cost.toLocaleString()} coins for Tier ${first.tier}`);
+    }
     spendCoins(session, tier.cost);
     session.player.activeSlayer = {
       slayerId: slayer.id,
@@ -2040,6 +2108,7 @@ function dungeonClassMultiplier(dungeonClass: PlayerState['selectedDungeonClass'
   if (dungeonClass === 'berserk') return 1.1;
   if (dungeonClass === 'archer') return 1.05;
   if (dungeonClass === 'tank') return 0.95;
+  if (dungeonClass === 'healer') return 1.05;
   return 1;
 }
 
@@ -2139,12 +2208,24 @@ function claimDungeonChest(session: Session): void {
 function completeDungeon(session: Session): void {
   const run = session.player.dungeonRun;
   if (!run) return;
+  ensureMidgame(session.player);
   const floor = DUNGEON_FLOORS.find((entry) => entry.id === run.floorId);
   if (!floor) return;
-  gainSkillXp(session, 'dungeoneering', floor.baseCatacombsXp);
-  session.player.coins += floor.coinReward;
-  const rolled = rollDropTable(session, floor.drops ?? []);
-  const stars = 1 + Math.floor(Math.random() * 3) + (currentMayor().id === 'paul' ? 1 : 0) + Math.min(2, Math.floor((run.secretsFound ?? 0) / 2));
+  const grade = dungeonScoreGrade(run.score);
+  const mult = dungeonGradeMultiplier(grade);
+  const coins = Math.round(floor.coinReward * mult);
+  const xp = Math.round(floor.baseCatacombsXp * mult);
+  gainSkillXp(session, 'dungeoneering', xp);
+  session.player.coins += coins;
+  const scaledDrops = (floor.drops ?? []).map((drop) => ({
+    ...drop,
+    chance: Math.min(1, drop.chance * (grade === 'S+' ? 1.8 : grade === 'S' ? 1.4 : grade === 'A' ? 1.15 : grade === 'D' ? 0.5 : 1)),
+  }));
+  const rolled = rollDropTable(session, scaledDrops);
+  const stars = Math.min(5, Math.round(
+    (1 + Math.floor(Math.random() * 2) + (currentMayor().id === 'paul' ? 1 : 0) + Math.min(2, Math.floor((run.secretsFound ?? 0) / 2)))
+    * (grade === 'S+' ? 1.5 : grade === 'S' ? 1.25 : grade === 'D' ? 0.5 : 1),
+  ));
   let starLabel: string | undefined;
   for (const stack of session.player.inventory) {
     const type = stack ? ITEMS[stack.itemId]?.type : undefined;
@@ -2154,19 +2235,22 @@ function completeDungeon(session: Session): void {
       break;
     }
   }
-  grantEssenceOnDungeonComplete(session, run.floorId);
+  grantEssenceOnDungeonComplete(session, run.floorId, grade);
   session.player.dungeonRun = null;
+  session.player.dailies.dungeonsCleared = (session.player.dailies?.dungeonsCleared ?? 0) + 1;
+  session.player.quests.counters.dungeon_clears = (session.player.quests.counters.dungeon_clears ?? 0) + 1;
   session.player.pendingDungeonChest = {
     floorName: floor.shortName ?? floor.name,
-    coins: floor.coinReward,
-    xp: floor.baseCatacombsXp,
+    coins,
+    xp,
     stars,
     starLabel,
+    grade,
     drops: rolled,
   };
   doTravel(session, 'dungeon_hub');
   if (starLabel) toast(session, `Starred ${starLabel}`, 'loot');
-  toast(session, `Dungeon complete! Score ${run.score} — click the chest to claim drops.`, 'success');
+  toast(session, `Dungeon complete! ${grade} · Score ${run.score} — click the chest to claim drops.`, 'success');
   openMenu(session, 'dungeon_chest');
 }
 
@@ -2578,9 +2662,14 @@ function damageAllDungeonMobs(session: Session, damage: number): number {
 
 function doUseAbility(session: Session): void {
   if (session.menuOpen) throw new Error('Close menus before using abilities');
+  const run = session.player.dungeonRun;
   const weapon = hotbarStack(session.player.inventory, session.player.hotbarSlot);
+  const def = weapon ? ITEMS[weapon.itemId] : undefined;
+  if (run && !def?.ability) {
+    useDungeonClassAbility(session);
+    return;
+  }
   if (!weapon) throw new Error('Select a weapon in your hotbar to use its ability');
-  const def = ITEMS[weapon.itemId];
   const ability = def?.ability;
   if (!ability) throw new Error(`${def?.name ?? 'This item'} has no ability`);
 
@@ -2697,6 +2786,45 @@ function doUseAbility(session: Session): void {
   if (runCompletesDungeon(session)) return;
 
   pushState(session, resetPosition ? { resetPosition: true } : undefined);
+  toast(session, message, 'success');
+}
+
+function useDungeonClassAbility(session: Session): void {
+  const run = session.player.dungeonRun;
+  if (!run) throw new Error('No class ability outside dungeons');
+  const ability = DUNGEON_CLASS_ABILITIES[run.dungeonClass];
+  const key = `class:${run.dungeonClass}`;
+  const remaining = isOnCooldown(abilitySessionView(session), key, ability.cooldownSec * 1000);
+  if (remaining != null) throw new Error(`${ability.name} on cooldown (${Math.ceil(remaining / 1000)}s)`);
+  if (session.player.mana < ability.manaCost) {
+    throw new Error(`Not enough mana (${Math.floor(session.player.mana)}/${session.player.maxMana})`);
+  }
+  session.player.mana -= ability.manaCost;
+  session.abilityCooldowns[key] = Date.now() + ability.cooldownSec * 1000;
+  let message = `${ability.name}!`;
+  if (ability.kind === 'heal') {
+    const heal = Math.round(session.player.maxHp * 0.35);
+    session.player.hp = Math.min(session.player.maxHp, session.player.hp + heal);
+    message = `${ability.name}! +${heal} HP`;
+  } else {
+    const dmg = abilityDamage(session.player, ability.damage ?? 500, 0.2);
+    const hits = damageAllDungeonMobs(session, dmg);
+    if (run.bossHp != null && dungeonPhase(run) === 'boss' && run.bossHp > 0) {
+      run.bossHp = Math.max(0, run.bossHp - dmg);
+      message = `${ability.name}! ${dmg.toLocaleString()} damage to boss!`;
+    } else if (hits > 0) {
+      message = `${ability.name}! ${dmg.toLocaleString()} damage to ${hits} mob${hits === 1 ? '' : 's'}!`;
+    } else {
+      message = `${ability.name}! No targets nearby.`;
+    }
+    if (ability.kind === 'shield') {
+      session.shieldDefense = 80;
+      session.shieldUntil = Date.now() + 6000;
+      message += ' Shield gained.';
+    }
+  }
+  if (runCompletesDungeon(session)) return;
+  pushState(session);
   toast(session, message, 'success');
 }
 
@@ -2841,7 +2969,7 @@ function doUseItem(session: Session, slot?: number): void {
 function doCraft(session: Session, recipeId: string): void {
   const recipe = RECIPES.find((r) => r.id === recipeId);
   if (!recipe) throw new Error('Unknown recipe');
-  if (!isRecipeUnlocked(recipe.unlockCollection, recipe.unlockAmount, session.player.collections)) {
+  if (!recipeUnlockedFor(recipe, session.player)) {
     throw new Error('Recipe locked — check collections');
   }
   let inv = session.player.inventory;
@@ -2863,8 +2991,9 @@ function doCraft(session: Session, recipeId: string): void {
 function doPlaceMinion(session: Session, minionType: string): void {
   const z = zone(session.player.zoneId);
   if (!z.hasMinions) throw new Error('Go to Minion Platform on your island');
-  if (session.player.minions.length >= maxMinionSlots(playerSkyblockLevel(session.player))) {
-    throw new Error(`Max ${maxMinionSlots(playerSkyblockLevel(session.player))} minions — level up SkyBlock for more slots`);
+  const cap = maxMinionSlots(playerSkyblockLevel(session.player), session.player.extraMinionSlots);
+  if (session.player.minions.length >= cap) {
+    throw new Error(`Max ${cap} minions — level up SkyBlock or buy slots in the Community Shop`);
   }
   const def = ensureMinionDef(minionType);
   const removed = removeItem(session.player.inventory, def.itemId, 1);
@@ -3172,10 +3301,12 @@ function maybeSpawnSlayerBoss(session: Session): void {
 function defeatSlayerBoss(session: Session): void {
   const quest = session.player.activeSlayer;
   if (!quest) return;
+  ensureMidgame(session.player);
   const slayer = SLAYERS.find((entry) => entry.id === quest.slayerId);
   const tier = slayer?.tiers.find((entry) => entry.tier === quest.tier);
   if (!slayer || !tier) return;
   session.player.slayerXp[slayer.id] = (session.player.slayerXp[slayer.id] ?? 0) + tier.xp;
+  session.player.dailies.slayerBosses = (session.player.dailies?.slayerBosses ?? 0) + 1;
   session.player.coins += Math.round(tier.cost * 0.25);
   const guaranteedDrop = incrementSlayerRng(session.player, slayer.id, 20);
   const magicFind = session.player.stats.magicFind ?? 0;

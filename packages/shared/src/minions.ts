@@ -143,8 +143,8 @@ export function minionStorageCap(type: MinionType, tier: number): number {
 }
 
 /** 5 slots at SB 0, +1 every 5 SkyBlock levels, cap 10. */
-export function maxMinionSlots(skyblockLevel: number): number {
-  return Math.min(10, 5 + Math.floor(Math.max(0, skyblockLevel) / 5));
+export function maxMinionSlots(skyblockLevel: number, extra = 0): number {
+  return Math.min(15, 5 + Math.floor(Math.max(0, skyblockLevel) / 5) + Math.max(0, extra));
 }
 
 export interface PlacedMinion {

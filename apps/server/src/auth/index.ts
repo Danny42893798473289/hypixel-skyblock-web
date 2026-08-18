@@ -4,9 +4,11 @@ import bcrypt from 'bcryptjs';
 import {
   emptyBestiary,
   emptyCollections,
+  emptyDailies,
   emptyGarden,
   emptyHotm,
   emptyMuseum,
+  emptyQuestBook,
   emptySkills,
   emptyWardrobe,
   starterInventory,
@@ -172,10 +174,16 @@ function toPlayer(user: StoredUser): PlayerState {
     slayerRngMeter: user.slayerRngMeter ?? {},
     essence: user.essence ?? {},
     unlockedRecipes: user.unlockedRecipes ?? [],
+    claimedSkillRewards: user.claimedSkillRewards ?? [],
+    bits: user.bits ?? 0,
+    extraMinionSlots: user.extraMinionSlots ?? 0,
+    extraAccessorySlots: user.extraAccessorySlots ?? 0,
+    communityPurchases: user.communityPurchases ?? {},
+    dailies: user.dailies ?? emptyDailies(),
     dungeonRun: user.dungeonRun ?? null,
     selectedDungeonClass: user.selectedDungeonClass ?? 'berserk',
     visitedZones: user.visitedZones ?? [zoneId],
-    quests: user.quests ?? { completed: [], counters: {}, flags: {}, claimed: false },
+    quests: user.quests ?? emptyQuestBook(),
     garden: user.garden ?? emptyGarden(),
     hotm: user.hotm ?? emptyHotm(),
     bestiary: user.bestiary ?? emptyBestiary(),
@@ -201,7 +209,7 @@ function toPlayer(user: StoredUser): PlayerState {
   player.hp = Math.min(player.hp, player.maxHp);
   player.maxMana = Math.max(100, Math.round(player.stats.intelligence));
   player.mana = Math.min(user.mana ?? player.maxMana, player.maxMana);
-  player.accessoryBagSlots = accessoryBagSlots(player.fairySouls);
+  player.accessoryBagSlots = accessoryBagSlots(player.fairySouls, player.extraAccessorySlots);
   return player;
 }
 
@@ -227,6 +235,12 @@ function applyPlayer(user: StoredUser, player: PlayerState): StoredUser {
     slayerRngMeter: player.slayerRngMeter,
     essence: player.essence,
     unlockedRecipes: player.unlockedRecipes,
+    claimedSkillRewards: player.claimedSkillRewards,
+    bits: player.bits,
+    extraMinionSlots: player.extraMinionSlots,
+    extraAccessorySlots: player.extraAccessorySlots,
+    communityPurchases: player.communityPurchases,
+    dailies: player.dailies,
     dungeonRun: player.dungeonRun,
     selectedDungeonClass: player.selectedDungeonClass,
     visitedZones: player.visitedZones,
@@ -282,7 +296,7 @@ export function registerUser(username: string, password: string): { token: strin
     dungeonRun: null,
     selectedDungeonClass: 'berserk',
     visitedZones: [DEFAULT_ZONE],
-    quests: { completed: [], counters: {}, flags: {}, claimed: false },
+    quests: emptyQuestBook(),
     backpacks: emptyBackpacks(),
     x: spawn.x,
     y: spawn.y,

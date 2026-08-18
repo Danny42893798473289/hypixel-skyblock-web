@@ -54,6 +54,50 @@ export function jacobMedalReward(medal: 'none' | 'bronze' | 'silver' | 'gold'): 
   return 0;
 }
 
+export interface JacobMedals {
+  bronze: number;
+  silver: number;
+  gold: number;
+}
+
+export function emptyJacobMedals(): JacobMedals {
+  return { bronze: 0, silver: 0, gold: 0 };
+}
+
+export const CROP_MILESTONE_AMOUNTS = [100, 500, 2500, 10000, 25000] as const;
+export const CROP_MILESTONE_FORTUNE = 2;
+export const STARTING_GARDEN_PLOTS = 4;
+
+const GARDEN_LEVEL_THRESHOLDS = [0, 40, 120, 300, 800, 2000, 5000, 12000, 25000, 50000];
+
+export function gardenLevelFromHarvest(harvested: Record<string, number>): { level: number; into: number; need: number; total: number } {
+  const total = Object.values(harvested).reduce((sum, qty) => sum + qty, 0);
+  let level = 0;
+  for (let i = 1; i < GARDEN_LEVEL_THRESHOLDS.length; i++) {
+    if (total >= GARDEN_LEVEL_THRESHOLDS[i]!) level = i;
+  }
+  const current = GARDEN_LEVEL_THRESHOLDS[level] ?? 0;
+  const next = GARDEN_LEVEL_THRESHOLDS[level + 1];
+  return { level, into: total - current, need: next ? next - current : 0, total };
+}
+
+export function cropMilestoneTier(amount: number): number {
+  let tier = 0;
+  for (const need of CROP_MILESTONE_AMOUNTS) {
+    if (amount >= need) tier++;
+  }
+  return tier;
+}
+
+export function gardenFarmingFortune(harvested: Record<string, number>): number {
+  return Object.values(harvested).reduce((sum, qty) => sum + cropMilestoneTier(qty) * CROP_MILESTONE_FORTUNE, 0);
+}
+
+export function plotUnlockCost(plotIndex: number): { coins: number; compost: number; gardenLevel: number } {
+  const extra = Math.max(1, plotIndex - STARTING_GARDEN_PLOTS + 1);
+  return { coins: 500 * extra, compost: 15 * extra, gardenLevel: Math.max(0, extra - 1) };
+}
+
 export function starUpgradeCost(stars: number, rarityIndex: number): { coins: number; essence: number } {
   const base = (stars + 1) * (rarityIndex + 1) * 5000;
   return { coins: base, essence: (stars + 1) * (rarityIndex + 1) * 10 };

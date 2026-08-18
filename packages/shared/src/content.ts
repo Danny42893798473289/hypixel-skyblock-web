@@ -133,5 +133,45 @@ export const SLAYERS: SlayerDef[] = [
   { id: 'inferno', name: 'Inferno Demonlord', targetMob: 'magma_cube', tiers: [{ tier: 1, health: 2500000, damage: 1200, cost: 10000, xp: 5 }, { tier: 2, health: 15000000, damage: 3500, cost: 25000, xp: 25 }, { tier: 3, health: 80000000, damage: 7500, cost: 50000, xp: 100 }, { tier: 4, health: 250000000, damage: 14000, cost: 100000, xp: 500 }, { tier: 5, health: 600000000, damage: 22000, cost: 200000, xp: 1500 }] },
 ];
 
+/** Cumulative XP required to reach each slayer level (L1–L9). */
+export const SLAYER_LEVEL_XP = [5, 15, 200, 1000, 5000, 20000, 100000, 400000, 1000000];
+
+export function slayerLevelFromXp(xp: number): { level: number; into: number; need: number } {
+  let prev = 0;
+  for (let level = 0; level < SLAYER_LEVEL_XP.length; level++) {
+    const need = SLAYER_LEVEL_XP[level]!;
+    if (xp < need) return { level, into: xp - prev, need: need - prev };
+    prev = need;
+  }
+  return { level: SLAYER_LEVEL_XP.length, into: 0, need: 0 };
+}
+
+/** Tier N requires slayer level N-1 (T1 is free, T5 needs L4). */
+export function slayerTierRequiredLevel(tier: number): number {
+  return Math.max(0, tier - 1);
+}
+
+export interface SlayerUnlock {
+  level: number;
+  recipeId: string;
+  label: string;
+}
+
+export const SLAYER_UNLOCKS: Record<string, SlayerUnlock[]> = {
+  revenant: [
+    { level: 1, recipeId: 'craft_revenant_falchion', label: 'Revenant Falchion' },
+    { level: 3, recipeId: 'craft_reaper_falchion', label: 'Reaper Falchion' },
+  ],
+  tarantula: [
+    { level: 1, recipeId: 'craft_scorpion_foil', label: 'Scorpion Foil' },
+  ],
+  sven: [
+    { level: 1, recipeId: 'craft_edible_mace', label: 'Edible Mace' },
+  ],
+  voidgloom: [
+    { level: 1, recipeId: 'craft_voidedge_katana', label: 'Voidedge Katana' },
+  ],
+};
+
 export type { DungeonFloorDef, DungeonDrop } from './dungeonContent.js';
 export { DUNGEON_FLOORS, dungeonFloor, regularFloors, masterFloors } from './dungeonContent.js';

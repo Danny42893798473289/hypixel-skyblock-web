@@ -1,28 +1,85 @@
 import {
   ALCHEMY_RECIPES,
+  COMMUNITY_OFFERS,
   DRAGON_TYPES,
+  ESSENCE_SHOP,
+  FETCHUR_BITS,
+  FETCHUR_QTY,
+  GEMSTONE_ITEM_IDS,
   HOTM_PERKS,
   ITEMS,
+  LOGIN_REWARDS,
+  MEDAL_SHOP,
   PET_EGGS,
+  QUEST_CHAINS,
   addItem,
+  chainStepReady,
   currentJacobCrop,
   currentMayor,
+  dayIndex,
+  emptyDailies,
   emptyGarden,
   emptyGardenPlots,
-  JACOB_CONTEST_MS,
+  emptyJacobMedals,
   emptyHotm,
   emptyBestiary,
+  fetchurWant,
+  gardenLevelFromHarvest,
   hotmMiningFortune,
   hotmMiningSpeed,
+  hotmPerkLocked,
+  hotmPowderCost,
+  hotmPowderBalance,
+  spendHotmPowder,
   emptyMuseum,
   emptyWardrobe,
+  isGemstoneItem,
+  loginRewardForStreak,
   normalizeBackpacks,
+  plotUnlockCost,
   removeItem,
   rollCommissions,
+  rollDailyTasks,
   rollGardenVisitor,
+  skillLevelRewards,
+  skillRewardKey,
+  STARTING_GARDEN_PLOTS,
+  GARDEN_PLOT_COUNT,
+  SKILLS,
+  JACOB_CONTEST_MS,
+  levelFromXp,
+  type DailyTask,
   type ItemId,
   type PlayerState,
 } from '@aether/shared';
+
+function dailyCounter(player: PlayerState, task: DailyTask): number {
+  if (task.kind === 'collect') return player.collections[task.target as ItemId] ?? 0;
+  if (task.kind === 'harvest') {
+    return Object.values(player.garden?.harvested ?? {}).reduce((sum, qty) => sum + qty, 0);
+  }
+  if (task.kind === 'kills') return player.bestiary?.kills[task.target ?? ''] ?? 0;
+  if (task.kind === 'slayer') return player.dailies.slayerBosses;
+  if (task.kind === 'dungeon') return player.dailies.dungeonsCleared;
+  return 0;
+}
+
+export function refreshDailyTasks(player: PlayerState): void {
+  if (!player.dailies?.tasks) return;
+  for (const task of player.dailies.tasks) {
+    if (task.claimed) continue;
+    task.have = Math.min(task.need, Math.max(0, dailyCounter(player, task) - task.baseline));
+  }
+}
+
+function snapshotDailyBaselines(player: PlayerState, tasks: DailyTask[]): DailyTask[] {
+  return tasks.map((task) => ({
+    ...task,
+    baseline: dailyCounter(player, task),
+    have: 0,
+    claimed: false,
+  }));
+}
 
 export function ensureMidgame(player: PlayerState): void {
   if (!player.garden) player.garden = emptyGarden();
@@ -34,6 +91,7 @@ export function ensureMidgame(player: PlayerState): void {
   if (player.dragonFight === undefined) player.dragonFight = null;
   if (player.kuudraFight === undefined) player.kuudraFight = null;
   if (!player.hotm.commissions.length) player.hotm.commissions = rollCommissions();
+  if (player.hotm.gemstonePowder == null) player.hotm.gemstonePowder = 0;
   if (!player.garden.visitor) player.garden.visitor = rollGardenVisitor();
   if (Date.now() > player.garden.jacobEndsAt) {
     player.garden.jacobEndsAt = Math.ceil(Date.now() / 3_600_000) * 3_600_000;
@@ -45,6 +103,179 @@ export function ensureMidgame(player: PlayerState): void {
   if (player.garden.organicMatter == null) player.garden.organicMatter = 0;
   if (player.garden.composterLevel == null) player.garden.composterLevel = 0;
   if (player.garden.jacobMedal == null) player.garden.jacobMedal = 'none';
+  if (!player.garden.jacobMedals) player.garden.jacobMedals = emptyJacobMedals();
+  if (player.garden.unlockedPlots == null) {
+    const usedGarden = Object.keys(player.garden.harvested ?? {}).length > 0
+      || (player.garden.plots ?? []).some((plot) => Boolean(plot.crop));
+    player.garden.unlockedPlots = usedGarden ? GARDEN_PLOT_COUNT : STARTING_GARDEN_PLOTS;
+  }
+  if (!player.quests) player.quests = { completed: [], counters: {}, flags: {}, claimed: false, claimedSteps: [] };
+  if (!player.quests.claimedSteps) player.quests.claimedSteps = [];
+  if (!player.claimedSkillRewards) player.claimedSkillRewards = [];
+  if (player.bits == null) player.bits = 0;
+  if (player.extraMinionSlots == null) player.extraMinionSlots = 0;
+  if (player.extraAccessorySlots == null) player.extraAccessorySlots = 0;
+  if (!player.communityPurchases) player.communityPurchases = {};
+  if (!player.dailies) player.dailies = emptyDailies();
+  rolloverDailies(player);
+  refreshDailyTasks(player);
+}
+
+function rolloverDailies(player: PlayerState): void {
+  const today = dayIndex();
+  if (player.dailies.day === today) return;
+  const missed = today - player.dailies.day > 1;
+  player.dailies.streak = missed ? 1 : player.dailies.streak + 1;
+  player.dailies.day = today;
+  player.dailies.claimedLogin = false;
+  player.dailies.slayerBosses = 0;
+  player.dailies.dungeonsCleared = 0;
+  player.hotm.commissions = rollCommissions();
+  player.dailies.tasks = snapshotDailyBaselines(player, rollDailyTasks());
+}
+
+export function claimLoginReward(player: PlayerState): string {
+  ensureMidgame(player);
+  if (player.dailies.claimedLogin) throw new Error('Already claimed today');
+  const reward = loginRewardForStreak(player.dailies.streak);
+  player.dailies.claimedLogin = true;
+  player.coins += reward.coins;
+  player.bits += reward.bits;
+  if (reward.powder) player.hotm.mithrilPowder += reward.powder;
+  for (const item of reward.items ?? []) {
+    const next = addItem(player.inventory, item.itemId, item.qty);
+    if (!next) throw new Error('Inventory full');
+    player.inventory = next;
+  }
+  return `Day ${player.dailies.streak} login: +${reward.coins.toLocaleString()} coins, +${reward.bits} bits${reward.powder ? `, +${reward.powder} powder` : ''}.`;
+}
+
+export function claimDailyTask(player: PlayerState, taskId: string): string {
+  ensureMidgame(player);
+  refreshDailyTasks(player);
+  const task = player.dailies.tasks.find((entry) => entry.id === taskId);
+  if (!task) throw new Error('Unknown daily');
+  if (task.claimed) throw new Error('Already claimed');
+  if (task.have < task.need) throw new Error('Daily not finished');
+  task.claimed = true;
+  player.coins += task.rewardCoins;
+  player.bits += task.rewardBits;
+  if (task.rewardPowder) player.hotm.mithrilPowder += task.rewardPowder;
+  return `Daily complete! +${task.rewardCoins} coins, +${task.rewardBits} bits.`;
+}
+
+export function claimFetchur(player: PlayerState): string {
+  ensureMidgame(player);
+  const today = dayIndex();
+  if (player.dailies.fetchurClaimedDay === today) throw new Error('Fetchur already paid you today');
+  const want = fetchurWant();
+  const next = removeItem(player.inventory, want, FETCHUR_QTY);
+  if (!next) throw new Error(`Fetchur wants ${FETCHUR_QTY}× ${ITEMS[want]?.name ?? want}`);
+  player.inventory = next;
+  player.dailies.fetchurClaimedDay = today;
+  player.bits += FETCHUR_BITS;
+  return `Fetchur: "thanks." +${FETCHUR_BITS} bits.`;
+}
+
+export function buyCommunityOffer(player: PlayerState, offerId: string): string {
+  ensureMidgame(player);
+  const offer = COMMUNITY_OFFERS.find((entry) => entry.id === offerId);
+  if (!offer) throw new Error('Unknown Community Shop offer');
+  const bought = player.communityPurchases[offer.id] ?? 0;
+  if (bought >= offer.maxPurchases) throw new Error('Already purchased');
+  if (player.bits < offer.bits) throw new Error(`Need ${offer.bits} bits`);
+  player.bits -= offer.bits;
+  player.communityPurchases[offer.id] = bought + 1;
+  if (offer.kind === 'minion_slot') player.extraMinionSlots += 1;
+  if (offer.kind === 'accessory_slot') player.extraAccessorySlots += 3;
+  if (offer.kind === 'item' && offer.itemId) {
+    const next = addItem(player.inventory, offer.itemId, 1);
+    if (!next) throw new Error('Inventory full');
+    player.inventory = next;
+  }
+  return `Bought ${offer.name} for ${offer.bits} bits.`;
+}
+
+export function buyEssenceOffer(player: PlayerState, offerId: string): string {
+  ensureMidgame(player);
+  const offer = ESSENCE_SHOP.find((entry) => entry.id === offerId);
+  if (!offer) throw new Error('Unknown essence offer');
+  if (!player.essence) player.essence = {};
+  if ((player.essence[offer.essence] ?? 0) < offer.cost) {
+    throw new Error(`Need ${offer.cost} ${offer.essence} essence`);
+  }
+  player.essence[offer.essence] = (player.essence[offer.essence] ?? 0) - offer.cost;
+  const next = addItem(player.inventory, offer.itemId, 1);
+  if (!next) throw new Error('Inventory full');
+  player.inventory = next;
+  return `Bought ${offer.name} for ${offer.cost} ${offer.essence} essence.`;
+}
+
+export function buyMedalOffer(player: PlayerState, offerId: string): string {
+  ensureMidgame(player);
+  const offer = MEDAL_SHOP.find((entry) => entry.id === offerId);
+  if (!offer) throw new Error('Unknown medal offer');
+  const have = player.garden.jacobMedals[offer.medal] ?? 0;
+  if (have < offer.cost) throw new Error(`Need ${offer.cost} ${offer.medal} medals`);
+  player.garden.jacobMedals[offer.medal] = have - offer.cost;
+  const next = addItem(player.inventory, offer.itemId, 1);
+  if (!next) throw new Error('Inventory full');
+  player.inventory = next;
+  return `Bought ${offer.name} for ${offer.cost} ${offer.medal} medal${offer.cost === 1 ? '' : 's'}.`;
+}
+
+export function claimSkillReward(player: PlayerState, skillId: string, level: number): string {
+  ensureMidgame(player);
+  const skill = SKILLS[skillId as keyof typeof SKILLS];
+  if (!skill) throw new Error('Unknown skill');
+  const key = skillRewardKey(skill.id, level);
+  if (player.claimedSkillRewards.includes(key)) throw new Error('Already claimed');
+  const reward = skillLevelRewards(skill)[level];
+  if (!reward) throw new Error('No reward at that level');
+  const have = levelFromXp(player.skills[skill.id] ?? 0, skill.maxLevel).level;
+  if (have < level) throw new Error(`Reach ${skill.name} ${level} first`);
+  player.claimedSkillRewards.push(key);
+  if (reward.coins) player.coins += reward.coins;
+  for (const item of reward.items ?? []) {
+    const next = addItem(player.inventory, item.itemId, item.qty);
+    if (!next) throw new Error('Inventory full');
+    player.inventory = next;
+  }
+  return `Claimed ${skill.name} ${level} reward${reward.coins ? `: +${reward.coins.toLocaleString()} coins` : ''}.`;
+}
+
+export function claimChainStep(player: PlayerState, chainId: string, stepId: string): string {
+  ensureMidgame(player);
+  const chain = QUEST_CHAINS.find((entry) => entry.id === chainId);
+  if (!chain) throw new Error('Unknown quest chain');
+  const index = chain.steps.findIndex((step) => step.id === stepId);
+  if (index < 0) throw new Error('Unknown step');
+  if (!chainStepReady(player, chain, index)) throw new Error('Finish the previous step first');
+  const step = chain.steps[index]!;
+  player.quests.claimedSteps = [...(player.quests.claimedSteps ?? []), `${chainId}:${stepId}`];
+  if (step.rewardCoins) player.coins += step.rewardCoins;
+  if (step.rewardBits) player.bits += step.rewardBits;
+  for (const item of step.rewardItems ?? []) {
+    const next = addItem(player.inventory, item.itemId, item.qty);
+    if (!next) throw new Error('Inventory full');
+    player.inventory = next;
+  }
+  return `Quest complete: ${step.title}!`;
+}
+
+export function unlockGardenPlot(player: PlayerState): string {
+  ensureMidgame(player);
+  const nextIndex = player.garden.unlockedPlots;
+  if (nextIndex >= 24) throw new Error('All plots unlocked');
+  const cost = plotUnlockCost(nextIndex);
+  const garden = gardenLevelFromHarvest(player.garden.harvested);
+  if (garden.level < cost.gardenLevel) throw new Error(`Requires Garden level ${cost.gardenLevel}`);
+  if (player.coins < cost.coins) throw new Error(`Need ${cost.coins.toLocaleString()} coins`);
+  if ((player.garden.organicMatter ?? 0) < cost.compost) throw new Error(`Need ${cost.compost} compost`);
+  player.coins -= cost.coins;
+  player.garden.organicMatter -= cost.compost;
+  player.garden.unlockedPlots += 1;
+  return `Unlocked plot ${player.garden.unlockedPlots}!`;
 }
 
 export function noteGardenHarvest(player: PlayerState, itemId: ItemId, qty: number): string | null {
@@ -62,9 +293,10 @@ export function serveGardenVisitor(player: PlayerState): string {
   const next = removeItem(player.inventory, visitor.wants, visitor.qty);
   if (!next) throw new Error(`Need ${visitor.qty} ${ITEMS[visitor.wants]?.name ?? visitor.wants}`);
   player.inventory = next;
-  player.coins += visitor.reward;
+  const payout = Math.round(visitor.reward * (1 + gardenLevelFromHarvest(player.garden.harvested).level * 0.1));
+  player.coins += payout;
   player.garden.visitor = rollGardenVisitor();
-  return `Gave ${visitor.name} the crops. +${visitor.reward.toLocaleString()} coins!`;
+  return `Gave ${visitor.name} the crops. +${payout.toLocaleString()} coins!`;
 }
 
 export function unlockHotmPerk(player: PlayerState, perkId: string): string {
@@ -87,9 +319,12 @@ export function unlockHotmPerk(player: PlayerState, perkId: string): string {
     player.hotm.perks[perkId] = 1;
     return `Unlocked ${perk.name}!`;
   }
-  const powder = perk.powderCost * (level + 1);
-  if (player.hotm.mithrilPowder < powder) throw new Error(`Need ${powder.toLocaleString()} Mithril Powder`);
-  player.hotm.mithrilPowder -= powder;
+  const powder = hotmPowderCost(perk, level + 1);
+  if (hotmPowderBalance(player.hotm, perk) < powder) {
+    const kind = perk.powderType === 'gemstone' ? 'Gemstone Powder' : 'Mithril Powder';
+    throw new Error(`Need ${powder.toLocaleString()} ${kind}`);
+  }
+  spendHotmPowder(player.hotm, perk, powder);
   player.hotm.perks[perkId] = level + 1;
   return `${perk.name} is now level ${level + 1}.`;
 }
@@ -102,6 +337,7 @@ export function claimCommission(player: PlayerState, commissionId: string): stri
   player.hotm.tokens += job.rewardTokens;
   player.hotm.mithrilPowder += 50;
   player.coins += job.rewardCoins;
+  player.quests.flags.hotm_token = true;
   player.hotm.commissions = player.hotm.commissions.filter((entry) => entry.id !== commissionId);
   if (player.hotm.commissions.length === 0) player.hotm.commissions = rollCommissions();
   return `Commission complete! +${job.rewardTokens} token, +${job.rewardCoins} coins.`;
@@ -115,6 +351,10 @@ export function noteMiningCommission(player: PlayerState, itemId: ItemId, qty: n
   if (itemId === 'mithril') {
     const daily = player.hotm.perks.daily_powder ?? 0;
     player.hotm.mithrilPowder += qty + daily;
+  }
+  if (isGemstoneItem(itemId)) {
+    const buff = player.hotm.perks.powder_buff ?? 0;
+    player.hotm.gemstonePowder += qty + buff;
   }
 }
 

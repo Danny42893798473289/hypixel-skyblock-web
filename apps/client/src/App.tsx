@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ZONES,
   dungeonPhase,
+  dungeonScoreGrade,
   currentMayor,
+  SKILLS,
   skyblockLevelFromXp,
   skyblockXp,
   type BazaarOrder,
@@ -344,9 +346,17 @@ export function App() {
         <div><span>Mayor</span><strong>{currentMayor().name}</strong></div>
         {player.hotm && (player.hotm.tokens > 0 || player.hotm.mithrilPowder > 0 || player.hotm.commissions.length > 0) && (
           <>
-            <div><span>HotM</span><strong className="mc-aqua">{player.hotm.tokens} token{player.hotm.tokens === 1 ? '' : 's'} · {player.hotm.mithrilPowder.toLocaleString()} powder</strong></div>
+            <div><span>HotM</span><strong className="mc-aqua">{player.hotm.tokens} token{player.hotm.tokens === 1 ? '' : 's'} · {player.hotm.mithrilPowder.toLocaleString()} mithril{(player.hotm.gemstonePowder ?? 0) > 0 ? ` · ${player.hotm.gemstonePowder.toLocaleString()} gem` : ''}</strong></div>
             {player.hotm.commissions.slice(0, 2).map((job) => (
               <div key={job.id}><span>{job.label}</span><strong className={job.have >= job.need ? 'mc-green' : 'mc-yellow'}>{job.have}/{job.need}</strong></div>
+            ))}
+          </>
+        )}
+        {(player.bits > 0 || (player.dailies?.tasks.length ?? 0) > 0) && (
+          <>
+            <div><span>Bits</span><strong className="mc-green">{(player.bits ?? 0).toLocaleString()}</strong></div>
+            {(player.dailies?.tasks ?? []).slice(0, 2).map((task) => (
+              <div key={task.id}><span>{task.label}</span><strong className={task.claimed || task.have >= task.need ? 'mc-green' : 'mc-yellow'}>{task.claimed ? 'done' : `${task.have}/${task.need}`}</strong></div>
             ))}
           </>
         )}
@@ -367,6 +377,12 @@ export function App() {
             <div className="stat-bar-fill" style={{ width: `${Math.max(0, Math.min(100, (player.mana / Math.max(1, player.maxMana)) * 100))}%` }} />
             <span className="mana">{Math.floor(player.mana)}/{Math.round(player.maxMana)} ✎</span>
           </div>
+          {player.lastSkillGain ? (
+            <div className="stat-bar skill-bar">
+              <div className="stat-bar-fill" style={{ width: `${Math.max(0, Math.min(100, (player.lastSkillGain.intoLevel / Math.max(1, player.lastSkillGain.need)) * 100))}%` }} />
+              <span className="skill-xp">{SKILLS[player.lastSkillGain.skillId]?.name ?? player.lastSkillGain.skillId} {player.lastSkillGain.level} · {Math.floor(player.lastSkillGain.intoLevel)}/{player.lastSkillGain.need}</span>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -422,7 +438,7 @@ export function App() {
             )}
             {dungeonPhase(player.dungeonRun) === 'boss' && `Boss — ${player.dungeonRun.bossHp?.toLocaleString() ?? '?'} ❤`}
           </span>
-          <span className="mc-yellow">Score: {player.dungeonRun.score} · Secrets: {player.dungeonRun.secretsFound ?? 0}</span>
+          <span className="mc-yellow">Score: {player.dungeonRun.score} ({dungeonScoreGrade(player.dungeonRun.score)}) · Secrets: {player.dungeonRun.secretsFound ?? 0}</span>
           <span className="mc-gray">Type /leave to abandon</span>
         </div>
       ) : null}

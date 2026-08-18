@@ -14,6 +14,11 @@ export type SkillId =
   | 'social'
   | 'dungeoneering';
 
+export interface SkillLevelReward {
+  coins?: number;
+  items?: Array<{ itemId: string; qty: number }>;
+}
+
 export interface SkillDef {
   id: SkillId;
   name: string;
@@ -21,7 +26,19 @@ export interface SkillDef {
   description: string;
   maxLevel: number;
   rewardPerLevel: Partial<StatBlock>;
+  /** Claimable payouts at specific levels. */
+  levelRewards?: Record<number, SkillLevelReward>;
 }
+
+const DEFAULT_LEVEL_REWARDS: Record<number, SkillLevelReward> = {
+  1: { coins: 100 },
+  5: { coins: 500 },
+  10: { coins: 1500 },
+  15: { coins: 3000 },
+  20: { coins: 5000 },
+  25: { coins: 8000 },
+  30: { coins: 12000 },
+};
 
 export const SKILLS: Record<SkillId, SkillDef> = {
   mining: {
@@ -31,6 +48,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     description: 'Break stone and ores faster.',
     maxLevel: 60,
     rewardPerLevel: { defense: 1, miningFortune: 4 },
+    levelRewards: { ...DEFAULT_LEVEL_REWARDS, 10: { coins: 1500, items: [{ itemId: 'iron_pickaxe', qty: 1 }] } },
   },
   farming: {
     id: 'farming',
@@ -39,6 +57,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     description: 'Harvest crops with better yields.',
     maxLevel: 60,
     rewardPerLevel: { health: 2, farmingFortune: 4 },
+    levelRewards: { ...DEFAULT_LEVEL_REWARDS, 5: { coins: 500, items: [{ itemId: 'rookie_hoe', qty: 1 }] } },
   },
   combat: {
     id: 'combat',
@@ -47,6 +66,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     description: 'Deal more damage to creatures.',
     maxLevel: 60,
     rewardPerLevel: { critChance: 0.5 },
+    levelRewards: { ...DEFAULT_LEVEL_REWARDS, 5: { coins: 500, items: [{ itemId: 'undead_sword', qty: 1 }] } },
   },
   foraging: {
     id: 'foraging',
@@ -70,8 +90,16 @@ export const SKILLS: Record<SkillId, SkillDef> = {
   carpentry: { id: 'carpentry', name: 'Carpentry', color: '#ffaa00', description: 'Craft decorative furniture.', maxLevel: 50, rewardPerLevel: { health: 1 } },
   runecrafting: { id: 'runecrafting', name: 'Runecrafting', color: '#ff55ff', description: 'Combine cosmetic runes.', maxLevel: 25, rewardPerLevel: {} },
   social: { id: 'social', name: 'Social', color: '#55ffff', description: 'Earn XP when players visit your island.', maxLevel: 25, rewardPerLevel: {} },
-  dungeoneering: { id: 'dungeoneering', name: 'Dungeoneering', color: '#aa0000', description: 'Master the Catacombs.', maxLevel: 50, rewardPerLevel: { health: 1 } },
+  dungeoneering: { id: 'dungeoneering', name: 'Dungeoneering', color: '#aa0000', description: 'Master the Catacombs.', maxLevel: 50, rewardPerLevel: { health: 1 }, levelRewards: { ...DEFAULT_LEVEL_REWARDS, 5: { coins: 2500 } } },
 };
+
+export function skillLevelRewards(skill: SkillDef): Record<number, SkillLevelReward> {
+  return skill.levelRewards ?? DEFAULT_LEVEL_REWARDS;
+}
+
+export function skillRewardKey(skillId: SkillId, level: number): string {
+  return `${skillId}:${level}`;
+}
 
 const XP_TABLE = [
   50, 125, 200, 300, 500, 750, 1000, 1500, 2000, 3500,
