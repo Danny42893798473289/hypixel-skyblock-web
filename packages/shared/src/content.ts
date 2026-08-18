@@ -87,6 +87,7 @@ export const MOBS: Record<string, MobDef> = {
   sheep: { id: 'sheep', name: 'Sheep', level: 1, health: 70, damage: 5, defense: 0, combatXp: 4, coins: 2, drops: [{ itemId: 'wool', chance: 1, min: 1, max: 2 }, { itemId: 'mutton', chance: 0.8, min: 1, max: 1 }] },
   rabbit: { id: 'rabbit', name: 'Rabbit', level: 2, health: 45, damage: 5, defense: 0, combatXp: 4, coins: 2, drops: [{ itemId: 'raw_rabbit', chance: 1, min: 1, max: 1 }, { itemId: 'rabbit_hide', chance: 0.6, min: 1, max: 1 }, { itemId: 'rabbit_foot', chance: 0.25, min: 1, max: 1 }] },
   creeper: { id: 'creeper', name: 'Creeper', level: 8, health: 180, damage: 40, defense: 0, combatXp: 14, coins: 5, drops: [{ itemId: 'gunpowder', chance: 1, min: 1, max: 3 }] },
+  skeleton: { id: 'skeleton', name: 'Skeleton', level: 6, health: 160, damage: 28, defense: 2, combatXp: 10, coins: 3, drops: [{ itemId: 'bone', chance: 1, min: 1, max: 2 }] },
   pigman: { id: 'pigman', name: 'Zombie Pigman', level: 12, health: 280, damage: 45, defense: 8, combatXp: 16, coins: 6, drops: [{ itemId: 'gold_ingot', chance: 0.6, min: 1, max: 2 }, { itemId: 'rotten_flesh', chance: 1, min: 1, max: 2 }] },
   slime: { id: 'slime', name: 'Slime', level: 10, health: 220, damage: 30, defense: 5, combatXp: 14, coins: 5, drops: [{ itemId: 'slimeball', chance: 1, min: 1, max: 3 }] },
   weaver: { id: 'weaver', name: 'Weaver Spider', level: 6, health: 160, damage: 28, defense: 2, combatXp: 10, coins: 3, drops: [{ itemId: 'string', chance: 1, min: 1, max: 3 }, { itemId: 'spider_eye', chance: 0.4, min: 1, max: 1 }] },

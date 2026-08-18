@@ -111,6 +111,26 @@ import {
   isDrillItem,
   isDrillPart,
   BIOFUEL_ITEM,
+  attackCooldownMs,
+  dungeonMobEntityPosition,
+  rollDungeonRoomTypes,
+  currentRoomType,
+  currentBossPhase,
+  bossPhasesForFloor,
+  initBossPhaseHp,
+  puzzleComplete,
+  dungeonBestiaryMobId,
+  dungeonTimeBonus,
+  dungeonRoomClearScore,
+  dungeonDeathPenalty,
+  dungeonBossKillScore,
+  dungeonChestRarity,
+  classAutoAttackRules,
+  classAbilityHitsMob,
+  overworldAttackRange,
+  standingStill,
+  facingToward,
+  essenceForFloor,
 } from '@aether/shared';
 import { parseChatCommand, findTradePartnerId, getTrade, cancelTrade, setTradeCoins, setTradeItem } from '../trade/engine.js';
 import { loadPlayer, savePlayer, takeOfflineInterest, verifyToken } from '../auth/index.js';
@@ -137,6 +157,13 @@ import {
   onDungeonPartyJoin,
   onDungeonStart,
 } from './featureHandlers.js';
+import {
+  applyPartyBossDamage,
+  applyPartyDamage,
+  partyMemberIds,
+  setSharedRun,
+  syncMemberRun,
+} from './dungeonPartySync.js';
 import {
   abilityDamage,
   abilityKey,
@@ -392,12 +419,15 @@ function backpackPageIndex(session: Session): number {
 function handlePlayerDeath(session: Session, message = 'You died!'): void {
   session.player.hp = session.player.maxHp;
   if (session.player.dungeonRun) {
-    const map = buildDungeonRoomMap(session.player.dungeonRun);
+    const run = session.player.dungeonRun;
+    run.deaths = (run.deaths ?? 0) + 1;
+    run.score = Math.max(0, run.score - dungeonDeathPenalty());
+    const map = buildDungeonRoomMap(run);
     beginPositionSnap(session);
     session.player.x = map.spawn.x;
     session.player.y = map.spawn.y;
     session.player.facing = 'right';
-    toast(session, `${message} You respawned in the dungeon.`, 'error');
+    toast(session, `${message} −${dungeonDeathPenalty()} score. You respawned in the dungeon.`, 'error');
     pushState(session, { resetPosition: true });
     return;
   }
@@ -1162,10 +1192,16 @@ function combatEntity(session: Session, entity: { kind: string; actionId?: strin
 
 function handleAttack(session: Session): void {
   const now = Date.now();
-  if (now - session.lastAttackAt < 280) return;
+  const cooldown = attackCooldownMs(session.player.stats.attackSpeed ?? 0);
+  if (now - session.lastAttackAt < cooldown) return;
   session.lastAttackAt = now;
   const map = mapFor(session);
-  const entity = nearestEntity(map, session.player.x, session.player.y, 2.4);
+  const run = session.player.dungeonRun;
+  const bow = holdingBow(session.player);
+  const range = run
+    ? classAutoAttackRules(run.dungeonClass, bow).range
+    : overworldAttackRange(bow);
+  const entity = nearestEntity(map, session.player.x, session.player.y, range);
   if (!entity || entity.kind !== 'mob') return;
   if (ZONES[entity.zoneId]) session.player.zoneId = entity.zoneId;
   combatEntity(session, entity);
@@ -1181,6 +1217,10 @@ function handleWorldInteract(session: Session): void {
 
   if (entity.kind === 'door' && entity.actionId?.startsWith('dungeon:')) {
     handleDungeonDoor(session);
+    return;
+  }
+  if (entity.actionId?.startsWith('dungeon:pad:')) {
+    activatePuzzlePad(session, entity.actionId.slice('dungeon:pad:'.length));
     return;
   }
   if (combatEntity(session, entity)) return;
@@ -2157,13 +2197,171 @@ function doBankAction(session: Session, value: string): void {
   toast(session, `${operation === 'deposit' ? 'Deposited' : 'Withdrew'} ${amount.toLocaleString()} coins.`, 'success');
 }
 
-function dungeonClassMultiplier(dungeonClass: PlayerState['selectedDungeonClass']): number {
-  if (dungeonClass === 'mage') return 1.15;
-  if (dungeonClass === 'berserk') return 1.1;
-  if (dungeonClass === 'archer') return 1.05;
-  if (dungeonClass === 'tank') return 0.95;
-  if (dungeonClass === 'healer') return 1.05;
-  return 1;
+function holdingBow(player: PlayerState): boolean {
+  const stack = hotbarStack(player.inventory, player.hotbarSlot);
+  return Boolean(stack && ITEMS[stack.itemId]?.type === 'BOW');
+}
+
+function emitDamageNumber(session: Session, amount: number, critical: boolean, x = session.player.x, y = session.player.y): void {
+  emit(session.socket, { type: 'damageNumber', x, y, amount, critical });
+}
+
+function dungeonHostId(session: Session): string | null {
+  return session.player.dungeonRun?.partyId ?? session.player.dungeonPartyId ?? null;
+}
+
+function syncDungeonParty(session: Session): void {
+  const run = session.player.dungeonRun;
+  if (!run) return;
+  const hostId = dungeonHostId(session);
+  if (!hostId) return;
+  syncMemberRun(hostId, run);
+  for (const other of sessions.values()) {
+    if (other === session) continue;
+    if (other.player.dungeonPartyId !== hostId && other.player.id !== hostId) continue;
+    if (!other.player.dungeonRun) continue;
+    const ownClass = other.player.dungeonRun.dungeonClass;
+    other.player.dungeonRun = { ...structuredClone(run), dungeonClass: ownClass };
+    pushState(other);
+  }
+}
+
+function applyDungeonMobDamage(session: Session, mobId: string, damage: number): number {
+  const run = session.player.dungeonRun;
+  if (!run?.mobHp || run.mobHp[mobId] == null) return 0;
+  const hostId = dungeonHostId(session);
+  if (hostId) {
+    const shared = applyPartyDamage(hostId, mobId, damage);
+    if (shared?.mobHp) run.mobHp = shared.mobHp;
+    else run.mobHp[mobId] = Math.max(0, run.mobHp[mobId] - damage);
+  } else {
+    run.mobHp[mobId] = Math.max(0, run.mobHp[mobId] - damage);
+  }
+  return run.mobHp[mobId] ?? 0;
+}
+
+function applyDungeonBossHp(session: Session, damage: number): number {
+  const run = session.player.dungeonRun;
+  if (!run || run.bossHp == null) return 0;
+  const hostId = dungeonHostId(session);
+  if (hostId) {
+    const shared = applyPartyBossDamage(hostId, damage);
+    if (shared?.bossHp != null) run.bossHp = shared.bossHp;
+    else run.bossHp = Math.max(0, run.bossHp - damage);
+  } else {
+    run.bossHp = Math.max(0, run.bossHp - damage);
+  }
+  return run.bossHp;
+}
+
+function initBossAdds(run: NonNullable<PlayerState['dungeonRun']>, totalHealth: number): void {
+  const mechanic = currentBossPhase(run).mechanic;
+  run.mobHp = {};
+  if (mechanic === 'adds') {
+    run.mobHp['dungeon_add:0'] = Math.round(totalHealth * 0.12);
+    run.mobHp['dungeon_add:1'] = Math.round(totalHealth * 0.12);
+  } else if (mechanic === 'crystals') {
+    run.mobHp['dungeon_crystal:0'] = Math.round(totalHealth * 0.08);
+    run.mobHp['dungeon_crystal:1'] = Math.round(totalHealth * 0.08);
+  } else if (mechanic === 'golems') {
+    run.mobHp['dungeon_golem:0'] = Math.round(totalHealth * 0.21);
+    run.mobHp['dungeon_golem:1'] = Math.round(totalHealth * 0.21);
+    run.bossHp = 0;
+  } else if (mechanic === 'clone') {
+    run.mobHp['dungeon_clone:0'] = Math.round(totalHealth * 0.45);
+    run.mobHp['dungeon_clone:1'] = Math.round(totalHealth * 0.45);
+  }
+}
+
+function setupDungeonRoom(run: NonNullable<PlayerState['dungeonRun']>): void {
+  const type = currentRoomType(run);
+  run.secretClaimed = false;
+  run.puzzlePads = {};
+  run.mobHp = initRoomMobs(run);
+  run.roomCleared = type === 'fairy';
+}
+
+function bossAddsAlive(run: NonNullable<PlayerState['dungeonRun']>): boolean {
+  return Object.entries(run.mobHp ?? {}).some(([id, hp]) => hp > 0 && !id.startsWith('dungeon_clone:'));
+}
+
+function grantDungeonMobLoot(session: Session): void {
+  const run = session.player.dungeonRun;
+  if (!run) return;
+  ensureMidgame(session.player);
+  session.player.coins += 12 + Math.floor(Math.random() * 14);
+  if (Math.random() < 0.15) {
+    session.player.essence ??= {};
+    const type = essenceForFloor(run.floorId);
+    session.player.essence[type] = (session.player.essence[type] ?? 0) + 1;
+  }
+  const mobId = dungeonBestiaryMobId(run.room);
+  session.player.bestiary.kills[mobId] = (session.player.bestiary.kills[mobId] ?? 0) + 1;
+  const bestiaryMsg = checkBestiaryMilestone(session.player, mobId);
+  if (bestiaryMsg) {
+    markStatsDirty(session);
+    toast(session, bestiaryMsg, 'success');
+  }
+}
+
+function starDungeonGear(session: Session, stars: number): string | undefined {
+  if (stars <= 0) return undefined;
+  for (const stack of session.player.inventory) {
+    const type = stack ? ITEMS[stack.itemId]?.type : undefined;
+    if (stack && type && ['SWORD', 'BOW', 'HELMET', 'CHESTPLATE', 'LEGGINGS', 'BOOTS'].includes(type)) {
+      stack.dungeonStars = Math.min(5, (stack.dungeonStars ?? 0) + stars);
+      return `${ITEMS[stack.itemId]?.name ?? stack.itemId} ✪${stack.dungeonStars} (+${stack.dungeonStars * 10}% dungeon stats)`;
+    }
+  }
+  return undefined;
+}
+
+function healDungeonParty(session: Session, selfPct: number, partyPct: number): number {
+  const selfHeal = Math.round(session.player.maxHp * selfPct);
+  session.player.hp = Math.min(session.player.maxHp, session.player.hp + selfHeal);
+  const hostId = dungeonHostId(session);
+  if (!hostId) return selfHeal;
+  for (const id of partyMemberIds(hostId, sessions)) {
+    const other = [...sessions.values()].find((entry) => entry.player.id === id);
+    if (!other || other === session || !other.player.dungeonRun) continue;
+    const heal = Math.round(other.player.maxHp * partyPct);
+    other.player.hp = Math.min(other.player.maxHp, other.player.hp + heal);
+    toast(other, `${session.player.username}'s pulse! +${heal} HP`, 'success');
+    pushState(other);
+  }
+  return selfHeal;
+}
+
+function shieldDungeonParty(session: Session, defense: number, ms: number): void {
+  session.shieldDefense = defense;
+  session.shieldUntil = Date.now() + ms;
+  const hostId = dungeonHostId(session);
+  if (!hostId) return;
+  for (const id of partyMemberIds(hostId, sessions)) {
+    const other = [...sessions.values()].find((entry) => entry.player.id === id);
+    if (!other || other === session) continue;
+    other.shieldDefense = Math.round(defense * 0.7);
+    other.shieldUntil = Date.now() + ms;
+  }
+}
+
+function tryAdvanceBossPhase(session: Session): boolean {
+  const run = session.player.dungeonRun;
+  if (!run) return false;
+  const floor = dungeonFloor(run.floorId);
+  if (!floor) return false;
+  const phases = bossPhasesForFloor(run.floorId);
+  const next = (run.bossPhaseIndex ?? 0) + 1;
+  if (next >= phases.length) {
+    run.bossHp = 0;
+    return true;
+  }
+  run.bossPhaseIndex = next;
+  initBossPhaseHp(run, floor.boss.health);
+  initBossAdds(run, floor.boss.health);
+  toast(session, `${currentBossPhase(run).name} enters the fight!`, 'success');
+  syncDungeonParty(session);
+  return false;
 }
 
 function warpToDungeonSpawn(session: Session): void {
@@ -2194,7 +2392,12 @@ function enterDungeon(session: Session, floorId: string): void {
     score: 0,
     roomCleared: false,
     mobHp: {},
+    roomTypes: rollDungeonRoomTypes(floor.rooms),
+    startedAt: Date.now(),
+    deaths: 0,
+    puzzlePads: {},
   };
+  onDungeonStart(session);
   warpToDungeonSpawn(session);
   session.menuOpen = false;
   pushState(session, { resetPosition: true });
@@ -2242,6 +2445,13 @@ function leaveActiveRun(session: Session): boolean {
 function claimDungeonChest(session: Session): void {
   const chest = session.player.pendingDungeonChest;
   if (!chest) throw new Error('No dungeon chest to claim');
+  if (!chest.rewardsGranted) {
+    gainSkillXp(session, 'dungeoneering', chest.xp);
+    session.player.coins += chest.coins;
+    if (chest.floorId) grantEssenceOnDungeonComplete(session, chest.floorId, chest.grade);
+    chest.starLabel = starDungeonGear(session, chest.stars) ?? chest.starLabel;
+    chest.rewardsGranted = true;
+  }
   const leftover: typeof chest.drops = [];
   for (const drop of chest.drops) {
     if (!grantDropStack(session, drop.itemId, drop.qty, session.player.stats.magicFind ?? 0)) {
@@ -2251,11 +2461,11 @@ function claimDungeonChest(session: Session): void {
   if (leftover.length) {
     session.player.pendingDungeonChest = { ...chest, drops: leftover };
     pushState(session);
-    throw new Error('Inventory full — claimed what would fit. Make room and claim again.');
+    throw new Error('Inventory full — claimed rewards, but some drops need space. Make room and claim again.');
   }
   session.player.pendingDungeonChest = null;
   pushState(session);
-  toast(session, chest.drops.length ? 'Claimed dungeon chest!' : 'Chest was empty — better luck next floor.', 'success');
+  toast(session, chest.drops.length || chest.xp ? 'Claimed dungeon chest!' : 'Chest was empty — better luck next floor.', 'success');
   openMenu(session, 'dungeons');
 }
 
@@ -2265,12 +2475,12 @@ function completeDungeon(session: Session): void {
   ensureMidgame(session.player);
   const floor = DUNGEON_FLOORS.find((entry) => entry.id === run.floorId);
   if (!floor) return;
+  run.score += dungeonTimeBonus(run) + dungeonBossKillScore();
   const grade = dungeonScoreGrade(run.score);
   const mult = dungeonGradeMultiplier(grade);
   const coins = Math.round(floor.coinReward * mult);
   const xp = Math.round(floor.baseCatacombsXp * mult);
-  gainSkillXp(session, 'dungeoneering', xp);
-  session.player.coins += coins;
+  const rarity = dungeonChestRarity(grade);
   const scaledDrops = (floor.drops ?? []).map((drop) => ({
     ...drop,
     chance: Math.min(1, drop.chance * (grade === 'S+' ? 1.8 : grade === 'S' ? 1.4 : grade === 'A' ? 1.15 : grade === 'D' ? 0.5 : 1)),
@@ -2280,37 +2490,58 @@ function completeDungeon(session: Session): void {
     (1 + Math.floor(Math.random() * 2) + (currentMayor().id === 'paul' ? 1 : 0) + Math.min(2, Math.floor((run.secretsFound ?? 0) / 2)))
     * (grade === 'S+' ? 1.5 : grade === 'S' ? 1.25 : grade === 'D' ? 0.5 : 1),
   ));
-  let starLabel: string | undefined;
-  for (const stack of session.player.inventory) {
-    const type = stack ? ITEMS[stack.itemId]?.type : undefined;
-    if (stack && type && ['SWORD', 'BOW', 'HELMET', 'CHESTPLATE', 'LEGGINGS', 'BOOTS'].includes(type)) {
-      stack.dungeonStars = Math.min(5, (stack.dungeonStars ?? 0) + stars);
-      starLabel = `${ITEMS[stack.itemId]?.name ?? stack.itemId} ✪${stack.dungeonStars} (+${stack.dungeonStars * 10}% dungeon stats)`;
-      break;
-    }
-  }
-  grantEssenceOnDungeonComplete(session, run.floorId, grade);
   session.player.dungeonRun = null;
   session.player.dailies.dungeonsCleared = (session.player.dailies?.dungeonsCleared ?? 0) + 1;
   session.player.quests.counters.dungeon_clears = (session.player.quests.counters.dungeon_clears ?? 0) + 1;
   session.player.pendingDungeonChest = {
     floorName: floor.shortName ?? floor.name,
+    floorId: floor.id,
     coins,
     xp,
     stars,
-    starLabel,
     grade,
+    chestRarity: rarity,
     drops: rolled,
+    rewardsGranted: false,
   };
   doTravel(session, 'dungeon_hub');
-  if (starLabel) toast(session, `Starred ${starLabel}`, 'loot');
-  toast(session, `Dungeon complete! ${grade} · Score ${run.score} — click the chest to claim drops.`, 'success');
+  toast(session, `Dungeon complete! ${grade} · ${rarity} chest · Score ${run.score} — open the chest to claim.`, 'success');
   openMenu(session, 'dungeon_chest');
 }
 
 function allDungeonMobsDead(run: NonNullable<PlayerState['dungeonRun']>): boolean {
   if (!run.mobHp) return false;
   return Object.values(run.mobHp).every((hp) => hp <= 0);
+}
+
+function roomEnterToast(type: ReturnType<typeof currentRoomType>, room: number, rooms: number): string {
+  if (type === 'puzzle') return `Puzzle Room ${room}/${rooms} — activate every pad (E).`;
+  if (type === 'trap') return `Trap Room ${room}/${rooms} — keep moving, then kill the mobs.`;
+  if (type === 'fairy') return `Fairy Room ${room}/${rooms} — hunt the hidden secret.`;
+  if (room >= rooms) return `Blood Room ${room}/${rooms} — clear the pack, then the Blood Door.`;
+  return `Room ${room}/${rooms} — two packs. Clear them, then the door.`;
+}
+
+function activatePuzzlePad(session: Session, padKey: string): void {
+  const run = session.player.dungeonRun;
+  if (!run || currentRoomType(run) !== 'puzzle') throw new Error('No puzzle here');
+  const id = padKey.startsWith('dungeon_pad:') ? padKey : `dungeon_pad:${padKey}`;
+  run.puzzlePads ??= {};
+  if (run.puzzlePads[id]) {
+    toast(session, 'That pad is already glowing.', 'info');
+    return;
+  }
+  run.puzzlePads[id] = true;
+  if (puzzleComplete(run)) {
+    run.roomCleared = true;
+    run.score += dungeonRoomClearScore('puzzle', run.room >= run.rooms);
+    toast(session, 'All pads lit — the door unlocks!', 'success');
+  } else {
+    const done = Object.values(run.puzzlePads).filter(Boolean).length;
+    toast(session, `Pad activated (${done}/4).`, 'success');
+  }
+  syncDungeonParty(session);
+  pushState(session);
 }
 
 function handleDungeonDoor(session: Session): void {
@@ -2322,33 +2553,61 @@ function handleDungeonDoor(session: Session): void {
   if (phase === 'starter') {
     run.phase = 'rooms';
     run.room = 1;
-    run.roomCleared = false;
-    run.secretClaimed = false;
-    run.mobHp = initRoomMobs(run);
+    setupDungeonRoom(run);
     warpToDungeonSpawn(session);
     pushState(session, { resetPosition: true });
-    toast(session, 'The Wither Door opens! Defeat the starred mobs (☠), then return to the door.', 'success');
+    toast(session, roomEnterToast(currentRoomType(run), run.room, run.rooms), 'success');
+    syncDungeonParty(session);
     return;
   }
 
   if (phase === 'rooms') {
-    if (!run.roomCleared) throw new Error('Defeat all mobs in this room before opening the door!');
+    if (!run.roomCleared) {
+      const type = currentRoomType(run);
+      if (type === 'puzzle') throw new Error('Activate every puzzle pad before opening the door!');
+      throw new Error('Defeat all mobs in this room before opening the door!');
+    }
     if (run.room >= run.rooms) {
       run.phase = 'boss';
-      run.bossHp = floor?.boss.health;
+      run.bossPhaseIndex = 0;
+      run.mobHp = {};
+      if (floor) {
+        initBossPhaseHp(run, floor.boss.health);
+        initBossAdds(run, floor.boss.health);
+      }
       warpToDungeonSpawn(session);
       pushState(session, { resetPosition: true });
-      toast(session, `The Blood Door opens! ${floor?.boss.name} awaits — click to attack!`, 'success');
+      toast(session, `The Blood Door opens! ${run.bossPhaseName ?? floor?.boss.name} awaits.`, 'success');
+      syncDungeonParty(session);
       return;
     }
     run.room++;
-    run.roomCleared = false;
-    run.secretClaimed = false;
-    run.mobHp = initRoomMobs(run);
+    setupDungeonRoom(run);
     warpToDungeonSpawn(session);
     pushState(session, { resetPosition: true });
-    toast(session, `Room ${run.room}/${run.rooms} — clear the mobs!`, 'info');
+    toast(session, roomEnterToast(currentRoomType(run), run.room, run.rooms), 'info');
+    syncDungeonParty(session);
   }
+}
+
+function dungeonPlayerHit(session: Session): { damage: number; critical: boolean; receivedMult: number } {
+  const run = session.player.dungeonRun!;
+  const bow = holdingBow(session.player);
+  const rules = classAutoAttackRules(run.dungeonClass, bow);
+  let manaNote = 1;
+  if (rules.manaCost > 0) {
+    if (session.player.mana < rules.manaCost) manaNote = 0.4;
+    else session.player.mana -= rules.manaCost;
+  }
+  const critical = rollCrit(session.player.stats.critChance);
+  const damage = Math.round(meleeDamage(
+    playerWeaponDamage(session.player),
+    session.player.stats.strength,
+    session.player.stats.critDamage,
+    critical,
+    combatDamageBonus(skillLevel(session.player, 'combat')),
+  ) * rules.damageMult * manaNote);
+  return { damage, critical, receivedMult: run.dungeonClass === 'tank' ? 0.85 : 1 };
 }
 
 function doDungeonMobCombat(session: Session, mobEntityId: string): void {
@@ -2357,38 +2616,61 @@ function doDungeonMobCombat(session: Session, mobEntityId: string): void {
   const hp = run.mobHp[mobEntityId];
   if (hp == null || hp <= 0) throw new Error('That mob is already defeated');
 
-  const critical = rollCrit(session.player.stats.critChance);
-  const playerDmg = Math.round(meleeDamage(
-    playerWeaponDamage(session.player),
-    session.player.stats.strength,
-    session.player.stats.critDamage,
-    critical,
-    combatDamageBonus(skillLevel(session.player, 'combat')),
-  ) * dungeonClassMultiplier(run.dungeonClass));
-
-  run.mobHp[mobEntityId] = Math.max(0, hp - playerDmg);
-
-  const mobDmg = dungeonMobDamage(run, mobEntityId);
-  const tankReduction = run.dungeonClass === 'tank' ? 0.85 : 1;
-  const received = Math.round(incomingDamage(mobDmg, effectiveDefense(session.player, abilitySessionView(session))) * tankReduction);
-  session.player.hp -= received;
-
-  if (run.mobHp[mobEntityId] <= 0) {
-    run.score += 15 + Math.floor(Math.random() * 11);
-    gainSkillXp(session, 'dungeoneering', 2);
+  const pos = dungeonMobEntityPosition(run, mobEntityId);
+  const bow = holdingBow(session.player);
+  const rules = classAutoAttackRules(run.dungeonClass, bow);
+  if (pos && Math.hypot(pos.x - session.player.x, pos.y - session.player.y) > rules.range + 0.4) {
+    throw new Error('Get closer — or face them with a bow.');
+  }
+  if (pos && rules.requireFacing && !facingToward(session.player.x, session.player.y, pos.x, pos.y, session.player.facing)) {
+    throw new Error('Turn to face your target');
   }
 
-  if (allDungeonMobsDead(run)) {
+  if (mobEntityId.startsWith('dungeon_clone:')) {
+    const punish = Math.round(session.player.maxHp * 0.12);
+    session.player.hp -= punish;
+    toast(session, 'Wrong Livid! The clone cuts you.', 'error');
+    if (session.player.hp <= 0) {
+      handlePlayerDeath(session, 'A Livid clone killed you!');
+      return;
+    }
+    pushState(session);
+    return;
+  }
+
+  const { damage: playerDmg, critical, receivedMult } = dungeonPlayerHit(session);
+  applyDungeonMobDamage(session, mobEntityId, playerDmg);
+  emitDamageNumber(session, playerDmg, critical, pos?.x, pos?.y);
+
+  const mobDmg = dungeonMobDamage(run, mobEntityId);
+  const received = Math.round(incomingDamage(mobDmg, effectiveDefense(session.player, abilitySessionView(session))) * receivedMult);
+  session.player.hp -= received;
+
+  if ((run.mobHp[mobEntityId] ?? 0) <= 0) {
+    grantDungeonMobLoot(session);
+    gainSkillXp(session, 'dungeoneering', 2);
+    if (dungeonPhase(run) === 'boss' && currentBossPhase(run).mechanic === 'golems' && !bossAddsAlive(run)) {
+      if (tryAdvanceBossPhase(session)) {
+        completeDungeon(session);
+        return;
+      }
+      pushState(session);
+      return;
+    }
+  }
+
+  if (dungeonPhase(run) === 'rooms' && allDungeonMobsDead(run)) {
     run.roomCleared = true;
-    run.score += 30 + Math.floor(Math.random() * 21);
+    run.score += dungeonRoomClearScore(currentRoomType(run), run.room >= run.rooms);
     toast(session, `Room cleared! The door unlocks. ${critical ? 'CRITICAL! ' : ''}(-${received} HP)`, 'success');
   } else if (session.player.hp <= 0) {
     handlePlayerDeath(session, `A dungeon mob killed you! ${critical ? 'CRITICAL! ' : ''}`);
     return;
   } else {
     const remaining = Object.values(run.mobHp).filter((entry) => entry > 0).length;
-    toast(session, `${playerDmg.toLocaleString()} dmg! ${remaining} mob${remaining === 1 ? '' : 's'} left. (-${received} HP)`, 'success');
+    toast(session, `${playerDmg.toLocaleString()} dmg! ${remaining} left. (-${received} HP)`, 'success');
   }
+  syncDungeonParty(session);
   pushState(session);
 }
 
@@ -2399,33 +2681,49 @@ function doDungeonBossCombat(session: Session): void {
   if (!floor) return;
   if (dungeonPhase(run) !== 'boss') throw new Error('No boss here');
 
-  if (run.bossHp == null) run.bossHp = floor.boss.health;
-  const hotbar = hotbarStack(session.player.inventory, session.player.hotbarSlot);
-  const weaponDamage = hotbar ? ITEMS[hotbar.itemId]?.damage ?? 5 : playerWeaponDamage(session.player);
-  const critical = rollCrit(session.player.stats.critChance);
-  const damage = Math.round(meleeDamage(
-    weaponDamage,
-    session.player.stats.strength,
-    session.player.stats.critDamage,
-    critical,
-  ) * dungeonClassMultiplier(run.dungeonClass));
+  const phase = currentBossPhase(run);
+  if (phase.mechanic === 'golems' && bossAddsAlive(run)) {
+    throw new Error('Kill the Giants first');
+  }
+  if (run.bossHp == null) initBossPhaseHp(run, floor.boss.health);
 
-  run.bossHp = Math.max(0, run.bossHp - damage);
-  run.score += 10;
+  const { damage: rawDamage, critical, receivedMult } = dungeonPlayerHit(session);
+  let damage = rawDamage;
+  if ((phase.mechanic === 'adds' || phase.mechanic === 'crystals') && bossAddsAlive(run)) {
+    damage = Math.round(damage * 0.5);
+  }
+  if (phase.mechanic === 'ranged' && !holdingBow(session.player) && run.dungeonClass !== 'archer') {
+    const reflect = Math.round(damage * 0.35);
+    session.player.hp -= reflect;
+    damage = Math.round(damage * 0.4);
+    toast(session, 'Thorn reflects melee — use a bow!', 'error');
+  }
 
-  if (run.bossHp <= 0) {
-    completeDungeon(session);
+  applyDungeonBossHp(session, damage);
+  emitDamageNumber(session, damage, critical);
+
+  if ((run.bossHp ?? 0) <= 0) {
+    if (tryAdvanceBossPhase(session)) {
+      completeDungeon(session);
+      return;
+    }
+    pushState(session);
     return;
   }
 
-  const tankReduction = run.dungeonClass === 'tank' ? 0.85 : 1;
-  session.player.hp -= Math.round(incomingDamage(floor.boss.damage, effectiveDefense(session.player, abilitySessionView(session))) * tankReduction);
+  let incoming = floor.boss.damage;
+  if (phase.mechanic === 'still' && standingStill(session.lastMoveAt)) incoming *= 1.55;
+  if (phase.mechanic === 'move' && Math.hypot(session.player.x - 13, session.player.y - 8) < 1.8) incoming *= 1.45;
+  if (phase.mechanic === 'tank' && run.dungeonClass !== 'tank') incoming *= 1.2;
+  const taken = Math.round(incomingDamage(incoming, effectiveDefense(session.player, abilitySessionView(session))) * receivedMult);
+  session.player.hp -= taken;
   if (session.player.hp <= 0) {
-    handlePlayerDeath(session, `${floor.boss.name} killed you!`);
+    handlePlayerDeath(session, `${run.bossPhaseName ?? floor.boss.name} killed you!`);
     return;
   }
+  syncDungeonParty(session);
   pushState(session);
-  toast(session, `${damage.toLocaleString()} dmg to ${floor.boss.name}! (${run.bossHp.toLocaleString()} HP left)`, 'success');
+  toast(session, `${damage.toLocaleString()} dmg to ${run.bossPhaseName ?? floor.boss.name}! (${(run.bossHp ?? 0).toLocaleString()} HP left)`, 'success');
 }
 
 /** Menu shortcut to a district. Same island = a walk you skipped; other islands need a warp. */
@@ -2693,19 +2991,28 @@ function abilitySessionView(session: Session) {
   };
 }
 
-function damageAllDungeonMobs(session: Session, damage: number): number {
+function damageAllDungeonMobs(session: Session, damage: number, classFilter = false): number {
   const run = session.player.dungeonRun;
   if (!run?.mobHp) return 0;
   let hits = 0;
   for (const id of Object.keys(run.mobHp)) {
     if (run.mobHp[id] <= 0) continue;
-    run.mobHp[id] = Math.max(0, run.mobHp[id] - damage);
+    if (id.startsWith('dungeon_clone:')) continue;
+    if (classFilter) {
+      const pos = dungeonMobEntityPosition(run, id);
+      if (!pos || !classAbilityHitsMob(run.dungeonClass, session.player.x, session.player.y, pos.x, pos.y, session.player.facing)) {
+        continue;
+      }
+    }
+    applyDungeonMobDamage(session, id, damage);
     hits++;
-    if (run.mobHp[id] <= 0) run.score += 15;
   }
-  if (hits > 0 && allDungeonMobsDead(run)) {
+  if (hits > 0 && dungeonPhase(run) === 'rooms' && allDungeonMobsDead(run)) {
     run.roomCleared = true;
-    run.score += 30;
+    run.score += dungeonRoomClearScore(currentRoomType(run), run.room >= run.rooms);
+  }
+  if (hits > 0 && dungeonPhase(run) === 'boss' && currentBossPhase(run).mechanic === 'golems' && !bossAddsAlive(run)) {
+    tryAdvanceBossPhase(session);
   }
   return hits;
 }
@@ -2771,7 +3078,7 @@ function doUseAbility(session: Session): void {
     const hits = damageAllDungeonMobs(session, dmg);
     const run = session.player.dungeonRun;
     if (run && dungeonPhase(run) === 'boss' && run.bossHp != null && run.bossHp > 0) {
-      run.bossHp = Math.max(0, run.bossHp - dmg);
+      applyDungeonBossHp(session, dmg);
       message = `${ability.name}! ${dmg.toLocaleString()} damage to the boss!`;
     } else if (session.player.activeSlayer?.bossHp) {
       const worldHits = damageNearbyWorldMobs(session, dmg);
@@ -2787,16 +3094,16 @@ function doUseAbility(session: Session): void {
     if (run?.mobHp) {
       const alive = Object.entries(run.mobHp).filter(([, hp]) => hp > 0);
       if (alive.length) {
-        const [mobId, hp] = alive[0];
-        run.mobHp[mobId] = Math.max(0, hp - dmg);
-        if (run.mobHp[mobId] <= 0) {
-          run.score += 15;
-          if (allDungeonMobsDead(run)) run.roomCleared = true;
+        const [mobId] = alive[0]!;
+        applyDungeonMobDamage(session, mobId, dmg);
+        if (allDungeonMobsDead(run)) {
+          run.roomCleared = true;
+          run.score += dungeonRoomClearScore(currentRoomType(run), run.room >= run.rooms);
         }
         message = `${ability.name}! ${dmg.toLocaleString()} damage!`;
       }
     } else if (run && dungeonPhase(run) === 'boss' && run.bossHp != null) {
-      run.bossHp = Math.max(0, run.bossHp - dmg);
+      applyDungeonBossHp(session, dmg);
       message = `${ability.name}! ${dmg.toLocaleString()} damage to boss!`;
     } else if (session.player.activeSlayer?.bossHp) {
       const worldHits = damageNearbyWorldMobs(session, dmg);
@@ -2835,6 +3142,7 @@ function doUseAbility(session: Session): void {
 
   if (runCompletesDungeon(session)) return;
 
+  if (session.player.dungeonRun) syncDungeonParty(session);
   pushState(session, resetPosition ? { resetPosition: true } : undefined);
   toast(session, message, 'success');
 }
@@ -2849,30 +3157,43 @@ function useDungeonClassAbility(session: Session): void {
   if (session.player.mana < ability.manaCost) {
     throw new Error(`Not enough mana (${Math.floor(session.player.mana)}/${session.player.maxMana})`);
   }
+  if (run.dungeonClass === 'archer' && !holdingBow(session.player)) {
+    throw new Error('Volley needs a bow on your hotbar');
+  }
   session.player.mana -= ability.manaCost;
   session.abilityCooldowns[key] = Date.now() + ability.cooldownSec * 1000;
   let message = `${ability.name}!`;
   if (ability.kind === 'heal') {
-    const heal = Math.round(session.player.maxHp * 0.35);
-    session.player.hp = Math.min(session.player.maxHp, session.player.hp + heal);
+    const heal = healDungeonParty(session, 0.35, 0.25);
     message = `${ability.name}! +${heal} HP`;
   } else {
     const dmg = abilityDamage(session.player, ability.damage ?? 500, 0.2);
-    const hits = damageAllDungeonMobs(session, dmg);
+    const hits = damageAllDungeonMobs(session, dmg, true);
     if (run.bossHp != null && dungeonPhase(run) === 'boss' && run.bossHp > 0) {
-      run.bossHp = Math.max(0, run.bossHp - dmg);
-      message = `${ability.name}! ${dmg.toLocaleString()} damage to boss!`;
+      const bossPos = { x: 13, y: 8 };
+      if (classAbilityHitsMob(run.dungeonClass, session.player.x, session.player.y, bossPos.x, bossPos.y, session.player.facing)) {
+        let dealt = dmg;
+        const mechanic = currentBossPhase(run).mechanic;
+        if ((mechanic === 'adds' || mechanic === 'crystals') && bossAddsAlive(run)) dealt = Math.round(dealt * 0.5);
+        applyDungeonBossHp(session, dealt);
+        emitDamageNumber(session, dealt, false, bossPos.x, bossPos.y);
+        message = `${ability.name}! ${dealt.toLocaleString()} damage to ${run.bossPhaseName ?? 'boss'}!`;
+      } else {
+        message = hits > 0
+          ? `${ability.name}! ${dmg.toLocaleString()} damage to ${hits} mob${hits === 1 ? '' : 's'}!`
+          : `${ability.name}! Face the boss to hit them.`;
+      }
     } else if (hits > 0) {
       message = `${ability.name}! ${dmg.toLocaleString()} damage to ${hits} mob${hits === 1 ? '' : 's'}!`;
     } else {
-      message = `${ability.name}! No targets nearby.`;
+      message = `${ability.name}! No targets in your cone/line.`;
     }
     if (ability.kind === 'shield') {
-      session.shieldDefense = 80;
-      session.shieldUntil = Date.now() + 6000;
+      shieldDungeonParty(session, 80, 6000);
       message += ' Shield gained.';
     }
   }
+  syncDungeonParty(session);
   if (runCompletesDungeon(session)) return;
   pushState(session);
   toast(session, message, 'success');
@@ -2881,12 +3202,15 @@ function useDungeonClassAbility(session: Session): void {
 function runCompletesDungeon(session: Session): boolean {
   const run = session.player.dungeonRun;
   if (!run) return false;
-  if (dungeonPhase(run) === 'boss' && run.bossHp != null && run.bossHp <= 0) {
-    run.score += 100;
-    completeDungeon(session);
-    return true;
+  if (dungeonPhase(run) !== 'boss' || run.bossHp == null) return false;
+  if (currentBossPhase(run).mechanic === 'golems' && bossAddsAlive(run)) return false;
+  if (run.bossHp > 0) return false;
+  const phases = bossPhasesForFloor(run.floorId);
+  if ((run.bossPhaseIndex ?? 0) < phases.length - 1) {
+    return tryAdvanceBossPhase(session) ? (completeDungeon(session), true) : false;
   }
-  return false;
+  completeDungeon(session);
+  return true;
 }
 
 function consumeHotbarOne(session: Session): boolean {
@@ -3234,9 +3558,15 @@ function worldMobTick(): void {
       if (mob.hp <= 0 && mob.respawnAt && now >= mob.respawnAt) {
         mob.hp = mob.maxHp;
         mob.respawnAt = undefined;
+        if (mob.homeX != null) mob.x = mob.homeX;
+        if (mob.homeY != null) mob.y = mob.homeY;
         changed = true;
       }
+      if (mob.hp > 0 && !mob.slayerBoss && mob.mobId !== 'ender_dragon' && mob.mobId !== 'kuudra') {
+        if (wanderWorldMob(session, mob)) changed = true;
+      }
     }
+    if (dungeonHazardTick(session)) changed = true;
     const channel = session.player.gatherChannel;
     if (channel?.fishPhase === 'waiting' && now - channel.startedAt >= channel.durationMs && !channel.biteUntil) {
       channel.fishPhase = 'bite';
@@ -3255,30 +3585,74 @@ function worldMobTick(): void {
   }
 }
 
-function playerMelee(session: Session, mobId = 'zombie', mobMaxHp = 100): { damage: number; critical: boolean; thunderBonus: number } {
-  const tool = bestTool(session.player, 'sword');
+function wanderWorldMob(session: Session, mob: NonNullable<PlayerState['worldMobs']>[number]): boolean {
+  if (Math.random() > 0.42) return false;
+  const homeX = mob.homeX ?? mob.x;
+  const homeY = mob.homeY ?? mob.y;
+  const dirs: Array<[number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const [dx, dy] = dirs[Math.floor(Math.random() * dirs.length)]!;
+  const nx = mob.x + dx;
+  const ny = mob.y + dy;
+  if (Math.hypot(nx - homeX, ny - homeY) > 1.45) return false;
+  const map = mapFor(session);
+  if (!canStand(map, nx, ny)) return false;
+  mob.x = nx;
+  mob.y = ny;
+  return true;
+}
+
+function dungeonHazardTick(session: Session): boolean {
+  const run = session.player.dungeonRun;
+  if (!run || session.player.zoneId !== DUNGEON_ZONE) return false;
+  const type = currentRoomType(run);
+  let hurt = 0;
+  if (type === 'trap' && !run.roomCleared) {
+    const map = buildDungeonRoomMap(run);
+    const tile = map.tiles[Math.floor(session.player.y)]?.[Math.floor(session.player.x)];
+    if (tile === 'web') hurt += Math.round(session.player.maxHp * 0.04);
+    if (standingStill(session.lastMoveAt)) hurt += Math.round(session.player.maxHp * 0.06);
+  }
+  if (dungeonPhase(run) === 'boss' && currentBossPhase(run).mechanic === 'burn') {
+    hurt += Math.round(session.player.maxHp * 0.035);
+  }
+  if (hurt <= 0) return false;
+  session.player.hp -= hurt;
+  if (session.player.hp <= 0) {
+    handlePlayerDeath(session, type === 'trap' ? 'A dungeon trap killed you!' : 'Necron\'s wither burn killed you!');
+    return false;
+  }
+  const now = Date.now();
+  if (now - (session.lastActionAt.dungeonHazard ?? 0) > 2200) {
+    session.lastActionAt.dungeonHazard = now;
+    toast(session, type === 'trap' ? 'Traps! Keep moving.' : 'Wither burn!', 'error');
+  }
+  return true;
+}
+
+function playerMelee(session: Session, mobId = 'zombie', mobMaxHp = 100, facingOk = true): { damage: number; critical: boolean; thunderBonus: number } {
   const baseCrit = rollCrit(session.player.stats.critChance);
+  const facingMult = facingOk ? 1 : 0.55;
   const base = Math.round(meleeDamage(
-    tool.damage ?? 4,
+    playerWeaponDamage(session.player),
     session.player.stats.strength,
     session.player.stats.critDamage,
     baseCrit,
     combatDamageBonus(skillLevel(session.player, 'combat')),
-  ));
+  ) * facingMult);
   const proc = procCombatDamage(session.player, base, mobId, mobMaxHp);
-  emit(session.socket, { type: 'damageNumber', x: session.player.x, y: session.player.y, amount: proc.damage, critical: proc.critical });
+  emitDamageNumber(session, proc.damage, proc.critical);
   if (proc.thunderBonus > 0) toast(session, `THUNDERLORD! +${proc.thunderBonus} dmg`, 'loot');
   return { damage: proc.damage, critical: proc.critical || baseCrit, thunderBonus: proc.thunderBonus };
 }
 
-function grantMobRewards(session: Session, mobId: string): void {
+function grantMobRewards(session: Session, mobId: string, elite = false): void {
   const mob = MOBS[mobId] ?? MOBS.zombie;
-  const magicFind = session.player.stats.magicFind ?? 0;
+  const magicFind = (session.player.stats.magicFind ?? 0) + (elite ? 15 : 0);
   for (const drop of rollDropTable(session, mob.drops)) {
     grantDropStack(session, drop.itemId, drop.qty, magicFind);
   }
-  gainSkillXp(session, 'combat', mob.combatXp);
-  session.player.coins += applyLootingToCoins(session.player, mob.coins);
+  gainSkillXp(session, 'combat', Math.round(mob.combatXp * (elite ? 1.5 : 1)));
+  session.player.coins += applyLootingToCoins(session.player, mob.coins * (elite ? 2 : 1));
   awardPetXp(session, 'combat', mob.combatXp);
   if (!session.player.quests) session.player.quests = emptyQuestBook();
   ensureMidgame(session.player);
@@ -3288,6 +3662,7 @@ function grantMobRewards(session: Session, mobId: string): void {
     markStatsDirty(session);
     toast(session, bestiaryMsg, 'success');
   }
+  if (elite) toast(session, `Elite bounty — extra coins and Magic Find.`, 'loot');
   const egg = PET_EGGS.find((entry) => entry.fromMob === mob.id);
   const eggChance = currentMayor().id === 'diana' ? 0.04 : 0.02;
   if (egg && Math.random() < eggChance) {
@@ -3317,6 +3692,7 @@ function maybeSpawnSlayerBoss(session: Session): void {
   const tier = slayer?.tiers.find((entry) => entry.tier === quest.tier);
   if (!slayer || !tier) return;
   quest.bossHp = tier.health;
+  quest.bossPhase = 0;
   const id = `sb:${slayer.id}`;
   quest.bossId = id;
   const map = mapFor(session);
@@ -3343,6 +3719,8 @@ function maybeSpawnSlayerBoss(session: Session): void {
       label: `${slayer.name} T${tier.tier}`,
       sprite: mobSpriteId(slayer.targetMob),
       slayerBoss: true,
+      homeX: x,
+      homeY: y,
     },
   ];
   toast(session, `${slayer.name} spawned nearby! Press E to fight.`, 'success');
@@ -3369,26 +3747,92 @@ function defeatSlayerBoss(session: Session): void {
   toast(session, `${slayer.name} defeated! +${tier.xp} Slayer XP — check your inventory for drops.`, 'success');
 }
 
+function applySlayerPhase(session: Session, slayerId: string, phase: number, boss: NonNullable<PlayerState['worldMobs']>[number]): void {
+  const map = mapFor(session);
+  if (slayerId === 'sven' && phase === 2) {
+    const pups: NonNullable<PlayerState['worldMobs']> = [];
+    for (let i = 0; i < 2; i++) {
+      const x = boss.x + (i === 0 ? 1.6 : -1.6);
+      const y = boss.y + 0.8;
+      if (!canStand(map, x, y)) continue;
+      pups.push({
+        id: `svenpup:${Date.now()}:${i}`,
+        mobId: 'wolf',
+        zoneId: session.player.zoneId,
+        x,
+        y,
+        hp: Math.round((MOBS.wolf?.health ?? 250) * 1.4),
+        maxHp: Math.round((MOBS.wolf?.health ?? 250) * 1.4),
+        label: 'Sven Pup',
+        sprite: mobSpriteId('wolf'),
+        homeX: x,
+        homeY: y,
+      });
+    }
+    if (pups.length) session.player.worldMobs = [...(session.player.worldMobs ?? []), ...pups];
+    toast(session, 'Sven calls pups!', 'info');
+    return;
+  }
+  if (slayerId === 'voidgloom') {
+    const offsets: Array<[number, number]> = [[3, 0], [-3, 0], [0, 3], [0, -3], [2, 2], [-2, -2]];
+    for (const [dx, dy] of offsets) {
+      const x = session.player.x + dx;
+      const y = session.player.y + dy;
+      if (canStand(map, x, y)) {
+        boss.x = x;
+        boss.y = y;
+        toast(session, 'The Enderman teleported!', 'info');
+        return;
+      }
+    }
+  }
+  if (slayerId === 'revenant') toast(session, 'Revenant explosion — keep moving!', 'info');
+  else if (slayerId === 'tarantula') toast(session, 'Webbed! Hits sting harder.', 'info');
+  else if (slayerId === 'inferno') toast(session, 'Inferno fire trail!', 'info');
+}
+
 function attackWorldMob(session: Session, mobId: string): void {
   ensureWorldMobs(session);
   const mob = (session.player.worldMobs ?? []).find((entry) => entry.id === mobId);
   if (!mob || mob.hp <= 0) throw new Error('That mob is gone');
-  if (Math.hypot(mob.x - session.player.x, mob.y - session.player.y) > 2.4) throw new Error('Get closer to attack');
-  const { damage, critical } = playerMelee(session, mob.mobId, mob.maxHp);
+  const range = overworldAttackRange(holdingBow(session.player));
+  if (Math.hypot(mob.x - session.player.x, mob.y - session.player.y) > range) throw new Error('Get closer to attack');
+  const facingOk = facingToward(session.player.x, session.player.y, mob.x, mob.y, session.player.facing);
+  const { damage, critical } = playerMelee(session, mob.mobId, mob.maxHp, facingOk);
   mob.hp = Math.max(0, mob.hp - damage);
-  if (mob.slayerBoss && session.player.activeSlayer) session.player.activeSlayer.bossHp = mob.hp;
+  const quest = session.player.activeSlayer;
+  if (mob.slayerBoss && quest) {
+    quest.bossHp = mob.hp;
+    const pct = mob.maxHp > 0 ? mob.hp / mob.maxHp : 0;
+    if (pct <= 0.66 && (quest.bossPhase ?? 0) < 1) {
+      quest.bossPhase = 1;
+      applySlayerPhase(session, quest.slayerId, 1, mob);
+    } else if (pct <= 0.33 && (quest.bossPhase ?? 0) < 2) {
+      quest.bossPhase = 2;
+      applySlayerPhase(session, quest.slayerId, 2, mob);
+    } else if (quest.slayerId === 'voidgloom' && (quest.bossPhase ?? 0) >= 2 && Math.random() < 0.2) {
+      applySlayerPhase(session, quest.slayerId, 2, mob);
+    }
+  }
   if (mob.mobId === 'ender_dragon' && session.player.dragonFight) session.player.dragonFight.hp = mob.hp;
   if (mob.mobId === 'kuudra' && session.player.kuudraFight) session.player.kuudraFight.hp = mob.hp;
-    if (mob.hp <= 0) {
+  if (mob.hp <= 0) {
     finishWorldMobKill(session, mob);
     pushState(session);
     toast(session, `${critical ? 'CRITICAL! ' : ''}Defeated ${mob.label}! (${damage.toLocaleString()} dmg)`, 'success');
     return;
   }
   const def = MOBS[mob.mobId] ?? MOBS.zombie;
-  const received = Math.round(incomingDamage(mob.slayerBoss
-    ? (SLAYERS.find((entry) => entry.id === session.player.activeSlayer?.slayerId)?.tiers.find((tier) => tier.tier === session.player.activeSlayer?.tier)?.damage ?? def.damage)
-    : def.damage, effectiveDefense(session.player, abilitySessionView(session))));
+  let incoming = mob.slayerBoss
+    ? (SLAYERS.find((entry) => entry.id === quest?.slayerId)?.tiers.find((tier) => tier.tier === quest?.tier)?.damage ?? def.damage)
+    : def.damage;
+  if (mob.elite) incoming *= 1.25;
+  if (mob.slayerBoss && quest) {
+    if (quest.slayerId === 'revenant' && (quest.bossPhase ?? 0) >= 1 && standingStill(session.lastMoveAt)) incoming *= 1.8;
+    if (quest.slayerId === 'tarantula' && (quest.bossPhase ?? 0) >= 1) incoming *= 1.35;
+    if (quest.slayerId === 'inferno' && (quest.bossPhase ?? 0) >= 1) incoming *= 1.4;
+  }
+  const received = Math.round(incomingDamage(incoming, effectiveDefense(session.player, abilitySessionView(session))));
   session.player.hp -= received;
   if (session.player.hp <= 0) {
     handlePlayerDeath(session, `${mob.label} killed you!`);
@@ -3556,7 +4000,7 @@ function claimStarterQuest(session: Session): void {
   toast(session, 'Quest Book complete! +500 coins and Enchanted Cobblestone.', 'success');
 }
 
-function finishWorldMobKill(session: Session, mob: { id: string; mobId: string; slayerBoss?: boolean }): void {
+function finishWorldMobKill(session: Session, mob: { id: string; mobId: string; slayerBoss?: boolean; elite?: boolean }): void {
   if (mob.slayerBoss) {
     defeatSlayerBoss(session);
     return;
@@ -3569,7 +4013,7 @@ function finishWorldMobKill(session: Session, mob: { id: string; mobId: string; 
     defeatKuudra(session);
     return;
   }
-  grantMobRewards(session, mob.mobId);
+  grantMobRewards(session, mob.mobId, mob.elite);
   const live = (session.player.worldMobs ?? []).find((entry) => entry.id === mob.id);
   if (live) live.respawnAt = Date.now() + 7000;
 }
@@ -3650,6 +4094,7 @@ function inviteDungeonParty(session: Session): void {
   if (!session.player.dungeonRun) throw new Error('Enter a floor first');
   session.player.dungeonPartyId = session.player.id;
   session.player.dungeonRun.partyId = session.player.id;
+  setSharedRun(session.player.id, session.player.dungeonRun);
   let invited = 0;
   for (const other of sessions.values()) {
     if (other.player.id === session.player.id) continue;

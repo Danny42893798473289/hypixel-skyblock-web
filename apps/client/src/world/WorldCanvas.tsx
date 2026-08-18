@@ -350,6 +350,9 @@ function drawNameplate(
 }
 
 function interactionText(entity: WorldEntity, player: PlayerState): string {
+  if (entity.actionId?.startsWith('dungeon:pad')) {
+    return entity.label.includes('Activated') ? 'Already activated' : 'Activate puzzle pad';
+  }
   if (entity.kind === 'door') return entity.label.includes('Locked') ? entity.label : `Open ${entity.label.split('—')[0]?.trim() ?? entity.label}`;
   if (entity.kind === 'mob') {
     if (entity.actionId?.startsWith('slayerboss:')) return `Attack ${entity.label}`;

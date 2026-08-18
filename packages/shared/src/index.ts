@@ -14,6 +14,7 @@ export * from './world.js';
 export * from './islandBuild.js';
 export * from './bazaarCategories.js';
 export * from './dungeonContent.js';
+export * from './dungeonPlay.js';
 export * from './dungeonMap.js';
 export * from './accessories.js';
 export * from './worldCombat.js';

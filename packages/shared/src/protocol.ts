@@ -47,6 +47,8 @@ export interface SlayerQuestState {
   requiredXp: number;
   bossHp?: number;
   bossId?: string;
+  /** 0 = full, 1 = ≤66%, 2 = ≤33%. */
+  bossPhase?: number;
 }
 
 export type DungeonPhase = 'starter' | 'rooms' | 'boss';
@@ -67,6 +69,13 @@ export interface DungeonRunState {
   secretsFound?: number;
   secretClaimed?: boolean;
   partyId?: string;
+  /** One type per combat room (index = room - 1). Last is always Blood combat. */
+  roomTypes?: Array<'combat' | 'puzzle' | 'trap' | 'fairy'>;
+  puzzlePads?: Record<string, boolean>;
+  startedAt?: number;
+  deaths?: number;
+  bossPhaseIndex?: number;
+  bossPhaseName?: string;
 }
 
 export interface PlayerPublic {
@@ -153,6 +162,10 @@ export interface DungeonChestReward {
   starLabel?: string;
   grade?: string;
   drops: Array<{ itemId: ItemId; qty: number }>;
+  floorId?: string;
+  chestRarity?: 'wood' | 'gold' | 'diamond';
+  /** Coins / XP / essence / stars applied on first claim click. */
+  rewardsGranted?: boolean;
 }
 
 export type MenuId =

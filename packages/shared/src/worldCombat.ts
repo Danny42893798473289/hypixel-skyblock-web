@@ -17,6 +17,9 @@ export interface WorldMobInstance {
   sprite: string;
   slayerBoss?: boolean;
   respawnAt?: number;
+  elite?: boolean;
+  homeX?: number;
+  homeY?: number;
 }
 
 export interface GatherChannel {
@@ -59,16 +62,23 @@ export function spawnMobsForZone(zoneId: string, map: IslandMap): WorldMobInstan
     const mobId = String(action.target ?? 'zombie');
     const def = MOBS[mobId] ?? MOBS.zombie;
     for (let i = 0; i < 3; i++) {
+      const elite = Math.random() < 0.1;
+      const hp = Math.round(def.health * (elite ? 1.8 : 1));
+      const x = baseX + (i - 1) * 1.7;
+      const y = baseY + (i % 2) * 1.15;
       spawned.push({
         id: `wm:${zoneId}:${action.id}:${i}`,
         mobId: def.id,
         zoneId,
-        x: baseX + (i - 1) * 1.7,
-        y: baseY + (i % 2) * 1.15,
-        hp: def.health,
-        maxHp: def.health,
-        label: def.name,
+        x,
+        y,
+        hp,
+        maxHp: hp,
+        label: elite ? `★ Elite ${def.name}` : def.name,
         sprite: mobSpriteId(mobId),
+        elite,
+        homeX: x,
+        homeY: y,
       });
     }
   }

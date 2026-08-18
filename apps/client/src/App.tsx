@@ -3,6 +3,7 @@ import {
   ZONES,
   dungeonPhase,
   dungeonScoreGrade,
+  currentRoomType,
   currentMayor,
   SKILLS,
   skyblockLevelFromXp,
@@ -420,7 +421,7 @@ export function App() {
           <strong className="mc-red">Slayer · {player.activeSlayer.slayerId} T{player.activeSlayer.tier}</strong>
           <span>
             {player.activeSlayer.bossHp
-              ? `Boss spawned — ${player.activeSlayer.bossHp.toLocaleString()} ❤  (walk up, click to attack)`
+              ? `Boss · phase ${(player.activeSlayer.bossPhase ?? 0) + 1}/3 — ${player.activeSlayer.bossHp.toLocaleString()} ❤  (face it, click to attack)`
               : `Kill target mobs  ${player.activeSlayer.progressXp}/${player.activeSlayer.requiredXp} XP`}
           </span>
         </div>
@@ -432,13 +433,20 @@ export function App() {
           <span>
             {dungeonPhase(player.dungeonRun) === 'starter' && 'Starter Room — open the Wither Door (E)'}
             {dungeonPhase(player.dungeonRun) === 'rooms' && (
-              <>Room {player.dungeonRun.room}/{player.dungeonRun.rooms}
-                {player.dungeonRun.roomCleared ? ' ✓ Door unlocked' : ' — kill ☠ mobs'}
+              <>
+                {currentRoomType(player.dungeonRun) === 'puzzle' && `Puzzle ${player.dungeonRun.room}/${player.dungeonRun.rooms}${player.dungeonRun.roomCleared ? ' ✓ Door unlocked' : ' — activate pads (E)'}`}
+                {currentRoomType(player.dungeonRun) === 'trap' && `Trap ${player.dungeonRun.room}/${player.dungeonRun.rooms}${player.dungeonRun.roomCleared ? ' ✓ Door unlocked' : ' — keep moving, then kill'}`}
+                {currentRoomType(player.dungeonRun) === 'fairy' && `Fairy ${player.dungeonRun.room}/${player.dungeonRun.rooms}${player.dungeonRun.roomCleared ? ' — optional secret, door open' : ''}`}
+                {currentRoomType(player.dungeonRun) === 'combat' && (
+                  <>Room {player.dungeonRun.room}/{player.dungeonRun.rooms}
+                    {player.dungeonRun.roomCleared ? ' ✓ Door unlocked' : ' — kill ☠ packs'}
+                  </>
+                )}
               </>
             )}
-            {dungeonPhase(player.dungeonRun) === 'boss' && `Boss — ${player.dungeonRun.bossHp?.toLocaleString() ?? '?'} ❤`}
+            {dungeonPhase(player.dungeonRun) === 'boss' && `${player.dungeonRun.bossPhaseName ?? 'Boss'} — ${player.dungeonRun.bossHp?.toLocaleString() ?? '?'} ❤`}
           </span>
-          <span className="mc-yellow">Score: {player.dungeonRun.score} ({dungeonScoreGrade(player.dungeonRun.score)}) · Secrets: {player.dungeonRun.secretsFound ?? 0}</span>
+          <span className="mc-yellow">Score: {player.dungeonRun.score} ({dungeonScoreGrade(player.dungeonRun.score)}) · Secrets: {player.dungeonRun.secretsFound ?? 0} · Deaths: {player.dungeonRun.deaths ?? 0}</span>
           <span className="mc-gray">Type /leave to abandon</span>
         </div>
       ) : null}

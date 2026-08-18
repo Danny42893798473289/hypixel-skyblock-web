@@ -1,5 +1,14 @@
 import type { DungeonRunState } from './protocol.js';
 import { dungeonFloor } from './dungeonContent.js';
+import {
+  currentBossPhase,
+  currentRoomType,
+  puzzlePadCount,
+  roomHasSecret,
+  roomNeedsMobs,
+  secretPosition,
+  type DungeonRoomType,
+} from './dungeonPlay.js';
 import { ISLAND_THEMES, islandMap, type IslandMap, type TileKind, type WorldEntity } from './world.js';
 import { overlayLiveWorld, type WorldMobInstance } from './worldCombat.js';
 import type { PlacedMinion } from './minions.js';
@@ -37,8 +46,15 @@ export function initRoomMobs(run: DungeonRunState): Record<string, number> {
   if (!floor) return {};
   const phase = dungeonPhase(run);
   if (phase !== 'rooms') return {};
+  const type = currentRoomType(run);
+  if (!roomNeedsMobs(type)) return {};
 
-  const mobCount = 2 + Math.min(3, Math.floor(run.room / 2));
+  const blood = run.room >= run.rooms;
+  const mobCount = type === 'trap'
+    ? 2
+    : blood
+      ? 4 + Math.min(2, Math.floor(run.room / 5))
+      : 2 + Math.min(3, Math.floor(run.room / 2));
   const hp: Record<string, number> = {};
   for (let i = 0; i < mobCount; i++) {
     hp[`dungeon_mob:${i}`] = mobHealth(floor.requiredLevel, run.room, floor.master);
@@ -46,17 +62,74 @@ export function initRoomMobs(run: DungeonRunState): Record<string, number> {
   return hp;
 }
 
-function paintRoom(tiles: TileKind[][]): void {
-  const theme = ISLAND_THEMES.dungeon_hub;
+function paintFilled(tiles: TileKind[][], ground: TileKind, wall: TileKind): void {
   for (let y = 0; y < ROOM_H; y++) {
     for (let x = 0; x < ROOM_W; x++) {
       const edge = x === 0 || y === 0 || x === ROOM_W - 1 || y === ROOM_H - 1;
-      tiles[y][x] = edge ? theme.secondary : theme.ground;
+      tiles[y][x] = edge ? wall : ground;
     }
   }
-  // Door gap on the east wall
-  tiles[Math.floor(ROOM_H / 2)][ROOM_W - 1] = theme.ground;
-  tiles[Math.floor(ROOM_H / 2) - 1]?.[ROOM_W - 1] && (tiles[Math.floor(ROOM_H / 2) - 1][ROOM_W - 1] = theme.ground);
+  tiles[Math.floor(ROOM_H / 2)][ROOM_W - 1] = ground;
+  tiles[Math.floor(ROOM_H / 2) - 1][ROOM_W - 1] = ground;
+}
+
+function paintCombat(tiles: TileKind[][]): void {
+  const theme = ISLAND_THEMES.dungeon_hub;
+  paintFilled(tiles, theme.ground, theme.secondary);
+  for (let y = 2; y < ROOM_H - 2; y++) {
+    if (y >= 7 && y <= 10) continue;
+    tiles[y][13] = theme.secondary;
+  }
+}
+
+function paintPuzzle(tiles: TileKind[][]): void {
+  const theme = ISLAND_THEMES.dungeon_hub;
+  paintFilled(tiles, theme.ground, theme.secondary);
+  for (let y = 6; y <= 13; y++) {
+    for (let x = 7; x <= 18; x++) {
+      tiles[y][x] = theme.path;
+    }
+  }
+}
+
+function paintTrap(tiles: TileKind[][]): void {
+  const theme = ISLAND_THEMES.dungeon_hub;
+  paintFilled(tiles, theme.ground, theme.secondary);
+  for (let y = 6; y <= 11; y++) {
+    for (let x = 8; x <= 17; x++) {
+      tiles[y][x] = 'web';
+    }
+  }
+}
+
+function paintFairy(tiles: TileKind[][]): void {
+  const theme = ISLAND_THEMES.dungeon_hub;
+  paintFilled(tiles, theme.ground, theme.secondary);
+  for (let y = 1; y <= 5; y++) {
+    for (let x = 8; x <= 18; x++) {
+      const alcoveWall = y === 5 ? (x < 12 || x > 14) : (x === 8 || x === 18);
+      tiles[y][x] = alcoveWall ? theme.secondary : theme.ground;
+    }
+  }
+}
+
+function paintBoss(tiles: TileKind[][]): void {
+  const theme = ISLAND_THEMES.dungeon_hub;
+  paintFilled(tiles, theme.ground, theme.secondary);
+  tiles[2][2] = 'obsidian';
+  tiles[2][ROOM_W - 3] = 'obsidian';
+  tiles[ROOM_H - 3][2] = 'obsidian';
+  tiles[ROOM_H - 3][ROOM_W - 3] = 'obsidian';
+}
+
+function paintRoom(tiles: TileKind[][], type: DungeonRoomType | 'starter' | 'boss'): void {
+  const theme = ISLAND_THEMES.dungeon_hub;
+  if (type === 'combat') paintCombat(tiles);
+  else if (type === 'puzzle') paintPuzzle(tiles);
+  else if (type === 'trap') paintTrap(tiles);
+  else if (type === 'fairy') paintFairy(tiles);
+  else if (type === 'boss') paintBoss(tiles);
+  else paintFilled(tiles, theme.ground, theme.secondary);
 }
 
 function mobSprite(room: number): string {
@@ -72,19 +145,54 @@ function mobName(room: number, master: boolean): string {
   return `${prefix}Dungeon Zombie`;
 }
 
+function roomTitle(run: DungeonRunState, type: DungeonRoomType | 'starter' | 'boss'): string {
+  const floor = dungeonFloor(run.floorId);
+  if (type === 'boss') return run.bossPhaseName ?? floor?.boss.name ?? 'Boss';
+  if (type === 'starter') return 'Starter Room';
+  if (type === 'puzzle') return `Puzzle Room ${run.room}/${run.rooms}`;
+  if (type === 'trap') return `Trap Room ${run.room}/${run.rooms}`;
+  if (type === 'fairy') return `Fairy Room ${run.room}/${run.rooms}`;
+  return `Room ${run.room}/${run.rooms}`;
+}
+
+function puzzlePadPositions(): Array<{ x: number; y: number }> {
+  return [
+    { x: 8.5, y: 7.5 },
+    { x: 17.5, y: 7.5 },
+    { x: 8.5, y: 12.5 },
+    { x: 17.5, y: 12.5 },
+  ];
+}
+
+function packPosition(index: number, total: number): { x: number; y: number } {
+  const pack = index < Math.ceil(total / 2) ? 0 : 1;
+  const local = pack === 0 ? index : index - Math.ceil(total / 2);
+  const col = local % 2;
+  const row = Math.floor(local / 2);
+  return {
+    x: (pack === 0 ? 7.5 : 17.5) + col * 2.2,
+    y: 8 + row * 2,
+  };
+}
+
+function trapMobPosition(index: number): { x: number; y: number } {
+  return { x: index === 0 ? 6.5 : 19.5, y: 9 };
+}
+
 /** Build the in-world map for the player's current dungeon room. */
 export function buildDungeonRoomMap(run: DungeonRunState): IslandMap {
   const floor = dungeonFloor(run.floorId);
   const phase = dungeonPhase(run);
+  const type = currentRoomType(run);
   const theme = ISLAND_THEMES.dungeon_hub;
   const tiles: TileKind[][] = Array.from({ length: ROOM_H }, () => Array.from({ length: ROOM_W }, () => theme.hazard));
-  paintRoom(tiles);
+  paintRoom(tiles, type);
 
   const spawn = { x: 3.5, y: ROOM_H / 2 };
   const entities: WorldEntity[] = [];
   const district = {
     zoneId: DUNGEON_ZONE,
-    name: phase === 'boss' ? 'Boss Room' : phase === 'starter' ? 'Starter Room' : `Room ${run.room}`,
+    name: phase === 'boss' ? (run.bossPhaseName ?? 'Boss Room') : phase === 'starter' ? 'Starter Room' : roomTitle(run, type),
     x: 0,
     y: 0,
     width: ROOM_W,
@@ -99,7 +207,7 @@ export function buildDungeonRoomMap(run: DungeonRunState): IslandMap {
     x: ROOM_W / 2,
     y: 1.5,
     kind: 'sign',
-    label: phase === 'boss' ? floor?.boss.name ?? 'Boss' : phase === 'starter' ? 'Starter Room' : `Room ${run.room}/${run.rooms}`,
+    label: roomTitle(run, type),
     sprite: 'sign',
   });
 
@@ -124,38 +232,81 @@ export function buildDungeonRoomMap(run: DungeonRunState): IslandMap {
       actionId: 'dungeon:door',
     });
   } else if (phase === 'boss' && floor) {
+    const mechanic = currentBossPhase(run).mechanic;
+    const hideBoss = mechanic === 'golems' && Object.values(run.mobHp ?? {}).some((hp) => hp > 0);
     const bossHp = run.bossHp ?? floor.boss.health;
-    if (bossHp > 0) {
+    if (!hideBoss && bossHp > 0) {
       entities.push({
         id: 'dungeon_boss',
         zoneId: DUNGEON_ZONE,
         x: ROOM_W / 2,
         y: ROOM_H / 2 - 1,
         kind: 'mob',
-        label: `${floor.boss.name} (${fmtHp(bossHp)} ❤)`,
+        label: `${run.bossPhaseName ?? floor.boss.name} (${fmtHp(bossHp)} ❤)`,
         sprite: 'mob_brute',
         actionId: 'dungeon:boss',
       });
     }
-  } else if (phase === 'rooms' && floor) {
-    const mobHp = run.mobHp ?? initRoomMobs(run);
-    let mobIndex = 0;
-    for (const [id, hp] of Object.entries(mobHp)) {
+    const addHp = run.mobHp ?? {};
+    let addIndex = 0;
+    for (const [id, hp] of Object.entries(addHp)) {
       if (hp <= 0) continue;
-      const col = mobIndex % 3;
-      const row = Math.floor(mobIndex / 3);
+      const clone = id.startsWith('dungeon_clone:');
+      const crystal = id.startsWith('dungeon_crystal:');
+      const golem = id.startsWith('dungeon_golem:');
+      const col = addIndex % 3;
+      const row = Math.floor(addIndex / 3);
       entities.push({
         id,
         zoneId: DUNGEON_ZONE,
-        x: ROOM_W / 2 - 2 + col * 2.5,
-        y: ROOM_H / 2 - 1 + row * 2,
+        x: ROOM_W / 2 - 4 + col * 4,
+        y: ROOM_H / 2 + 2 + row * 2.2,
+        kind: 'mob',
+        label: clone
+          ? `Livid Clone (${fmtHp(hp)} ❤)`
+          : crystal
+            ? `Storm Crystal (${fmtHp(hp)} ❤)`
+            : golem
+              ? `Giant (${fmtHp(hp)} ❤)`
+              : `Scarf Minion (${fmtHp(hp)} ❤)`,
+        sprite: clone ? 'mob_brute' : crystal ? 'end_crystal' : golem ? 'mob_brute' : 'mob_zombie',
+        actionId: `dungeon:mob:${id}`,
+      });
+      addIndex++;
+    }
+  } else if (phase === 'rooms' && floor) {
+    if (type === 'puzzle') {
+      puzzlePadPositions().slice(0, puzzlePadCount()).forEach((pos, i) => {
+        const id = `dungeon_pad:${i}`;
+        const on = Boolean(run.puzzlePads?.[id]);
+        entities.push({
+          id,
+          zoneId: DUNGEON_ZONE,
+          x: pos.x,
+          y: pos.y,
+          kind: 'station',
+          label: on ? `Pad ${i + 1} — Activated` : `Puzzle Pad ${i + 1}`,
+          sprite: on ? 'crystal' : 'enchant_table',
+          actionId: `dungeon:pad:${i}`,
+        });
+      });
+    }
+
+    const mobHp = run.mobHp ?? initRoomMobs(run);
+    const alive = Object.entries(mobHp).filter(([, hp]) => hp > 0);
+    alive.forEach(([id, hp], mobIndex) => {
+      const pos = type === 'trap' ? trapMobPosition(mobIndex) : packPosition(mobIndex, alive.length);
+      entities.push({
+        id,
+        zoneId: DUNGEON_ZONE,
+        x: pos.x,
+        y: pos.y,
         kind: 'mob',
         label: `☠ ${mobName(run.room, floor.master)} (${fmtHp(hp)} ❤)`,
         sprite: mobSprite(run.room),
         actionId: `dungeon:mob:${id}`,
       });
-      mobIndex++;
-    }
+    });
 
     const isBloodRoom = run.room >= run.rooms;
     const locked = !run.roomCleared;
@@ -171,12 +322,13 @@ export function buildDungeonRoomMap(run: DungeonRunState): IslandMap {
       sprite: isBloodRoom ? 'blood_door' : 'wither_door',
       actionId: 'dungeon:door',
     });
-    if (!run.secretClaimed) {
+    if (!run.secretClaimed && roomHasSecret(type)) {
+      const secret = secretPosition(type);
       entities.push({
         id: 'dungeon:secret',
         zoneId: DUNGEON_ZONE,
-        x: 3.5,
-        y: ROOM_H - 3.5,
+        x: secret.x,
+        y: secret.y,
         kind: 'fairy',
         label: 'Dungeon Secret',
         sprite: 'fairy',
@@ -186,8 +338,8 @@ export function buildDungeonRoomMap(run: DungeonRunState): IslandMap {
     }
   }
 
-  // Crypt atmosphere
   for (let i = 0; i < 6; i++) {
+    if (type === 'fairy' && i < 3) continue;
     entities.push({
       id: `decor:${i}`,
       zoneId: DUNGEON_ZONE,
@@ -238,4 +390,10 @@ export function dungeonMobDamage(run: DungeonRunState, mobId: string): number {
   if (phase === 'boss') return floor.boss.damage;
   const room = run.room || 1;
   return mobDamage(floor.requiredLevel, room, floor.master);
+}
+
+export function dungeonMobEntityPosition(run: DungeonRunState, mobId: string): { x: number; y: number } | null {
+  const map = buildDungeonRoomMap(run);
+  const entity = map.entities.find((entry) => entry.id === mobId);
+  return entity ? { x: entity.x, y: entity.y } : null;
 }

@@ -1211,7 +1211,7 @@ function dungeonsMenu(player: PlayerState, context: Context = {}): MenuView {
         return slot(28 + i, 'dungeon_portal', floor.shortName, [
           line(floor.name, 'gold'),
           line(ready ? 'Catacombs requirement met' : `Requires Catacombs ${floor.requiredLevel}`, ready ? 'green' : 'red'),
-          line(`${floor.rooms} combat rooms + boss`, 'gray'),
+          line(`${floor.rooms} rooms (combat, puzzle, trap, fairy) + boss`, 'gray'),
           line(`Boss: ${floor.boss.name} — ${floor.boss.health.toLocaleString()} ❤`, 'red'),
           line(`Reward: ${floor.baseCatacombsXp} Catacombs XP + ${floor.coinReward.toLocaleString()} coins`, 'aqua'),
           line(floor.drops.length ? `Drops: ${floor.drops.slice(0, 3).map((d) => ITEMS[d.itemId]?.name ?? d.itemId).join(', ')}…` : 'No special drops', 'yellow'),
@@ -1223,8 +1223,8 @@ function dungeonsMenu(player: PlayerState, context: Context = {}): MenuView {
             line(`Floor: ${player.dungeonRun.floorId.toUpperCase()}`, 'aqua'),
             line(`Phase: ${dungeonPhase(player.dungeonRun)}`, 'gray'),
             line(dungeonPhase(player.dungeonRun) === 'rooms'
-              ? `Room ${player.dungeonRun.room}/${player.dungeonRun.rooms}${player.dungeonRun.roomCleared ? ' — door unlocked!' : ' — kill mobs first'}`
-              : dungeonPhase(player.dungeonRun) === 'boss' ? 'Boss fight!' : 'Starter Room — open Wither Door'),
+              ? `Room ${player.dungeonRun.room}/${player.dungeonRun.rooms}${player.dungeonRun.roomCleared ? ' — door unlocked!' : ''}`
+              : dungeonPhase(player.dungeonRun) === 'boss' ? `${player.dungeonRun.bossPhaseName ?? 'Boss'} fight!` : 'Starter Room — open Wither Door'),
             line(`Score: ${player.dungeonRun.score} (${dungeonScoreGrade(player.dungeonRun.score)})`, 'yellow'),
             line(`Class: ${pretty(player.dungeonRun.dungeonClass)}`, 'gray'),
             line('Return to your run in-world', 'yellow'),
@@ -1255,6 +1255,9 @@ function dungeonChestMenu(player: PlayerState): MenuView {
       parent: 'dungeons',
     };
   }
+  const rarity = chest.chestRarity ?? 'wood';
+  const chestItem = rarity === 'diamond' ? 'diamond' : rarity === 'gold' ? 'gold_ingot' : 'chest';
+  const rarityLabel = rarity === 'diamond' ? 'Diamond Chest' : rarity === 'gold' ? 'Gold Chest' : 'Wood Chest';
   const dropSlots = chest.drops.slice(0, 7).map((drop, i) => {
     const def = ITEMS[drop.itemId];
     return slot(19 + i, drop.itemId, def?.name ?? drop.itemId, [
@@ -1270,16 +1273,16 @@ function dungeonChestMenu(player: PlayerState): MenuView {
   });
   return {
     id: 'dungeon_chest',
-    title: `${chest.grade ? `${chest.grade} ` : ''}${chest.floorName} Chest`,
+    title: `${chest.grade ? `${chest.grade} ` : ''}${rarityLabel}`,
     rows: 4,
     slots: [
-      slot(4, 'chest', 'Dungeon Reward Chest', [
-        line(chest.grade ? `Grade ${chest.grade}` : '', 'gold'),
-        line(`+${chest.xp} Catacombs XP already granted`, 'aqua'),
-        line(`+${chest.coins.toLocaleString()} coins already granted`, 'gold'),
-        line(chest.starLabel ?? 'No gear was starred this run', chest.starLabel ? 'light_purple' : 'gray'),
-        line(chest.drops.length ? 'Click to claim drops!' : 'Empty chest', 'yellow'),
-      ], 'dungeonChest:claim', { glint: chest.drops.length > 0 }),
+      slot(4, chestItem, rarityLabel, [
+        line(chest.grade ? `Grade ${chest.grade} · ${chest.floorName}` : chest.floorName, 'gold'),
+        line(chest.rewardsGranted ? 'Coins, XP, and essence claimed' : `Click to claim ${chest.xp} Catacombs XP`, chest.rewardsGranted ? 'gray' : 'aqua'),
+        line(chest.rewardsGranted ? '' : `+${chest.coins.toLocaleString()} coins waiting`, chest.rewardsGranted ? 'gray' : 'gold'),
+        line(chest.starLabel ?? (chest.stars ? `${chest.stars}★ will apply to your first weapon/armor` : 'No gear starring this run'), chest.starLabel ? 'light_purple' : 'gray'),
+        line(chest.drops.length ? 'Click to claim drops!' : 'Empty of items — still claim XP & coins', 'yellow'),
+      ], 'dungeonChest:claim', { glint: chest.drops.length > 0 || !chest.rewardsGranted }),
       ...dropSlots,
       slot(27, 'arrow', 'Go Back', [line('Catacombs')], 'open:dungeons'),
       close(),

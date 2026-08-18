@@ -275,10 +275,10 @@ export interface DungeonClassAbility {
 }
 
 export const DUNGEON_CLASS_ABILITIES: Record<'berserk' | 'archer' | 'mage' | 'tank' | 'healer', DungeonClassAbility> = {
-  berserk: { name: 'Cleave', description: 'Strike every mob in the room.', manaCost: 40, cooldownSec: 8, damage: 800, kind: 'aoe' },
-  archer: { name: 'Volley', description: 'Rain arrows on every mob in the room.', manaCost: 35, cooldownSec: 10, damage: 700, kind: 'aoe' },
-  mage: { name: 'Mana Beam', description: 'A focused beam that shreds dungeon mobs.', manaCost: 80, cooldownSec: 6, damage: 1400, kind: 'aoe' },
-  tank: { name: 'Protective Aura', description: 'Gain a defense shield and pulse nearby mobs.', manaCost: 50, cooldownSec: 12, damage: 400, kind: 'shield' },
-  healer: { name: 'Healing Pulse', description: 'Restore a large chunk of health.', manaCost: 60, cooldownSec: 8, kind: 'heal' },
+  berserk: { name: 'Cleave', description: 'A cone in front of you — turn to face the pack.', manaCost: 40, cooldownSec: 8, damage: 800, kind: 'aoe' },
+  archer: { name: 'Volley', description: 'Needs a bow. Arrows in a line down your facing.', manaCost: 35, cooldownSec: 10, damage: 700, kind: 'aoe' },
+  mage: { name: 'Mana Beam', description: 'Big mana spend. Auto-attacks also drain a little mana.', manaCost: 80, cooldownSec: 6, damage: 1400, kind: 'aoe' },
+  tank: { name: 'Protective Aura', description: 'Shield yourself and nearby party members, then pulse the room.', manaCost: 50, cooldownSec: 12, damage: 400, kind: 'shield' },
+  healer: { name: 'Healing Pulse', description: 'Heal yourself and your dungeon party.', manaCost: 60, cooldownSec: 8, kind: 'heal' },
 };
 

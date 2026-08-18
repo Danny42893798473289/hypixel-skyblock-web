@@ -29,6 +29,14 @@ export function applyPartyDamage(hostId: string, mobId: string, damage: number):
   return run;
 }
 
+export function applyPartyBossDamage(hostId: string, damage: number): DungeonRunState | null {
+  const run = partyRuns.get(hostId);
+  if (!run || run.bossHp == null) return null;
+  run.bossHp = Math.max(0, run.bossHp - damage);
+  partyRuns.set(hostId, run);
+  return run;
+}
+
 export function partyMemberIds(hostId: string, sessions: Map<string, { player: { id: string; dungeonPartyId?: string | null } }>): string[] {
   return [...sessions.values()]
     .filter((s) => s.player.dungeonPartyId === hostId || s.player.id === hostId)
