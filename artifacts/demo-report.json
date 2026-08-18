@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-08-16T03:16:44.694Z",
+  "generatedAt": "2026-08-17T04:25:17.509Z",
   "base": "http://127.0.0.1:3001",
-  "passed": 8,
-  "total": 8,
+  "passed": 11,
+  "total": 11,
   "results": [
     {
       "name": "Server health",
@@ -12,7 +12,7 @@
     {
       "name": "Hypixel bazaar mirror",
       "ok": true,
-      "detail": "updated 1786850161940"
+      "detail": "updated 1786940641917"
     },
     {
       "name": "Auction mirror listings",
@@ -32,12 +32,27 @@
     {
       "name": "/pay command",
       "ok": true,
-      "detail": "Paid 25 coins to demo_b_h4d1"
+      "detail": "Paid 25 coins to demo_b_d2xw"
     },
     {
       "name": "Garden menu opens",
       "ok": true,
       "detail": ""
+    },
+    {
+      "name": "Garden plots menu opens",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Star upgrades menu opens",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Player trade GUI",
+      "ok": true,
+      "detail": "opened and completed"
     },
     {
       "name": "Bazaar price history API",
