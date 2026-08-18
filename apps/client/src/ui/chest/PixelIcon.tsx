@@ -62,6 +62,7 @@ const PATTERNS: Record<string, Pattern> = {
   chest: ['.aaaaaa.', 'abbbbbba', 'acccccca', 'abbddbba', 'abbddbba', 'acccccca'],
   crafting_table: ['aaaaaaaa', 'abbbbbba', 'ab.bb.ba', 'abbbbbba', 'ac.cc.ca', 'acccccca'],
   anvil: ['.cccccc.', '.abbbba.', '..cbbc..', '...bb...', '..cbbc..', '.cccccc.'],
+  crystal_forge: ['.cdaadc.', 'cbddddbc', 'cbdaadbc', 'cbdaadbc', 'cbddddbc', '.cdaadc.'],
   enchanting_table: ['..dddd..', '.abbbba.', 'abddddba', 'abbbbbba', 'acccccca', 'cccccccc'],
   bank_vault: ['cccccccc', 'cabbbbac', 'cab.dbac', 'cabd.bac', 'cabbbbac', 'cccccccc'],
   warp_gate: ['.cc..cc.', 'cbddddbc', 'cbdaadbc', 'cbdaadbc', 'cbddddbc', '.cc..cc.'],
@@ -158,6 +159,9 @@ const ICON_ALIASES: Record<string, string> = {
   mage: 'book',
   tank: 'chestplate',
   healer: 'potion',
+  crystal: 'gem',
+  crystal_forge: 'crystal_forge',
+  drill: 'drill',
 };
 
 const NAMED_COLORS: Record<string, string> = {
@@ -170,6 +174,8 @@ const NAMED_COLORS: Record<string, string> = {
   slayer_altar: '#c9d1d8',
   enchanting_table: '#8f5cd8',
   anvil: '#8d959c',
+  crystal_forge: '#d45cff',
+  drill: '#d81b45',
   barrier: '#ff4d4d',
   arrow: '#e8e8e8',
   arrow_left: '#e8e8e8',
@@ -324,6 +330,9 @@ function shapeFor(icon: string, itemId?: string): Pattern {
   if (def?.type === 'ACCESSORY') return PATTERNS.talisman;
   if (def?.type === 'PET') return PATTERNS.pet;
   if (def?.type === 'MINION') return PATTERNS.minion;
+  if (id.includes('fuel_tank') || id.includes('drill_engine')) return PATTERNS.ingot;
+  if (id.includes('gemstone_chamber') || id.startsWith('flawless_')) return PATTERNS.gem;
+  if (id === 'biofuel') return PATTERNS.potion;
   if (id.includes('block') || id.startsWith('enchanted_')) return PATTERNS.block;
   if (id.includes('plank')) return PATTERNS.plank;
   if (id.includes('stick')) return PATTERNS.stick;

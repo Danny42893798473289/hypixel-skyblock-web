@@ -14,6 +14,7 @@ import {
   hotmGemstoneFortune,
   hotmMiningFortune,
   hotmMiningSpeed,
+  drillModuleStats,
   levelFromXp,
   type EquipmentSlot,
   type ItemStack,
@@ -30,6 +31,16 @@ export function stackStats(stack: ItemStack | null | undefined): Partial<StatBlo
   const def = ITEMS[stack.itemId];
   if (!def) return {};
   const stats: Partial<StatBlock> = { ...def.stats, ...stack.statBoosts };
+  if (def.type === 'DRILL') {
+    const modules = drillModuleStats(stack);
+    for (const [key, amount] of Object.entries(modules) as Array<[keyof StatBlock, number]>) {
+      stats[key] = (stats[key] ?? 0) + amount;
+    }
+    if ((stack.drill?.fuel ?? 0) <= 0) {
+      stats.miningSpeed = 0;
+      stats.miningFortune = 0;
+    }
+  }
   if (stack.reforge) {
     const reforgeName = stack.reforge;
     const reforge = REFORGES.find((entry) => entry.name === reforgeName || entry.id === reforgeName.toLowerCase());

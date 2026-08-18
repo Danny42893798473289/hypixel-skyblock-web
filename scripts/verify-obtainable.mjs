@@ -11,8 +11,12 @@
  */
 import {
   ALCHEMY_RECIPES,
+  COMMUNITY_OFFERS,
   DUNGEON_FLOORS,
+  ESSENCE_SHOP,
+  FORGE_RECIPES,
   ITEMS,
+  MEDAL_SHOP,
   MINIONS,
   MOBS,
   PET_EGGS,
@@ -92,6 +96,16 @@ for (const egg of PET_EGGS) {
   }
 }
 
+for (const offer of COMMUNITY_OFFERS) {
+  if (offer.itemId) note(offer.itemId, `community shop ${offer.id}`);
+}
+for (const offer of ESSENCE_SHOP) {
+  if (offer.itemId) note(offer.itemId, `essence shop ${offer.id}`);
+}
+for (const offer of MEDAL_SHOP) {
+  if (offer.itemId) note(offer.itemId, `medal shop ${offer.id}`);
+}
+
 const craftRecipes = [
   ...RECIPES.map((recipe) => ({
     id: recipe.id,
@@ -108,6 +122,14 @@ const craftRecipes = [
     ingredients: recipe.ingredients,
     unlockCollection: undefined,
     kind: 'brew',
+  })),
+  ...FORGE_RECIPES.map((recipe) => ({
+    id: recipe.id,
+    name: recipe.name,
+    result: recipe.result,
+    ingredients: recipe.ingredients,
+    unlockCollection: recipe.unlockCollection?.itemId,
+    kind: 'forge',
   })),
 ];
 

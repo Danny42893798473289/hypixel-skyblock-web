@@ -236,12 +236,6 @@ export function registerSkyblockRecipes(): void {
     { itemId: 'enchanted_raw_fish', qty: 16 },
     { itemId: 'enchanted_string', qty: 8 },
   ], { collection: 'raw_fish', amount: 2500 });
-  craft('craft_gemstone_gauntlet', 'gemstone_gauntlet', [
-    { itemId: 'mithril_pickaxe', qty: 1 },
-    { itemId: 'enchanted_diamond', qty: 32 },
-    { itemId: 'gemstone_ruby', qty: 64 },
-    { itemId: 'gemstone_jade', qty: 64 },
-  ], { collection: 'mithril', amount: 5000 });
 
   // ── Vanilla iron & diamond armor ──
   craft('craft_iron_helmet', 'iron_helmet', [{ itemId: 'iron_ingot', qty: 5 }], { collection: 'iron_ingot', amount: 50 });

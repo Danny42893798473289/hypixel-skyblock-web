@@ -105,6 +105,12 @@ import {
   plotReady,
   skyblockXp,
   skyblockLevelFromXp,
+  drillFuelRemaining,
+  drillFuelCostPerMine,
+  ensureDrillState,
+  isDrillItem,
+  isDrillPart,
+  BIOFUEL_ITEM,
 } from '@aether/shared';
 import { parseChatCommand, findTradePartnerId, getTrade, cancelTrade, setTradeCoins, setTradeItem } from '../trade/engine.js';
 import { loadPlayer, savePlayer, takeOfflineInterest, verifyToken } from '../auth/index.js';
@@ -172,6 +178,7 @@ import {
   unlockGardenPlot,
   unlockHotmPerk,
 } from './midgameLogic.js';
+import { executeForge, refuelDrill, useDrillOrFuel } from './forgeLogic.js';
 
 interface Session {
   socket: Socket;
@@ -585,6 +592,7 @@ function bestToolStack(
     if (!stack) continue;
     const def = ITEMS[stack.itemId];
     if (!def || def.toolType !== toolType) continue;
+    if (def.type === 'DRILL' && drillFuelRemaining(stack) <= 0) continue;
     const tier = def.toolTier ?? 0;
     const damage = def.damage ?? 0;
     if (tier > bestTier || (tier === bestTier && damage > bestDamage)) {
@@ -614,11 +622,35 @@ function bestTool(
     const def = ITEMS[stack.itemId];
     if (!def) continue;
     if (toolType && def.toolType !== toolType) continue;
+    if (def.type === 'DRILL' && drillFuelRemaining(stack) <= 0) continue;
     if ((def.toolTier ?? 0) > (best.toolTier ?? 0) || (def.damage ?? 0) > (best.damage ?? 0)) {
       best = { toolType: def.toolType, toolTier: def.toolTier, damage: def.damage, itemId: stack.itemId };
     }
   }
   return best;
+}
+
+function assertGatherTool(player: PlayerState, act: { tool?: 'pickaxe' | 'axe' | 'hoe' | 'sword' | 'rod'; minToolTier?: number }): void {
+  if (!act.tool) return;
+  const tool = bestTool(player, act.tool);
+  if (tool.toolType === act.tool && (tool.toolTier ?? 0) >= (act.minToolTier ?? 1)) return;
+  if (act.tool === 'pickaxe') {
+    const emptyDrill = player.inventory.some((stack) => (
+      stack
+      && isDrillItem(stack.itemId)
+      && (ITEMS[stack.itemId]?.toolTier ?? 0) >= (act.minToolTier ?? 1)
+    ));
+    if (emptyDrill) throw new Error('Drill out of fuel — refuel with Biofuel');
+  }
+  throw new Error(`Need ${act.tool} tier ${act.minToolTier ?? 1}+ in inventory`);
+}
+
+function drainActiveDrill(session: Session): void {
+  const tool = bestToolStack(session.player, 'pickaxe');
+  if (!tool || !isDrillItem(tool.itemId)) return;
+  const state = ensureDrillState(tool);
+  state.fuel = Math.max(0, state.fuel - drillFuelCostPerMine(tool));
+  if (state.fuel <= 0) toast(session, 'Drill out of fuel — refuel with Biofuel', 'info');
 }
 
 function playerWeaponDamage(player: PlayerState): number {
@@ -1507,6 +1539,22 @@ function handleMenuClick(
     pushState(session);
     return;
   }
+  if (kind === 'forgeTab') {
+    openMenu(session, 'forge', { category: value, page: 0 });
+    return;
+  }
+  if (kind === 'forge') {
+    if (value.startsWith('refuel:')) {
+      toast(session, refuelDrill(session.player, Number(value.slice(7))), 'success');
+      markStatsDirty(session);
+      pushState(session);
+      return;
+    }
+    toast(session, executeForge(session.player, value), 'success');
+    markStatsDirty(session);
+    pushState(session);
+    return;
+  }
   if (kind === 'commission') {
     toast(session, claimCommission(session.player, value), 'success');
     pushState(session);
@@ -1962,6 +2010,12 @@ function useInventorySlot(session: Session, index: number, button = 'left'): voi
     if (def.type !== 'PET') throw new Error('That is not a pet');
     session.player.pets.push({ itemId: stack.itemId, level: 1, xp: 0, active: session.player.pets.length === 0 });
     session.player.inventory[index] = null;
+    markStatsDirty(session);
+    pushState(session);
+    return;
+  }
+  if (stack.itemId === BIOFUEL_ITEM || isDrillPart(stack.itemId)) {
+    toast(session, useDrillOrFuel(session.player, index), 'success');
     markStatsDirty(session);
     pushState(session);
     return;
@@ -2464,12 +2518,7 @@ function runSingleAction(session: Session, act: ReturnType<typeof findAction>): 
     return;
   }
 
-  if (act.tool) {
-    const tool = bestTool(session.player, act.tool);
-    if (tool.toolType !== act.tool || (tool.toolTier ?? 0) < (act.minToolTier ?? 1)) {
-      throw new Error(`Need ${act.tool} tier ${act.minToolTier ?? 1}+ in inventory`);
-    }
-  }
+  if (act.tool) assertGatherTool(session.player, act);
 
   if (act.kind === 'fish') {
     const chance = 0.55 + fishingSuccessBonus(skillLevel(session.player, 'fishing')) + (currentMayor().id === 'marina' ? 0.12 : 0);
@@ -2512,6 +2561,7 @@ function giveResource(session: Session, act: NonNullable<ReturnType<typeof findA
   const next = addItem(session.player.inventory, itemId, actualQty);
   if (!next) throw new Error('Inventory full');
   session.player.inventory = next;
+  if (act.skill === 'mining') drainActiveDrill(session);
   if (act.skill) gainSkillXp(session, act.skill, act.xp);
   const before = session.player.collections[itemId] ?? 0;
   session.player.collections[itemId] = before + actualQty;
@@ -3379,12 +3429,7 @@ function gatherDurationMs(session: Session, act: NonNullable<ReturnType<typeof f
 }
 
 function startOrContinueGather(session: Session, entityId: string, act: NonNullable<ReturnType<typeof findAction>>): void {
-  if (act.tool) {
-    const tool = bestTool(session.player, act.tool);
-    if (tool.toolType !== act.tool || (tool.toolTier ?? 0) < (act.minToolTier ?? 1)) {
-      throw new Error(`Need ${act.tool} tier ${act.minToolTier ?? 1}+ in inventory`);
-    }
-  }
+  if (act.tool) assertGatherTool(session.player, act);
   const now = Date.now();
   if (act.kind === 'fish') {
     handleFishing(session, entityId, act, now);

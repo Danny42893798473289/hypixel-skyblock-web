@@ -21,6 +21,8 @@ export * from './quests.js';
 export * from './questChains.js';
 export * from './dailies.js';
 export * from './shops.js';
+export * from './drill.js';
+export * from './forge.js';
 export * from './playerLocation.js';
 export * from './midgame.js';
 export * from './economy.js';
@@ -30,6 +32,7 @@ export * from './enchantProcs.js';
 import './registerCatalog.js';
 import './registerGear.js';
 import './registerSkyblockRecipes.js';
+import './registerForge.js';
 
 export const GAME_NAME = 'Aether Isles';
 export const TICK_MS = 100;

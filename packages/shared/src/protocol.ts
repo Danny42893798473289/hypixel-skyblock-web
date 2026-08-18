@@ -188,6 +188,7 @@ export type MenuId =
   | 'garden_plant'
   | 'garden_compost'
   | 'hotm'
+  | 'forge'
   | 'community_shop'
   | 'essence_shop'
   | 'medal_shop'

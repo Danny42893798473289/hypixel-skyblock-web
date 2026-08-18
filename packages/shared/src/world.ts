@@ -139,6 +139,7 @@ const STATION_MENUS: Record<StationKind, { menu: MenuId; label: string; sprite: 
   pets: { menu: 'pets', label: 'Pet Stand', sprite: 'pet_stand' },
   garden: { menu: 'garden', label: 'Garden Desk', sprite: 'hay' },
   hotm: { menu: 'hotm', label: 'Heart of the Mountain', sprite: 'crystal' },
+  forge: { menu: 'forge', label: 'Crystal Forge', sprite: 'crystal_forge' },
   alchemy: { menu: 'alchemy', label: 'Brewing Stand', sprite: 'enchant_table' },
   wardrobe: { menu: 'wardrobe', label: 'Wardrobe', sprite: 'anvil' },
   museum: { menu: 'museum', label: 'Museum', sprite: 'auction_stand' },

@@ -35,6 +35,7 @@ export type StationKind =
   | 'pets'
   | 'garden'
   | 'hotm'
+  | 'forge'
   | 'alchemy'
   | 'wardrobe'
   | 'museum'
@@ -1264,16 +1265,16 @@ export const ZONES: Record<string, ZoneDef> = {
     id: 'crystal_camp',
     islandId: 'crystal_hollows',
     name: 'Crystal Nucleus',
-    description: 'The heart of the Hollows. Gemstone districts sprawl outward.',
+    description: 'The heart of the Hollows. Gemstone districts sprawl outward. The Crystal Forge waits at the nucleus.',
     icon: 'cavern',
     links: ['crystal_jungle', 'crystal_goblin', 'crystal_precursor', 'crystal_divan'],
     actions: [mine('mine_ruby_ch', 'Mine Ruby Gemstone', 'gemstone_ruby', 22, 2, 4, 1200, 'Ruby crystals around the nucleus.')],
-    stations: ['warp'],
+    stations: ['warp', 'forge'],
     skillReq: { skill: 'mining', level: 12 },
     npc: {
       id: 'archaeologist',
       name: 'Archaeologist',
-      greeting: 'Dig carefully. The Hollows hide more than gemstones.',
+      greeting: 'The Crystal Forge burns at the heart of the Hollows. Bring powder and gemstones.',
       buys: [{ itemId: 'gemstone_ruby', price: 12 }, { itemId: 'treasure', price: 40 }],
       sells: [{ itemId: 'omni_egg', price: 15000 }],
     },

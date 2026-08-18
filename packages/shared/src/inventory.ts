@@ -13,6 +13,15 @@ export interface ItemStack {
   enchantments?: Record<string, number>;
   statBoosts?: Partial<StatBlock>;
   dungeonStars?: number;
+  drill?: {
+    fuel: number;
+    parts: {
+      fuelTank?: ItemId;
+      engine?: ItemId;
+      gemstoneFuelTank?: ItemId;
+      gemstoneChamber?: ItemId;
+    };
+  };
 }
 
 export type Inventory = (ItemStack | null)[];
@@ -31,7 +40,7 @@ export function hotbarStack(inventory: Inventory, hotbarSlot: number): ItemStack
 }
 
 export function isWeaponLikeType(type?: string): boolean {
-  return type === 'SWORD' || type === 'BOW' || type === 'PICKAXE' || type === 'AXE' || type === 'HOE' || type === 'FISHING_ROD';
+  return type === 'SWORD' || type === 'BOW' || type === 'PICKAXE' || type === 'DRILL' || type === 'AXE' || type === 'HOE' || type === 'FISHING_ROD';
 }
 
 export function countItem(inv: Inventory, itemId: ItemId): number {
@@ -224,6 +233,9 @@ function cloneStack(stack: ItemStack): ItemStack {
     ...stack,
     enchantments: stack.enchantments ? { ...stack.enchantments } : undefined,
     statBoosts: stack.statBoosts ? { ...stack.statBoosts } : undefined,
+    drill: stack.drill
+      ? { fuel: stack.drill.fuel, parts: { ...stack.drill.parts } }
+      : undefined,
   };
 }
 
@@ -256,6 +268,7 @@ function stacksCompatible(a: ItemStack, b: ItemStack): boolean {
   if ((a.reforge ?? '') !== (b.reforge ?? '')) return false;
   if ((a.dungeonStars ?? 0) !== (b.dungeonStars ?? 0)) return false;
   if (JSON.stringify(a.enchantments ?? {}) !== JSON.stringify(b.enchantments ?? {})) return false;
+  if (JSON.stringify(a.drill ?? null) !== JSON.stringify(b.drill ?? null)) return false;
   return JSON.stringify(a.statBoosts ?? {}) === JSON.stringify(b.statBoosts ?? {});
 }
 

@@ -464,7 +464,7 @@ Object.assign(ITEMS, {
   bonzo_staff: skyblockItem('bonzo_staff', "Bonzo's Staff", 'RARE', 'SWORD', { damage: 160, stats: { intelligence: 250 }, ability: { name: 'Showtime', description: 'Shoots a balloon that explodes on impact.', manaCost: 100, damage: 1000, scaling: 0.2 } }),
   spirit_sceptre: skyblockItem('spirit_sceptre', 'Spirit Sceptre', 'LEGENDARY', 'SWORD', { damage: 180, stats: { intelligence: 300 }, ability: { name: 'Guided Bat', description: 'Shoots a guided explosive bat.', manaCost: 200, damage: 2000, scaling: 0.2 } }),
   stonk: skyblockItem('stonk', 'Stonk', 'EPIC', 'PICKAXE', { toolType: 'pickaxe', toolTier: 4, stats: { miningSpeed: 510 }, description: 'A fast golden pickaxe.' }),
-  gemstone_gauntlet: skyblockItem('gemstone_gauntlet', 'Gemstone Gauntlet', 'LEGENDARY', 'PICKAXE', { toolType: 'pickaxe', toolTier: 6, damage: 200, stats: { strength: 100, miningSpeed: 1600 } }),
+  gemstone_gauntlet: skyblockItem('gemstone_gauntlet', 'Gemstone Gauntlet', 'LEGENDARY', 'PICKAXE', { toolType: 'pickaxe', toolTier: 6, damage: 200, stats: { strength: 100, miningSpeed: 1600 }, description: 'Forged at the Crystal Nucleus. A legendary mining gauntlet.' }),
   treecapitator: skyblockItem('treecapitator', 'Treecapitator', 'EPIC', 'AXE', { toolType: 'axe', toolTier: 5, stats: { foragingFortune: 50 }, ability: { name: 'Deforestation', description: 'Break a large number of connected logs.' } }),
   melon_dicer: skyblockItem('melon_dicer', 'Melon Dicer', 'EPIC', 'AXE', { toolType: 'axe', toolTier: 4, stats: { farmingFortune: 50 }, description: 'Specialized tool for farming melons.' }),
   mathematical_hoe: skyblockItem('mathematical_hoe', 'Mathematical Hoe Blueprint', 'EPIC', 'HOE', { toolType: 'hoe', toolTier: 4, stats: { farmingFortune: 50 } }),

@@ -99,6 +99,7 @@ import {
   profileExtras,
   wardrobeMenu,
 } from './midgameMenus.js';
+import { forgeMenu } from './forgeMenus.js';
 
 type Context = Record<string, string | number | boolean>;
 
@@ -172,7 +173,8 @@ function itemSlot(slotNumber: number, itemId: ItemId, action?: string, count?: n
 function spriteFor(itemId: string, type?: string): string {
   if (type === 'SWORD') return 'sword';
   if (type === 'BOW') return 'bow';
-  if (type === 'PICKAXE' || type === 'DRILL') return 'pickaxe';
+  if (type === 'DRILL') return 'drill';
+  if (type === 'PICKAXE') return 'pickaxe';
   if (type === 'AXE') return 'axe';
   if (type === 'HOE') return 'hoe';
   if (type === 'HELMET') return 'helmet';
@@ -229,6 +231,7 @@ export function buildMenu(
     case 'dungeon_chest': return dungeonChestMenu(player);
     case 'trade': return tradeMenu(player, context);
     case 'hotm': return hotmMenu(player);
+    case 'forge': return forgeMenu(player, context);
     case 'community_shop': return communityShopMenu(player);
     case 'essence_shop': return essenceShopMenu(player);
     case 'medal_shop': return medalShopMenu(player);
@@ -301,6 +304,11 @@ function skyblockMenu(player: PlayerState): MenuView {
       slot(33, 'chestplate', 'Wardrobe', [line('Swap saved armor sets.'), click()], 'open:wardrobe'),
       slot(34, 'magma', 'Kuudra', [line('Crimson Isle siege.'), click()], 'open:kuudra'),
       slot(35, 'ender_pearl', 'Dragons', [line('Place Summoning Eyes in the End.'), click()], 'open:dragons'),
+      slot(36, 'drill', 'Crystal Forge', [
+        line('Forge drills, parts, gemstones and mining armor.', 'gray'),
+        line(`${(player.hotm?.gemstonePowder ?? 0).toLocaleString()} Gemstone Powder`, 'light_purple'),
+        click(),
+      ], 'open:forge'),
       slot(37, 'anvil', 'Blacksmith', [line('Enchant and reforge your gear.'), click()], 'open:reforge'),
       slot(38, 'potion', 'Alchemy', [line('Brew potions for Alchemy XP.'), click()], 'open:alchemy'),
       slot(39, 'book', 'Bestiary', [line('Track every mob you have slain.'), click()], 'open:bestiary'),

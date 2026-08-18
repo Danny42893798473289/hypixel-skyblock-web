@@ -1,3 +1,4 @@
+import { drillLoreLines, drillModuleStats, isDrillItem } from './drill.js';
 import type { ItemDef, ItemRarity } from './items.js';
 import { enchantDisplayName } from './enchantments.js';
 import type { ItemStack } from './inventory.js';
@@ -78,6 +79,16 @@ export function buildItemLore(def: ItemDef, stack?: ItemStack): LoreLine[] {
   const rarity = def.rarity ?? 'COMMON';
   const type = def.type ?? (def.category === 'weapon' ? 'SWORD' : def.category === 'minion' ? 'MINION' : 'MATERIAL');
   const stats: Partial<StatBlock> = { ...def.stats };
+  if (isDrillItem(stack?.itemId ?? def.id) && stack) {
+    const modules = drillModuleStats(stack);
+    for (const [key, value] of Object.entries(modules) as Array<[StatKey, number]>) {
+      stats[key] = (stats[key] ?? 0) + value;
+    }
+    if (stack.drill && (stack.drill.fuel ?? 0) <= 0) {
+      stats.miningSpeed = 0;
+      stats.miningFortune = 0;
+    }
+  }
   if (stack?.statBoosts) {
     for (const key of Object.keys(stack.statBoosts) as StatKey[]) {
       stats[key] = (stats[key] ?? 0) + (stack.statBoosts[key] ?? 0);
@@ -108,6 +119,9 @@ export function buildItemLore(def: ItemDef, stack?: ItemStack): LoreLine[] {
     lines.push({ text: '' });
   } else if (def.description) {
     lines.push({ text: def.description, color: 'gray' }, { text: '' });
+  }
+  if (stack && isDrillItem(stack.itemId)) {
+    lines.push(...drillLoreLines(stack));
   }
   if (stack?.dungeonStars) {
     lines.push({ text: `Dungeon Stars: ${'✪'.repeat(stack.dungeonStars)}  (+${stack.dungeonStars * 10}% damage and armor stats)`, color: 'gold' });
