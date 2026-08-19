@@ -174,7 +174,8 @@ export function handleFeatureChat(
         s.player.islandId = 'private_island';
         s.player.x = 8;
         s.player.y = 8;
-        (s.player as PlayerState & { visiting?: string }).visiting = host.username;
+        s.player.visitingHostId = host.id;
+        s.player.visitingIslandBlocks = host.islandBlocks ?? {};
       },
       leaveVisit: () => {},
     });

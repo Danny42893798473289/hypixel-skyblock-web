@@ -16,6 +16,9 @@ import {
   hotmMiningSpeed,
   drillModuleStats,
   levelFromXp,
+  effectiveRarity,
+  potatoStatBonus,
+  petAbilityStats,
   type EquipmentSlot,
   type ItemStack,
   type PlayerState,
@@ -44,8 +47,8 @@ export function stackStats(stack: ItemStack | null | undefined): Partial<StatBlo
   if (stack.reforge) {
     const reforgeName = stack.reforge;
     const reforge = REFORGES.find((entry) => entry.name === reforgeName || entry.id === reforgeName.toLowerCase());
-    const rarity = def.rarity ?? 'COMMON';
-    const reforgeStats = reforge?.statsByRarity[rarity];
+    const rarity = effectiveRarity(def, stack);
+    const reforgeStats = reforge?.statsByRarity[rarity] ?? reforge?.statsByRarity[def.rarity ?? 'COMMON'];
     if (reforgeStats) {
       for (const [key, amount] of Object.entries(reforgeStats) as Array<[keyof StatBlock, number]>) {
         stats[key] = (stats[key] ?? 0) + amount;
@@ -55,6 +58,10 @@ export function stackStats(stack: ItemStack | null | undefined): Partial<StatBlo
   const enchantments = stack.enchantments ?? {};
   const enchantStats = enchantStatBonuses(enchantments);
   for (const [key, amount] of Object.entries(enchantStats) as Array<[keyof StatBlock, number]>) {
+    stats[key] = (stats[key] ?? 0) + amount;
+  }
+  const potato = potatoStatBonus(stack);
+  for (const [key, amount] of Object.entries(potato) as Array<[keyof StatBlock, number]>) {
     stats[key] = (stats[key] ?? 0) + amount;
   }
   const stars = stack.dungeonStars ?? 0;
@@ -76,6 +83,7 @@ export function recomputeStats(player: Pick<PlayerState, 'skills' | 'equipment' 
   garden?: PlayerState['garden'];
   extraAccessorySlots?: number;
   islandId?: string;
+  activeEffects?: PlayerState['activeEffects'];
 }): StatBlock {
   const skillStats: Partial<StatBlock>[] = [];
   for (const skill of Object.values(SKILLS)) {
@@ -100,6 +108,12 @@ export function recomputeStats(player: Pick<PlayerState, 'skills' | 'equipment' 
       petStats[key] = Math.round(amount * levelScale * 10) / 10;
     }
   }
+  if (activePet) {
+    const ability = petAbilityStats(activePet);
+    for (const [key, amount] of Object.entries(ability) as Array<[keyof StatBlock, number]>) {
+      petStats[key] = (petStats[key] ?? 0) + amount;
+    }
+  }
   const soulTier = Math.floor(player.fairySouls / 5);
   const soulStats: Partial<StatBlock> = {
     health: soulTier * 3,
@@ -116,13 +130,18 @@ export function recomputeStats(player: Pick<PlayerState, 'skills' | 'equipment' 
     magicFind: bestiaryMf,
     farmingFortune: gardenFarmingFortune(player.garden?.harvested ?? {}),
   };
-  return addStats(BASE_STATS, ...skillStats, ...equipmentStats, ...accessoryStats, heldStats, petStats, soulStats, mpStats, hotmStats);
+  const now = Date.now();
+  const effectStats = (player.activeEffects ?? [])
+    .filter((effect) => effect.expiresAt > now)
+    .map((effect) => effect.stats);
+  return addStats(BASE_STATS, ...skillStats, ...equipmentStats, ...accessoryStats, heldStats, petStats, soulStats, mpStats, hotmStats, ...effectStats);
 }
 
 export function magicalPower(accessories: ItemStack[]): number {
   const values = { COMMON: 3, UNCOMMON: 5, RARE: 8, EPIC: 12, LEGENDARY: 16, MYTHIC: 22, SPECIAL: 3, VERY_SPECIAL: 5, DIVINE: 26 };
   return accessories.reduce((total, stack) => {
-    const rarity = ITEMS[stack.itemId]?.rarity ?? 'COMMON';
-    return total + values[rarity];
+    const def = ITEMS[stack.itemId];
+    const rarity = def ? effectiveRarity(def, stack) : 'COMMON';
+    return total + (values[rarity] ?? values.COMMON);
   }, 0);
 }

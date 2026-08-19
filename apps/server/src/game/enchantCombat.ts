@@ -4,6 +4,7 @@ import {
   enchantProcDamageBonus,
   bestiaryMilestoneReward,
   hotbarInventoryIndex,
+  ferocityHits,
   type PlayerState,
 } from '@aether/shared';
 
@@ -30,8 +31,9 @@ export function procCombatDamage(
   mobMaxHp: number,
 ): { damage: number; critical: boolean; thunderBonus: number } {
   const proc = enchantProcDamageBonus(gearEnchants(player), mobId, mobMaxHp);
+  const hits = ferocityHits(player.stats.ferocity ?? 0);
   return {
-    damage: Math.round(baseDamage * proc.multiplier) + proc.thunderBonus,
+    damage: (Math.round(baseDamage * proc.multiplier) + proc.thunderBonus) * hits,
     critical: proc.critical,
     thunderBonus: proc.thunderBonus,
   };

@@ -209,6 +209,7 @@ export function buildMenu(
     case 'fast_travel': return travelMenu(player);
     case 'inventory': return inventoryMenu(player);
     case 'profile': return profileMenu(player);
+    case 'profiles': return profilesMenu(player);
     case 'skills': return skillsMenu(player);
     case 'collections': return collectionsMenu(player, context);
     case 'crafting': return craftingMenu(player, context);
@@ -408,6 +409,35 @@ function inventoryMenu(player: PlayerState): MenuView {
   return { id: 'inventory', title: 'Your Equipment', rows: 6, slots, parent: 'skyblock' };
 }
 
+function profilesMenu(player: PlayerState): MenuView {
+  const list = player.profiles ?? [];
+  return {
+    id: 'profiles',
+    title: 'Profile Manager',
+    rows: 6,
+    slots: [
+      slot(4, 'player_head', player.profileName ?? 'Main', [
+        line('Each profile has its own purse, inventory, skills and island.', 'gray'),
+        line('Co-op shares island, bank and minions. Purse stays personal.', 'gray'),
+        line('/coop join <player>   /coop leave   /profile', 'yellow'),
+        player.coopHostId ? line('Currently on a co-op island', 'green') : line('Solo island', 'aqua'),
+      ]),
+      ...list.slice(0, 14).map((entry, i) => slot(10 + (i % 7) + Math.floor(i / 7) * 9, 'player_head', entry.name, [
+        line(`SkyBlock Level ${entry.skyblockLevel}`, 'gold'),
+        line(`${Math.floor(entry.coins).toLocaleString()} coins`, 'yellow'),
+        line(entry.id === player.profileId ? 'Selected' : 'Click to switch', entry.id === player.profileId ? 'green' : 'aqua'),
+      ], entry.id === player.profileId ? undefined : `switchProfile:${entry.id}`, { glint: entry.id === player.profileId })),
+      slot(40, 'emerald', 'Create Profile', [
+        line(`Up to 5 profiles (${list.length}/5)`, 'gray'),
+        line('Starts a fresh SkyBlock profile on this account.', 'yellow'),
+      ], 'createProfile:new'),
+      back(),
+      close(),
+    ],
+    parent: 'profile',
+  };
+}
+
 function profileMenu(player: PlayerState): MenuView {
   const stats = Object.entries(player.stats).filter(([, value]) => value !== 0);
   return {
@@ -418,8 +448,11 @@ function profileMenu(player: PlayerState): MenuView {
       slot(4, 'player_head', player.username, [
         line(`Purse: ${Math.floor(player.coins).toLocaleString()}`, 'gold'),
         line(`Fairy Souls: ${player.fairySouls}`, 'light_purple'),
+        line(`Profile: ${player.profileName ?? 'Main'}`, 'aqua'),
+        ...(player.coopHostId ? [line('On a co-op island', 'yellow')] : []),
         ...profileExtras(player),
-      ]),
+        line('Click to manage profiles', 'yellow'),
+      ], 'open:profiles'),
       ...stats.slice(0, 28).map(([key, value], i) => slot(10 + (i % 7) + Math.floor(i / 7) * 9, 'stat', pretty(key), [line(formatStat(value), statColor(key)), line('Includes gear, skills, pets and accessories.')])),
       back(),
       close(),
@@ -1043,7 +1076,12 @@ function petsMenu(player: PlayerState): MenuView {
       ...player.pets.slice(0, 21).map((pet, i) => {
         const view = itemSlot(10 + (i % 7) + Math.floor(i / 7) * 9, pet.itemId, `pet:${i}`);
         view.name = `${pet.active ? '▶ ' : ''}[Lvl ${pet.level}] ${ITEMS[pet.itemId]?.name.replace(/^\[Lvl \d+\] /, '') ?? pet.itemId}`;
-        view.lore = [...view.lore, line(`XP: ${Math.floor(pet.xp).toLocaleString()}`, 'aqua'), line(pet.active ? 'Active Pet' : 'Click to summon!', pet.active ? 'green' : 'yellow')];
+        view.lore = [
+          ...view.lore,
+          line(`XP: ${Math.floor(pet.xp).toLocaleString()}`, 'aqua'),
+          line(pet.active ? 'Active Pet' : 'Click to summon!', pet.active ? 'green' : 'yellow'),
+          line(pet.heldItem ? `Held: ${ITEMS[pet.heldItem]?.name ?? pet.heldItem}` : 'Right-click to give a pet item', 'gray'),
+        ];
         return view;
       }),
       ...PET_EGGS.filter((egg) => countItem(player.inventory, egg.egg) > 0).slice(0, 5).map((egg, i) =>
@@ -1517,10 +1555,11 @@ function reforgeMenu(_player: PlayerState): MenuView {
     rows: 6,
     slots: [
       slot(4, 'anvil', 'Blacksmith', [
-        line('Left-click a weapon, armor piece, accessory or tool below.', 'yellow'),
-        line('Cost scales with rarity. Combat rolls: Spicy, Sharp, Fierce, Pure.', 'gray'),
+        line('1. Click a weapon, armor piece, accessory or tool in your inventory.', 'yellow'),
+        line('2. Click Reforge for a random roll, or click a stone / potato book / Recomb.', 'gray'),
+        line('Hot Potato: +2 dmg/+2 str (weapon) or +4 HP/+2 def (armor), cap 10+5.', 'gold'),
       ]),
-      ...REFORGES.slice(0, 10).map((reforge, i) => {
+      ...REFORGES.slice(0, 14).map((reforge, i) => {
         const sample = reforge.statsByRarity.RARE ?? reforge.statsByRarity.UNCOMMON ?? {};
         const combat = reforge.appliesTo === 'weapon' || reforge.appliesTo === 'armor';
         return slot(10 + (i % 7) + Math.floor(i / 7) * 9, 'anvil', reforge.name, [
@@ -1529,7 +1568,8 @@ function reforgeMenu(_player: PlayerState): MenuView {
         ]);
       }),
       slot(40, 'anvil', 'Reforge Selected Item', [
-        line('Click an item in your inventory to roll a random compatible reforge.', 'green'),
+        line('Click an item in your inventory to select it, then click here.', 'green'),
+        line('Cost scales with rarity (including recombobulated rarity).', 'gray'),
       ], 'reforge:selected'),
       slot(45, 'arrow', 'Go Back', [line('To Equipment')], 'open:inventory'),
       close(),

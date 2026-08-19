@@ -41,7 +41,6 @@ import {
   DEFAULT_ZONE,
   DUNGEON_CLASS_ABILITIES,
   DUNGEON_COMBAT_REQUIREMENT,
-  REFORGES,
   SLAYERS,
   DUNGEON_FLOORS,
   MOBS,
@@ -131,9 +130,22 @@ import {
   standingStill,
   facingToward,
   essenceForFloor,
+  weaponDamageOf,
+  moveSpeedTiles,
+  isGearUpgradeItem,
+  applyHotPotatoBook,
+  applyFumingPotatoBook,
+  applyRecombobulator,
+  applyReforgeStone,
+  compatibleReforges,
+  reforgeCost,
+  effectiveRarity,
+  petSkill,
+  petXpMultiplier,
+  isPetHeldItem,
 } from '@aether/shared';
 import { parseChatCommand, findTradePartnerId, getTrade, cancelTrade, setTradeCoins, setTradeItem } from '../trade/engine.js';
-import { loadPlayer, savePlayer, takeOfflineInterest, verifyToken } from '../auth/index.js';
+import { loadPlayer, savePlayer, takeOfflineInterest, verifyToken, switchProfile, createProfile, joinCoop, leaveCoop } from '../auth/index.js';
 import { BANK_TIERS, accrueBankInterest, bankTier, depositLimit, nextBankTier } from './bank.js';
 import * as bazaar from '../bazaar/engine.js';
 import { registerLivePlayer, unregisterLivePlayer } from './livePlayers.js';
@@ -237,6 +249,7 @@ interface Session {
 }
 
 const sessions = new Map<string, Session>();
+const SERVER_SHARD = `m${Math.random().toString(36).slice(2, 5)}`;
 
 function mapFor(session: Session): IslandMap {
   return playerWorldMap(session.player);
@@ -381,6 +394,7 @@ function pushState(session: Session, opts?: { resetPosition?: boolean }): void {
     session.statsDirty = false;
   }
   session.player.coins = Math.max(0, session.player.coins);
+  session.player.serverId = SERVER_SHARD;
   const cursorMenus: MenuId[] = ['inventory', 'backpack', 'backpack_page'];
   const payload: PlayerState = session.menuOpen && cursorMenus.includes(session.currentMenu)
     ? { ...session.player, inventoryCursor: session.inventoryCursor }
@@ -543,9 +557,13 @@ function featureHelpers(session: Session) {
       s.player.islandId = 'private_island';
       s.player.x = 8;
       s.player.y = 8;
-      void host;
+      s.player.visitingHostId = host.id;
+      s.player.visitingIslandBlocks = host.islandBlocks ?? {};
     },
-    leaveVisit: () => {},
+    leaveVisit: (s: { player: PlayerState }) => {
+      s.player.visitingHostId = null;
+      s.player.visitingIslandBlocks = undefined;
+    },
     openMenu: (s: { player: PlayerState }, menu: MenuId, context?: Record<string, string | number | boolean>) => {
       openMenu(s as Session, menu, context ?? {});
     },
@@ -683,11 +701,41 @@ function drainActiveDrill(session: Session): void {
   if (state.fuel <= 0) toast(session, 'Drill out of fuel — refuel with Biofuel', 'info');
 }
 
+function applyGearUpgrade(session: Session, target: ItemStack, itemId: ItemId): void {
+  if (itemId === 'hot_potato_book') toast(session, applyHotPotatoBook(target), 'success');
+  else if (itemId === 'fuming_potato_book') toast(session, applyFumingPotatoBook(target), 'success');
+  else if (itemId === 'recombobulator_3000') toast(session, applyRecombobulator(target), 'success');
+  else toast(session, applyReforgeStone(target, itemId), 'success');
+}
+
+function randomReforgeSelected(session: Session): void {
+  const index = session.selectedInventorySlot;
+  if (index == null) throw new Error('Select a piece of gear in your inventory first');
+  const stack = session.player.inventory[index];
+  if (!stack) throw new Error('Select a piece of gear first');
+  const def = ITEMS[stack.itemId];
+  const choices = compatibleReforges(def?.type);
+  if (!choices.length) throw new Error('This item cannot be reforged');
+  const rarity = effectiveRarity(def, stack);
+  const cost = reforgeCost(rarity);
+  if (session.player.coins < cost) throw new Error(`Need ${cost.toLocaleString()} coins`);
+  session.player.coins -= cost;
+  const previous = stack.reforge ?? 'none';
+  const rolled = choices[Math.floor(Math.random() * choices.length)]!;
+  stack.reforge = rolled.name;
+  markStatsDirty(session);
+  const bonus = rolled.statsByRarity[rarity] ?? rolled.statsByRarity[def.rarity ?? 'COMMON'];
+  const bonusText = bonus
+    ? Object.entries(bonus).map(([key, amount]) => `+${amount} ${key}`).join(', ')
+    : rolled.name;
+  toast(session, `Reforged ${previous} → ${rolled.name}! ${bonusText}`, 'success');
+}
+
 function playerWeaponDamage(player: PlayerState): number {
   const stack = hotbarStack(player.inventory, player.hotbarSlot);
   if (stack) {
     const def = ITEMS[stack.itemId];
-    if (def?.damage) return def.damage * (1 + 0.1 * (stack.dungeonStars ?? 0));
+    if (def?.damage) return weaponDamageOf(stack);
   }
   return bestTool(player, 'sword').damage ?? 5;
 }
@@ -1014,9 +1062,10 @@ function handleMove(session: Session, x: number, y: number, facing: Facing): voi
   session.lastMoveAt = now;
 
   // Credit absorbs FRP lag bursts and Shift sprint (~1.3× walk speed).
+  const tilesPerSec = moveSpeedTiles(session.player.stats.speed ?? 100, MOVE_SPEED);
   session.moveCredit = Math.min(
-    MOVE_SPEED * 2.5,
-    session.moveCredit + MOVE_SPEED * 1.35 * (elapsed / 1000),
+    tilesPerSec * 2.5,
+    session.moveCredit + tilesPerSec * 1.35 * (elapsed / 1000),
   );
 
   let dx = x - session.player.x;
@@ -1158,7 +1207,37 @@ function handleSkyblockChat(session: Session, text: string): boolean {
       return true;
     }
     if (cmd === 'leave' || cmd === 'quit') {
+      if (session.player.visitingHostId) {
+        session.player.visitingHostId = null;
+        session.player.visitingIslandBlocks = undefined;
+        doWarpIsland(session, 'private_island');
+        toast(session, 'Returned to your island.', 'info');
+        return true;
+      }
       leaveActiveRun(session);
+      return true;
+    }
+    if (cmd === 'profile' || cmd === 'profiles') {
+      openMenu(session, 'profiles');
+      return true;
+    }
+    if (cmd === 'coop') {
+      const sub = (args[0] ?? '').toLowerCase();
+      if (sub === 'join' && args[1]) {
+        session.player = joinCoop(session.player, args.slice(1).join(' '));
+        beginPositionSnap(session);
+        pushState(session, { resetPosition: true });
+        toast(session, `Joined ${args.slice(1).join(' ')}'s co-op island.`, 'success');
+        return true;
+      }
+      if (sub === 'leave') {
+        session.player = leaveCoop(session.player);
+        beginPositionSnap(session);
+        pushState(session, { resetPosition: true });
+        toast(session, 'Left co-op. Your personal island is restored.', 'success');
+        return true;
+      }
+      toast(session, 'Usage: /coop join <player>  or  /coop leave', 'info');
       return true;
     }
   } catch (err) {
@@ -1362,10 +1441,36 @@ function handleMenuClick(
   if (kind === 'pet') {
     const index = Number(value);
     if (!session.player.pets[index]) return;
+    if (button === 'right') {
+      givePetHeldItem(session, index);
+      return;
+    }
     session.player.pets.forEach((pet, i) => { pet.active = i === index && !pet.active; });
     markStatsDirty(session);
     pushState(session);
     toast(session, session.player.pets[index].active ? 'Pet summoned!' : 'Pet despawned.', 'success');
+    return;
+  }
+  if (kind === 'switchProfile') {
+    session.player = switchProfile(session.player, value);
+    beginPositionSnap(session);
+    pushState(session, { resetPosition: true });
+    openMenu(session, 'profiles');
+    toast(session, `Switched to ${session.player.profileName ?? 'profile'}`, 'success');
+    return;
+  }
+  if (kind === 'createProfile') {
+    session.player = createProfile(session.player, `Profile ${(session.player.profiles?.length ?? 0) + 1}`);
+    beginPositionSnap(session);
+    pushState(session, { resetPosition: true });
+    openMenu(session, 'profiles');
+    toast(session, `Created ${session.player.profileName}`, 'success');
+    return;
+  }
+  if (kind === 'reforge') {
+    randomReforgeSelected(session);
+    pushState(session);
+    openMenu(session, 'reforge', { slot: session.selectedInventorySlot ?? 0 });
     return;
   }
   if (kind === 'profile') {
@@ -2094,24 +2199,24 @@ function useInventorySlot(session: Session, index: number, button = 'left'): voi
     return;
   }
   if (session.currentMenu === 'reforge') {
-    const group = def.type === 'SWORD' || def.type === 'BOW' ? 'weapon' : ['HELMET', 'CHESTPLATE', 'LEGGINGS', 'BOOTS'].includes(def.type ?? '') ? 'armor' : def.type === 'ACCESSORY' ? 'accessory' : 'tool';
-    const choices = REFORGES.filter((reforge) => reforge.appliesTo === group);
-    if (!choices.length) throw new Error('This item cannot be reforged');
-    const cost = 250 * (['COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY', 'MYTHIC'].indexOf(def.rarity ?? 'COMMON') + 1);
-    if (session.player.coins < cost) throw new Error(`Need ${cost.toLocaleString()} coins`);
-    session.player.coins -= cost;
-    const previous = stack.reforge ?? 'none';
-    const rolled = choices[Math.floor(Math.random() * choices.length)]!;
-    stack.reforge = rolled.name;
-    markStatsDirty(session);
-    pushState(session);
-    const rarity = def.rarity ?? 'COMMON';
-    const bonus = rolled.statsByRarity[rarity];
-    const bonusText = bonus
-      ? Object.entries(bonus).map(([key, amount]) => `+${amount} ${key}`).join(', ')
-      : rolled.name;
-    const combat = rolled.appliesTo === 'weapon' || rolled.appliesTo === 'armor' ? ' · combat roll' : '';
-    toast(session, `Reforged ${previous} → ${rolled.name}! ${bonusText}${combat}`, 'success');
+    if (isGearUpgradeItem(stack.itemId)) {
+      const selected = session.selectedInventorySlot;
+      if (selected == null) throw new Error('Click a piece of gear first, then apply the book or stone');
+      const target = session.player.inventory[selected];
+      if (!target) throw new Error('Select a piece of gear first');
+      applyGearUpgrade(session, target, stack.itemId);
+      stack.qty--;
+      if (stack.qty <= 0) session.player.inventory[index] = null;
+      markStatsDirty(session);
+      pushState(session);
+      openMenu(session, 'reforge', { slot: selected });
+      return;
+    }
+    const group = compatibleReforges(def.type);
+    if (!group.length) throw new Error('This item cannot be reforged or upgraded');
+    session.selectedInventorySlot = index;
+    openMenu(session, 'reforge', { slot: index });
+    toast(session, `Selected ${def.name}. Click a stone, potato book, recomb, or Reforge.`, 'info');
     return;
   }
 
@@ -2955,14 +3060,35 @@ function doCombatAction(session: Session, act: NonNullable<ReturnType<typeof fin
   toast(session, `Defeated ${mob?.name ?? mobId}! ${critical ? 'CRITICAL! ' : ''}(${playerDmg.toLocaleString()} dmg, -${received} HP)`, 'success');
 }
 
+function givePetHeldItem(session: Session, petIndex: number): void {
+  const pet = session.player.pets[petIndex];
+  if (!pet) return;
+  const heldId = session.player.inventory.find((slot) => slot && isPetHeldItem(slot.itemId))?.itemId;
+  if (!heldId) throw new Error('Carry a Textbook, Exp Share, or Mining Exp Boost, then right-click the pet');
+  const next = removeItem(session.player.inventory, heldId, 1);
+  if (!next) throw new Error('Need a pet item in your inventory');
+  session.player.inventory = next;
+  if (pet.heldItem) {
+    const returned = addItem(session.player.inventory, pet.heldItem, 1);
+    if (returned) session.player.inventory = returned;
+  }
+  pet.heldItem = heldId;
+  markStatsDirty(session);
+  pushState(session);
+  openMenu(session, 'pets');
+  toast(session, `${ITEMS[heldId]?.name ?? heldId} given to ${ITEMS[pet.itemId]?.name ?? 'pet'}`, 'success');
+}
+
 function awardPetXp(session: Session, skill: keyof PlayerState['skills'] | undefined, amount: number): void {
   const pet = session.player.pets.find((entry) => entry.active);
   if (!pet || !skill) return;
+  if (petSkill(pet) !== skill) return;
+  const gained = amount * petXpMultiplier(pet);
   const before = pet.level;
-  pet.xp += amount;
+  pet.xp += gained;
   while (pet.level < 100 && pet.xp >= pet.level * pet.level * 100) pet.level++;
   if (pet.level > before) markStatsDirty(session);
-  gainSkillXp(session, 'taming', amount * 0.25);
+  gainSkillXp(session, 'taming', gained * 0.25);
 }
 
 function equipAccessory(session: Session, stack: ItemStack, inventoryIndex: number): void {
@@ -3225,6 +3351,9 @@ function consumeHotbarOne(session: Session): boolean {
 }
 
 function doPlaceBlock(session: Session): void {
+  if (session.player.visitingHostId && !session.player.coopHostId) {
+    throw new Error('Visitors cannot build. Join co-op with /coop join <player>');
+  }
   if (session.player.islandId !== 'private_island') return;
   const now = Date.now();
   if (now - session.lastAttackAt < 180) return;
@@ -3258,6 +3387,9 @@ function doPlaceBlock(session: Session): void {
 }
 
 function doBreakBlock(session: Session): void {
+  if (session.player.visitingHostId && !session.player.coopHostId) {
+    throw new Error('Visitors cannot break blocks. Join co-op with /coop join <player>');
+  }
   if (session.player.islandId !== 'private_island') return;
   const now = Date.now();
   if (now - session.lastAttackAt < 180) return;
@@ -3331,6 +3463,23 @@ function doUseItem(session: Session, slot?: number): void {
     session.player.mana = Math.min(session.player.maxMana, session.player.mana + 80);
     pushState(session);
     toast(session, 'Restored 80 mana', 'success');
+    return;
+  }
+  if (def.stats && (def.type === 'CONSUMABLE' || stack.itemId.endsWith('_potion'))) {
+    const removed = removeItem(session.player.inventory, stack.itemId, 1);
+    if (!removed) return;
+    session.player.inventory = removed;
+    const effects = [...(session.player.activeEffects ?? [])].filter((effect) => effect.id !== stack.itemId);
+    effects.push({
+      id: stack.itemId,
+      name: def.name,
+      stats: { ...def.stats },
+      expiresAt: Date.now() + 90_000,
+    });
+    session.player.activeEffects = effects;
+    markStatsDirty(session);
+    pushState(session);
+    toast(session, `Drank ${def.name} (90s)`, 'success');
     return;
   }
   if (PET_EGGS.some((egg) => egg.egg === stack.itemId)) {
@@ -3567,6 +3716,20 @@ function worldMobTick(): void {
       }
     }
     if (dungeonHazardTick(session)) changed = true;
+    const nowEffects = session.player.activeEffects ?? [];
+    if (nowEffects.length) {
+      const kept = nowEffects.filter((effect) => effect.expiresAt > now);
+      if (kept.length !== nowEffects.length) {
+        session.player.activeEffects = kept;
+        markStatsDirty(session);
+        changed = true;
+      }
+    }
+    if (session.player.hp < session.player.maxHp) {
+      const regen = 1 + (session.player.stats.healthRegen ?? 0) * 0.15 + session.player.maxHp * 0.002;
+      session.player.hp = Math.min(session.player.maxHp, session.player.hp + regen);
+      changed = true;
+    }
     const channel = session.player.gatherChannel;
     if (channel?.fishPhase === 'waiting' && now - channel.startedAt >= channel.durationMs && !channel.biteUntil) {
       channel.fishPhase = 'bite';
@@ -3616,7 +3779,7 @@ function dungeonHazardTick(session: Session): boolean {
     hurt += Math.round(session.player.maxHp * 0.035);
   }
   if (hurt <= 0) return false;
-  session.player.hp -= hurt;
+  session.player.hp -= incomingDamage(hurt, 0, session.player.stats.trueDefense ?? 0);
   if (session.player.hp <= 0) {
     handlePlayerDeath(session, type === 'trap' ? 'A dungeon trap killed you!' : 'Necron\'s wither burn killed you!');
     return false;
@@ -3664,7 +3827,8 @@ function grantMobRewards(session: Session, mobId: string, elite = false): void {
   }
   if (elite) toast(session, `Elite bounty — extra coins and Magic Find.`, 'loot');
   const egg = PET_EGGS.find((entry) => entry.fromMob === mob.id);
-  const eggChance = currentMayor().id === 'diana' ? 0.04 : 0.02;
+  const petLuck = session.player.stats.petLuck ?? 0;
+  const eggChance = (currentMayor().id === 'diana' ? 0.04 : 0.02) * (1 + petLuck / 100);
   if (egg && Math.random() < eggChance) {
     const next = addItem(session.player.inventory, egg.egg, 1);
     if (next) {

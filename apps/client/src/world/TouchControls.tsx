@@ -8,6 +8,7 @@ interface Props {
   onAbility: () => void;
   onMenu: () => void;
   onInventory: () => void;
+  onTabList: () => void;
   disabled: boolean;
 }
 
@@ -19,6 +20,7 @@ export function TouchControls({
   onAbility,
   onMenu,
   onInventory,
+  onTabList,
   disabled,
 }: Props) {
   const areaRef = useRef<HTMLDivElement>(null);
@@ -104,6 +106,7 @@ export function TouchControls({
         <button type="button" className="touch-button touch-ability" onClick={onAbility}>RMB</button>
         <button type="button" className="touch-button touch-inventory" onClick={onInventory}>INV</button>
         <button type="button" className="touch-button touch-menu" onClick={onMenu}>MENU</button>
+        <button type="button" className="touch-button touch-tab" onClick={onTabList}>TAB</button>
       </div>
     </div>
   );

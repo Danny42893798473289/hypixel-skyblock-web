@@ -95,6 +95,176 @@ export interface StoredUser {
   extraAccessorySlots?: number;
   communityPurchases?: Record<string, number>;
   dailies?: import('@aether/shared').DailyState;
+  activeProfileId?: string;
+  profiles?: Record<string, StoredProfile>;
+  coopHostId?: string | null;
+  coopMembers?: string[];
+}
+
+export interface StoredProfile {
+  name: string;
+  coins: number;
+  zoneId: string;
+  hp: number;
+  hotbarSlot: number;
+  inventory: Inventory;
+  skills: SkillsState;
+  collections: CollectionsState;
+  minions: PlacedMinion[];
+  bank?: BankState;
+  equipment?: Record<EquipmentSlot, ItemStack | null>;
+  accessories?: ItemStack[];
+  pets?: PetState[];
+  fairySouls?: number;
+  activeSlayer?: SlayerQuestState | null;
+  slayerXp?: Record<string, number>;
+  dungeonRun?: DungeonRunState | null;
+  selectedDungeonClass?: DungeonClass;
+  visitedZones?: string[];
+  quests?: QuestBookState;
+  garden?: GardenState;
+  hotm?: HotmState;
+  bestiary?: BestiaryState;
+  museum?: MuseumState;
+  wardrobe?: WardrobeState;
+  dragonFight?: DragonFightState | null;
+  kuudraFight?: KuudraFightState | null;
+  backpacks?: Inventory[];
+  islandBlocks?: Record<string, TileKind>;
+  pendingDungeonChest?: import('@aether/shared').DungeonChestReward | null;
+  x?: number;
+  y?: number;
+  facing?: Facing;
+  mana?: number;
+  slayerRngMeter?: Record<string, number>;
+  essence?: Partial<Record<string, number>>;
+  unlockedRecipes?: string[];
+  claimedSkillRewards?: string[];
+  bits?: number;
+  extraMinionSlots?: number;
+  extraAccessorySlots?: number;
+  communityPurchases?: Record<string, number>;
+  dailies?: import('@aether/shared').DailyState;
+  coopHostId?: string | null;
+  coopMembers?: string[];
+}
+
+export const MAX_PROFILES = 5;
+
+export function profileFromUser(user: StoredUser, name = 'Main'): StoredProfile {
+  return {
+    name,
+    coins: user.coins,
+    zoneId: user.zoneId,
+    hp: user.hp,
+    hotbarSlot: user.hotbarSlot,
+    inventory: user.inventory,
+    skills: user.skills,
+    collections: user.collections,
+    minions: user.minions,
+    bank: user.bank,
+    equipment: user.equipment,
+    accessories: user.accessories,
+    pets: user.pets,
+    fairySouls: user.fairySouls,
+    activeSlayer: user.activeSlayer,
+    slayerXp: user.slayerXp,
+    dungeonRun: user.dungeonRun,
+    selectedDungeonClass: user.selectedDungeonClass,
+    visitedZones: user.visitedZones,
+    quests: user.quests,
+    garden: user.garden,
+    hotm: user.hotm,
+    bestiary: user.bestiary,
+    museum: user.museum,
+    wardrobe: user.wardrobe,
+    dragonFight: user.dragonFight,
+    kuudraFight: user.kuudraFight,
+    backpacks: user.backpacks,
+    islandBlocks: user.islandBlocks,
+    pendingDungeonChest: user.pendingDungeonChest,
+    x: user.x,
+    y: user.y,
+    facing: user.facing,
+    mana: user.mana,
+    slayerRngMeter: user.slayerRngMeter,
+    essence: user.essence,
+    unlockedRecipes: user.unlockedRecipes,
+    claimedSkillRewards: user.claimedSkillRewards,
+    bits: user.bits,
+    extraMinionSlots: user.extraMinionSlots,
+    extraAccessorySlots: user.extraAccessorySlots,
+    communityPurchases: user.communityPurchases,
+    dailies: user.dailies,
+    coopHostId: user.coopHostId ?? null,
+    coopMembers: user.coopMembers ?? [],
+  };
+}
+
+export function applyProfileToUser(user: StoredUser, profile: StoredProfile): void {
+  user.coins = profile.coins;
+  user.zoneId = profile.zoneId;
+  user.hp = profile.hp;
+  user.hotbarSlot = profile.hotbarSlot;
+  user.inventory = profile.inventory;
+  user.skills = profile.skills;
+  user.collections = profile.collections;
+  user.minions = profile.minions;
+  user.bank = profile.bank;
+  user.equipment = profile.equipment;
+  user.accessories = profile.accessories;
+  user.pets = profile.pets;
+  user.fairySouls = profile.fairySouls;
+  user.activeSlayer = profile.activeSlayer;
+  user.slayerXp = profile.slayerXp;
+  user.dungeonRun = profile.dungeonRun;
+  user.selectedDungeonClass = profile.selectedDungeonClass;
+  user.visitedZones = profile.visitedZones;
+  user.quests = profile.quests;
+  user.garden = profile.garden;
+  user.hotm = profile.hotm;
+  user.bestiary = profile.bestiary;
+  user.museum = profile.museum;
+  user.wardrobe = profile.wardrobe;
+  user.dragonFight = profile.dragonFight;
+  user.kuudraFight = profile.kuudraFight;
+  user.backpacks = profile.backpacks;
+  user.islandBlocks = profile.islandBlocks;
+  user.pendingDungeonChest = profile.pendingDungeonChest;
+  user.x = profile.x;
+  user.y = profile.y;
+  user.facing = profile.facing;
+  user.mana = profile.mana;
+  user.slayerRngMeter = profile.slayerRngMeter;
+  user.essence = profile.essence;
+  user.unlockedRecipes = profile.unlockedRecipes;
+  user.claimedSkillRewards = profile.claimedSkillRewards;
+  user.bits = profile.bits;
+  user.extraMinionSlots = profile.extraMinionSlots;
+  user.extraAccessorySlots = profile.extraAccessorySlots;
+  user.communityPurchases = profile.communityPurchases;
+  user.dailies = profile.dailies;
+  user.coopHostId = profile.coopHostId ?? null;
+  user.coopMembers = profile.coopMembers ?? [];
+}
+
+export function ensureProfiles(user: StoredUser): StoredUser {
+  if (!user.profiles || !Object.keys(user.profiles).length) {
+    const id = 'main';
+    user.profiles = { [id]: profileFromUser(user, 'Main') };
+    user.activeProfileId = id;
+  }
+  if (!user.activeProfileId || !user.profiles[user.activeProfileId]) {
+    user.activeProfileId = Object.keys(user.profiles)[0] ?? 'main';
+    if (!user.profiles[user.activeProfileId]) user.profiles[user.activeProfileId] = profileFromUser(user, 'Main');
+  }
+  applyProfileToUser(user, user.profiles[user.activeProfileId]!);
+  return user;
+}
+
+export function activeProfile(user: StoredUser): StoredProfile {
+  ensureProfiles(user);
+  return user.profiles![user.activeProfileId!]!;
 }
 
 export interface StoredOrder {
@@ -124,13 +294,13 @@ export interface StoredAuction {
 }
 
 export interface UsersFile {
-  schemaVersion: 2;
+  schemaVersion: 3;
   users: StoredUser[];
   bazaarOrders: StoredOrder[];
   auctions: StoredAuction[];
 }
 
-const emptyFile = (): UsersFile => ({ schemaVersion: 2, users: [], bazaarOrders: [], auctions: [] });
+const emptyFile = (): UsersFile => ({ schemaVersion: 3, users: [], bazaarOrders: [], auctions: [] });
 
 let data: UsersFile = emptyFile();
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -217,14 +387,14 @@ export function loadStore(): UsersFile {
   }
   try {
     const parsed = readJsonFile<Partial<UsersFile> & { schemaVersion?: number }>(usersPath) ?? {};
-    if ((parsed.schemaVersion ?? 1) < 2) {
-      const backupPath = path.join(dataDir, 'users.v1.json.bak');
+    if ((parsed.schemaVersion ?? 1) < 3) {
+      const backupPath = path.join(dataDir, `users.v${parsed.schemaVersion ?? 1}.json.bak`);
       if (!fs.existsSync(backupPath)) fs.copyFileSync(usersPath, backupPath);
     }
     const migratedAuctions = Array.isArray(parsed.auctions) ? parsed.auctions : [];
     data = {
-      schemaVersion: 2,
-      users: Array.isArray(parsed.users) ? parsed.users : [],
+      schemaVersion: 3,
+      users: (Array.isArray(parsed.users) ? parsed.users : []).map((user) => ensureProfiles(user)),
       bazaarOrders: Array.isArray(parsed.bazaarOrders) ? parsed.bazaarOrders : [],
       auctions: loadAuctions(migratedAuctions),
     };

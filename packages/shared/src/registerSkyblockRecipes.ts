@@ -410,6 +410,22 @@ export function registerSkyblockRecipes(): void {
   ], { collection: 'diamond', amount: 1000 });
   craft('craft_super_egg', 'super_egg', [{ itemId: 'enchanted_egg', qty: 144 }], { collection: 'egg', amount: 1000 });
   craft('craft_enchanted_coal_fuel', 'enchanted_coal_fuel', [{ itemId: 'enchanted_coal', qty: 1 }], { collection: 'coal', amount: 100 });
+  craft('craft_stone_spicy', 'stone_spicy', [{ itemId: 'blaze_rod', qty: 8 }], { collection: 'blaze_rod', amount: 1 });
+  craft('craft_stone_sharp', 'stone_sharp', [{ itemId: 'iron_ingot', qty: 16 }], { collection: 'iron_ingot', amount: 50 });
+  craft('craft_stone_heroic', 'stone_heroic', [{ itemId: 'lapis', qty: 32 }], { collection: 'lapis', amount: 50 });
+  craft('craft_stone_fierce', 'stone_fierce', [{ itemId: 'rotten_flesh', qty: 32 }], { collection: 'rotten_flesh', amount: 50 });
+  craft('craft_stone_pure', 'stone_pure', [{ itemId: 'diamond', qty: 8 }], { collection: 'diamond', amount: 50 });
+  craft('craft_stone_wise', 'stone_wise', [{ itemId: 'enchanted_lapis', qty: 4 }], { collection: 'lapis', amount: 250 });
+  craft('craft_stone_titanic', 'stone_titanic', [{ itemId: 'iron_ingot', qty: 64 }], { collection: 'iron_ingot', amount: 250 });
+  craft('craft_stone_itchy', 'stone_itchy', [{ itemId: 'string', qty: 32 }], { collection: 'string', amount: 50 });
+  craft('craft_stone_bizarre', 'stone_bizarre', [{ itemId: 'ender_pearl', qty: 8 }], { collection: 'ender_pearl', amount: 1 });
+  craft('craft_stone_fleet', 'stone_fleet', [{ itemId: 'cobble', qty: 64 }, { itemId: 'coal', qty: 16 }], { collection: 'cobble', amount: 100 });
+  craft('craft_dragon_claw', 'dragon_claw', [{ itemId: 'dragon_fragment', qty: 8 }], { collection: 'dragon_fragment', amount: 1 });
+  craft('craft_withered_catalyst', 'withered_catalyst', [{ itemId: 'wither_blood', qty: 4 }], { collection: 'wither_blood', amount: 1 });
+  craft('craft_necrotic_crystal', 'necrotic_crystal', [{ itemId: 'rev_flesh', qty: 32 }], { collection: 'rev_flesh', amount: 1 });
+  craft('craft_renowned_bead', 'renowned_bead', [{ itemId: 'gold_ingot', qty: 32 }, { itemId: 'diamond', qty: 8 }], { collection: 'gold_ingot', amount: 250 });
+  craft('craft_textbook', 'textbook', [{ itemId: 'enchanted_book', qty: 8 }, { itemId: 'lapis', qty: 32 }], { collection: 'enchanted_book', amount: 1 });
+  craft('craft_pet_item_exp_share', 'pet_item_exp_share', [{ itemId: 'gold_ingot', qty: 64 }, { itemId: 'enchanted_gold_ingot', qty: 8 }], { collection: 'gold_ingot', amount: 1000 });
 }
 
 registerSkyblockRecipes();

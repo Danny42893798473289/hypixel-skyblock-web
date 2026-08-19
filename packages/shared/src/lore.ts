@@ -3,6 +3,7 @@ import type { ItemDef, ItemRarity } from './items.js';
 import { enchantDisplayName } from './enchantments.js';
 import type { ItemStack } from './inventory.js';
 import type { StatBlock, StatKey } from './stats.js';
+import { effectiveRarity, potatoBooksApplied, potatoStatBonus } from './gearUpgrade.js';
 
 export type MinecraftColor =
   | 'black'
@@ -58,6 +59,8 @@ const STAT_LABELS: Record<StatKey, [string, MinecraftColor, string]> = {
   farmingFortune: ['Farming Fortune', 'gold', '☘'],
   foragingFortune: ['Foraging Fortune', 'gold', '☘'],
   seaCreatureChance: ['Sea Creature Chance', 'dark_aqua', 'α'],
+  trueDefense: ['True Defense', 'white', '❂'],
+  healthRegen: ['Health Regen', 'red', '❣'],
 };
 
 const percentStats = new Set<StatKey>([
@@ -71,12 +74,13 @@ const percentStats = new Set<StatKey>([
 export function itemDisplayName(def: ItemDef, stack?: ItemStack): string {
   const prefix = stack?.reforge ? `${stack.reforge} ` : '';
   const stars = stack?.dungeonStars ? ` ${'✪'.repeat(stack.dungeonStars)}` : '';
-  return `${prefix}${def.name}${stars}`;
+  const recomb = stack?.recombobulated ? '✪ ' : '';
+  return `${recomb}${prefix}${def.name}${stars}`;
 }
 
 export function buildItemLore(def: ItemDef, stack?: ItemStack): LoreLine[] {
   const lines: LoreLine[] = [];
-  const rarity = def.rarity ?? 'COMMON';
+  const rarity = stack ? effectiveRarity(def, stack) : def.rarity ?? 'COMMON';
   const type = def.type ?? (def.category === 'weapon' ? 'SWORD' : def.category === 'minion' ? 'MINION' : 'MATERIAL');
   const stats: Partial<StatBlock> = { ...def.stats };
   if (isDrillItem(stack?.itemId ?? def.id) && stack) {
@@ -92,6 +96,12 @@ export function buildItemLore(def: ItemDef, stack?: ItemStack): LoreLine[] {
   if (stack?.statBoosts) {
     for (const key of Object.keys(stack.statBoosts) as StatKey[]) {
       stats[key] = (stats[key] ?? 0) + (stack.statBoosts[key] ?? 0);
+    }
+  }
+  if (stack) {
+    const potato = potatoStatBonus(stack);
+    for (const key of Object.keys(potato) as StatKey[]) {
+      stats[key] = (stats[key] ?? 0) + (potato[key] ?? 0);
     }
   }
 
@@ -122,6 +132,16 @@ export function buildItemLore(def: ItemDef, stack?: ItemStack): LoreLine[] {
   }
   if (stack && isDrillItem(stack.itemId)) {
     lines.push(...drillLoreLines(stack));
+  }
+  const potatoes = stack ? potatoBooksApplied(stack) : 0;
+  if (potatoes > 0) {
+    lines.push({ text: `Hot Potato Books: ${Math.min(10, stack?.hotPotatoCount ?? 0)}/10`, color: 'gold' });
+    if ((stack?.fumingCount ?? 0) > 0) {
+      lines.push({ text: `Fuming Potato Books: ${stack?.fumingCount}/5`, color: 'gold' });
+    }
+  }
+  if (stack?.recombobulated) {
+    lines.push({ text: 'Recombobulated', color: 'light_purple', italic: true });
   }
   if (stack?.dungeonStars) {
     lines.push({ text: `Dungeon Stars: ${'✪'.repeat(stack.dungeonStars)}  (+${stack.dungeonStars * 10}% damage and armor stats)`, color: 'gold' });

@@ -9,9 +9,17 @@ export interface ReforgeDef {
   statsByRarity: Partial<Record<ItemRarity, Partial<StatBlock>>>;
 }
 
+const rarities: ItemRarity[] = ['COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY', 'MYTHIC'];
+
 const scaled = (key: keyof StatBlock, values: number[]): ReforgeDef['statsByRarity'] => {
-  const rarities: ItemRarity[] = ['COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY', 'MYTHIC'];
   return Object.fromEntries(rarities.map((rarity, i) => [rarity, { [key]: values[i] ?? values.at(-1)! }]));
+};
+
+const scaledMany = (parts: Array<[keyof StatBlock, number[]]>): ReforgeDef['statsByRarity'] => {
+  return Object.fromEntries(rarities.map((rarity, i) => [
+    rarity,
+    Object.fromEntries(parts.map(([key, values]) => [key, values[i] ?? values.at(-1)!])),
+  ]));
 };
 
 export const REFORGES: ReforgeDef[] = [
@@ -25,6 +33,10 @@ export const REFORGES: ReforgeDef[] = [
   { id: 'itchy', name: 'Itchy', appliesTo: 'accessory', statsByRarity: scaled('critDamage', [1, 2, 3, 5, 8, 12]) },
   { id: 'bizarre', name: 'Bizarre', appliesTo: 'accessory', statsByRarity: scaled('intelligence', [3, 5, 8, 12, 18, 25]) },
   { id: 'fleet', name: 'Fleet', appliesTo: 'tool', statsByRarity: scaled('miningSpeed', [20, 35, 50, 70, 100, 130]) },
+  { id: 'fabled', name: 'Fabled', appliesTo: 'weapon', statsByRarity: scaledMany([['strength', [15, 20, 25, 32, 40, 50]], ['critDamage', [10, 15, 20, 28, 36, 45]]]) },
+  { id: 'withered', name: 'Withered', appliesTo: 'weapon', statsByRarity: scaled('strength', [40, 50, 65, 80, 100, 125]) },
+  { id: 'necrotic', name: 'Necrotic', appliesTo: 'armor', statsByRarity: scaled('intelligence', [30, 40, 55, 75, 100, 125]) },
+  { id: 'renowned', name: 'Renowned', appliesTo: 'accessory', statsByRarity: scaledMany([['magicFind', [1, 1, 2, 2, 3, 4]], ['petLuck', [1, 1, 1, 2, 2, 3]]]) },
 ];
 
 export interface DropDef {

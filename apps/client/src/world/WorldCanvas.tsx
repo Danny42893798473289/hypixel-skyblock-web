@@ -29,6 +29,7 @@ interface Props {
   touchMode: boolean;
   onOpenMenu: () => void;
   onOpenInventory: () => void;
+  onTabList: () => void;
 }
 
 interface RemotePosition {
@@ -45,7 +46,7 @@ interface RemotePosition {
 const FAIRY_REVEAL_DISTANCE = 2.6;
 
 function islandBlocksKey(player: PlayerState): string {
-  const blocks = player.islandBlocks;
+  const blocks = player.visitingIslandBlocks ?? player.islandBlocks;
   if (!blocks) return '';
   const keys = Object.keys(blocks);
   if (!keys.length) return '';
@@ -68,7 +69,7 @@ function liveWorldKey(player: PlayerState): string {
   return `${mobs}|${minions}|${dungeon}`;
 }
 
-export function WorldCanvas({ player, zonePlayers, inputDisabled, chatFocused, touchMode, onOpenMenu, onOpenInventory }: Props) {
+export function WorldCanvas({ player, zonePlayers, inputDisabled, chatFocused, touchMode, onOpenMenu, onOpenInventory, onTabList }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const collisionKey = player.zoneId === DUNGEON_ZONE
     ? dungeonCollisionKey(player)
@@ -78,7 +79,7 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, chatFocused, t
   const collisionMap = useMemo((): IslandMap => {
     if (player.dungeonRun && player.zoneId === DUNGEON_ZONE) return buildDungeonRoomMap(player.dungeonRun);
     const base = islandMap(player.islandId);
-    return player.islandId === 'private_island' ? applyIslandBlocks(base, player.islandBlocks) : base;
+    return player.islandId === 'private_island' ? applyIslandBlocks(base, player.visitingIslandBlocks ?? player.islandBlocks) : base;
   }, [collisionKey]);
   const overlayKey = liveWorldKey(player);
   // overlayKey is the stable digest of mob HP / minion storage / dungeon combat.
@@ -317,6 +318,7 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, chatFocused, t
           }}
           onMenu={onOpenMenu}
           onInventory={onOpenInventory}
+          onTabList={onTabList}
           disabled={inputDisabled}
         />
       ) : (

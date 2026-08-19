@@ -370,13 +370,14 @@ export function playerWorldMap(player: {
   worldMobs?: WorldMobInstance[];
   minions?: PlacedMinion[];
   islandBlocks?: IslandBlocks;
+  visitingIslandBlocks?: IslandBlocks;
 }): IslandMap {
   if (player.dungeonRun && player.zoneId === DUNGEON_ZONE) {
     return buildDungeonRoomMap(player.dungeonRun);
   }
   const base = islandMap(player.islandId);
   const tiled = player.islandId === 'private_island'
-    ? applyIslandBlocks(base, player.islandBlocks)
+    ? applyIslandBlocks(base, player.visitingIslandBlocks ?? player.islandBlocks)
     : base;
   return overlayLiveWorld(tiled, player);
 }

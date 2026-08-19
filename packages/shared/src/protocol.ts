@@ -91,6 +91,20 @@ export interface PlayerPublic {
   facing: Facing;
 }
 
+export interface ActiveEffect {
+  id: string;
+  name: string;
+  stats: Partial<StatBlock>;
+  expiresAt: number;
+}
+
+export interface ProfileSummary {
+  id: string;
+  name: string;
+  coins: number;
+  skyblockLevel: number;
+}
+
 export interface PlayerState extends PlayerPublic {
   coins: number;
   inventory: Inventory;
@@ -152,6 +166,14 @@ export interface PlayerState extends PlayerPublic {
   lastSkillGain?: { skillId: SkillId; level: number; intoLevel: number; need: number };
   /** Unclaimed dungeon chest — kept until you click Claim. */
   pendingDungeonChest?: DungeonChestReward | null;
+  activeEffects?: ActiveEffect[];
+  profileId?: string;
+  profileName?: string;
+  profiles?: ProfileSummary[];
+  coopHostId?: string | null;
+  visitingHostId?: string | null;
+  visitingIslandBlocks?: Record<string, TileKind>;
+  serverId?: string;
 }
 
 export interface DungeonChestReward {
@@ -214,7 +236,8 @@ export type MenuId =
   | 'kuudra'
   | 'dragons'
   | 'backpack'
-  | 'backpack_page';
+  | 'backpack_page'
+  | 'profiles';
 
 export interface MenuSlotView {
   slot: number;

@@ -34,6 +34,8 @@ import {
   applyIslandBlocks,
   normalizePlayerLocation,
   districtEntryBlocked,
+  skyblockXp,
+  skyblockLevelFromXp,
   type ItemStack,
   type PlayerState,
 } from '@aether/shared';
@@ -43,7 +45,13 @@ import {
   findUserByUsername,
   loadStore,
   saveUser,
+  ensureProfiles,
+  activeProfile,
+  profileFromUser,
+  applyProfileToUser,
+  MAX_PROFILES,
   type StoredUser,
+  type StoredProfile,
 } from '../store/usersStore.js';
 import { emptyEquipment, magicalPower, recomputeStats } from '../game/profile.js';
 import { accrueBankInterest } from '../game/bank.js';
@@ -133,7 +141,38 @@ function migratePlayerSave(user: StoredUser): { equipment: PlayerState['equipmen
   return { equipment, inventory };
 }
 
+function profileSummaries(user: StoredUser): PlayerState['profiles'] {
+  ensureProfiles(user);
+  return Object.entries(user.profiles ?? {}).map(([id, profile]) => {
+    const xp = skyblockXp({
+      skills: profile.skills,
+      collections: profile.collections,
+      slayerXp: profile.slayerXp ?? {},
+      fairySouls: profile.fairySouls ?? 0,
+      museumDonated: profile.museum?.donated.length ?? 0,
+      bestiaryKills: Object.values(profile.bestiary?.kills ?? {}).reduce((sum, n) => sum + n, 0),
+    });
+    return { id, name: profile.name, coins: profile.coins, skyblockLevel: skyblockLevelFromXp(xp).level };
+  });
+}
+
+function overlayCoop(player: PlayerState, profile: StoredProfile): void {
+  player.coopHostId = profile.coopHostId ?? null;
+  const hostId = profile.coopHostId;
+  if (!hostId) return;
+  const host = findUserById(hostId);
+  if (!host) return;
+  ensureProfiles(host);
+  const shared = activeProfile(host);
+  player.islandBlocks = shared.islandBlocks;
+  player.bank = shared.bank ?? player.bank;
+  player.minions = shared.minions;
+}
+
 function toPlayer(user: StoredUser): PlayerState {
+  ensureProfiles(user);
+  const profile = activeProfile(user);
+  applyProfileToUser(user, profile);
   // Saves from older layouts can point at zones that no longer exist.
   const zoneId = user.zoneId && ZONES[user.zoneId] ? user.zoneId : DEFAULT_ZONE;
   const { equipment, inventory } = migratePlayerSave(user);
@@ -197,11 +236,17 @@ function toPlayer(user: StoredUser): PlayerState {
     x: spawn.x,
     y: spawn.y,
     facing: user.facing ?? 'down',
+    profileId: user.activeProfileId,
+    profileName: profile.name,
+    profiles: profileSummaries(user),
+    coopHostId: profile.coopHostId ?? null,
+    activeEffects: [],
   };
   if (user.x != null && user.y != null && canStand(map, user.x, user.y)) {
     player.x = user.x;
     player.y = user.y;
   }
+  overlayCoop(player, profile);
   normalizeDungeonRun(player);
   if (normalizePlayerLocation(player)) player.resetPosition = true;
   player.stats = recomputeStats(player);
@@ -214,7 +259,10 @@ function toPlayer(user: StoredUser): PlayerState {
 }
 
 function applyPlayer(user: StoredUser, player: PlayerState): StoredUser {
-  return {
+  ensureProfiles(user);
+  const profileId = user.activeProfileId ?? 'main';
+  const existing = user.profiles?.[profileId];
+  const next: StoredUser = {
     ...user,
     coins: player.coins,
     zoneId: player.zoneId,
@@ -258,8 +306,33 @@ function applyPlayer(user: StoredUser, player: PlayerState): StoredUser {
     x: player.x,
     y: player.y,
     facing: player.facing,
+    coopHostId: player.coopHostId ?? existing?.coopHostId ?? null,
     updatedAt: Date.now(),
   };
+  const saved = profileFromUser(next, existing?.name ?? player.profileName ?? 'Main');
+  saved.coopHostId = next.coopHostId ?? null;
+  saved.coopMembers = existing?.coopMembers ?? next.coopMembers ?? [];
+  if (saved.coopHostId) {
+    saved.islandBlocks = existing?.islandBlocks;
+    saved.bank = existing?.bank;
+    saved.minions = existing?.minions ?? [];
+    const host = findUserById(saved.coopHostId);
+    if (host && host.id !== user.id) {
+      ensureProfiles(host);
+      const hostProfile = activeProfile(host);
+      hostProfile.islandBlocks = player.islandBlocks;
+      hostProfile.bank = player.bank;
+      hostProfile.minions = player.minions;
+      applyProfileToUser(host, hostProfile);
+      host.profiles![host.activeProfileId!] = hostProfile;
+      host.updatedAt = Date.now();
+      saveUser(host);
+    }
+  }
+  next.profiles = { ...user.profiles, [profileId]: saved };
+  next.activeProfileId = profileId;
+  applyProfileToUser(next, saved.coopHostId ? { ...saved, islandBlocks: player.islandBlocks, bank: player.bank, minions: player.minions } : saved);
+  return next;
 }
 
 export function registerUser(username: string, password: string): { token: string; player: PlayerState } {
@@ -303,6 +376,8 @@ export function registerUser(username: string, password: string): { token: strin
     facing: 'down',
   };
   addUser(user);
+  ensureProfiles(user);
+  saveUser(user);
   return { token: signToken(user.id), player: toPlayer(user) };
 }
 
@@ -333,6 +408,121 @@ export function adjustUserCoins(userId: string, delta: number): void {
   const user = findUserById(userId);
   if (!user) return;
   user.coins += delta;
+  ensureProfiles(user);
+  activeProfile(user).coins = user.coins;
   user.updatedAt = Date.now();
   saveUser(user);
+}
+
+export function switchProfile(player: PlayerState, profileId: string): PlayerState {
+  savePlayer(player);
+  const user = findUserById(player.id);
+  if (!user) throw new Error('Account not found');
+  ensureProfiles(user);
+  if (!user.profiles?.[profileId]) throw new Error('Profile not found');
+  user.activeProfileId = profileId;
+  applyProfileToUser(user, user.profiles[profileId]!);
+  user.updatedAt = Date.now();
+  saveUser(user);
+  const next = toPlayer(user);
+  next.resetPosition = true;
+  return next;
+}
+
+export function createProfile(player: PlayerState, name: string): PlayerState {
+  savePlayer(player);
+  const user = findUserById(player.id);
+  if (!user) throw new Error('Account not found');
+  ensureProfiles(user);
+  const ids = Object.keys(user.profiles ?? {});
+  if (ids.length >= MAX_PROFILES) throw new Error(`You can have ${MAX_PROFILES} profiles`);
+  const clean = name.trim().slice(0, 16) || `Profile ${ids.length + 1}`;
+  const id = uuid();
+  const now = Date.now();
+  const spawn = districtSpawn(islandMapForZone(DEFAULT_ZONE), DEFAULT_ZONE);
+  const fresh: StoredProfile = {
+    name: clean,
+    coins: STARTER_COINS,
+    zoneId: DEFAULT_ZONE,
+    hp: MAX_HP,
+    hotbarSlot: 0,
+    inventory: starterInventory(),
+    skills: emptySkills(),
+    collections: emptyCollections(),
+    minions: [],
+    bank: { balance: 0, tier: 'starter', lastInterestAt: now },
+    equipment: emptyEquipment(),
+    accessories: [],
+    pets: [],
+    fairySouls: 0,
+    mana: BASE_STATS.intelligence,
+    visitedZones: [DEFAULT_ZONE],
+    quests: emptyQuestBook(),
+    backpacks: emptyBackpacks(),
+    x: spawn.x,
+    y: spawn.y,
+    facing: 'down',
+    selectedDungeonClass: 'berserk',
+    coopHostId: null,
+    coopMembers: [],
+  };
+  user.profiles![id] = fresh;
+  user.activeProfileId = id;
+  applyProfileToUser(user, fresh);
+  user.updatedAt = now;
+  saveUser(user);
+  const next = toPlayer(user);
+  next.resetPosition = true;
+  return next;
+}
+
+export function joinCoop(player: PlayerState, hostUsername: string): PlayerState {
+  savePlayer(player);
+  const user = findUserById(player.id);
+  if (!user) throw new Error('Account not found');
+  const host = findUserByUsername(hostUsername);
+  if (!host) throw new Error('Player not found');
+  if (host.id === player.id) throw new Error('You already own this island');
+  ensureProfiles(user);
+  ensureProfiles(host);
+  const guest = activeProfile(user);
+  const hostProfile = activeProfile(host);
+  guest.coopHostId = host.id;
+  hostProfile.coopMembers = [...new Set([...(hostProfile.coopMembers ?? []), player.id])];
+  applyProfileToUser(user, guest);
+  applyProfileToUser(host, hostProfile);
+  saveUser(host);
+  saveUser(user);
+  const next = toPlayer(user);
+  next.resetPosition = true;
+  next.zoneId = 'island_minions';
+  next.islandId = 'private_island';
+  next.x = 8;
+  next.y = 8;
+  return next;
+}
+
+export function leaveCoop(player: PlayerState): PlayerState {
+  savePlayer(player);
+  const user = findUserById(player.id);
+  if (!user) throw new Error('Account not found');
+  ensureProfiles(user);
+  const guest = activeProfile(user);
+  const hostId = guest.coopHostId;
+  guest.coopHostId = null;
+  if (hostId) {
+    const host = findUserById(hostId);
+    if (host) {
+      ensureProfiles(host);
+      const hostProfile = activeProfile(host);
+      hostProfile.coopMembers = (hostProfile.coopMembers ?? []).filter((id) => id !== player.id);
+      applyProfileToUser(host, hostProfile);
+      saveUser(host);
+    }
+  }
+  applyProfileToUser(user, guest);
+  saveUser(user);
+  const next = toPlayer(user);
+  next.resetPosition = true;
+  return next;
 }

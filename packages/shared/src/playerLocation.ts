@@ -39,7 +39,7 @@ export function findAccessibleZone(player: PlayerState, islandId: IslandId): str
 function mapForPlayer(player: PlayerState) {
   const base = islandMapForZone(player.zoneId);
   return player.islandId === 'private_island'
-    ? applyIslandBlocks(base, player.islandBlocks)
+    ? applyIslandBlocks(base, player.visitingIslandBlocks ?? player.islandBlocks)
     : base;
 }
 

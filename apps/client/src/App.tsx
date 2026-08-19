@@ -8,6 +8,9 @@ import {
   SKILLS,
   skyblockLevelFromXp,
   skyblockXp,
+  formatSkyblockSidebar,
+  bossPhasesForFloor,
+  dungeonFloor,
   type BazaarOrder,
   type BazaarMeta,
   type ChatMessage,
@@ -53,6 +56,8 @@ export function App() {
   const [touchMode, setTouchMode] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [actionBar, setActionBar] = useState('');
+  const [tabListOpen, setTabListOpen] = useState(false);
+  const [clock, setClock] = useState(() => Date.now());
   const toastId = useRef(0);
   const chatInputRef = useRef<HTMLInputElement>(null);
   const actionBarTimer = useRef(0);
@@ -64,6 +69,11 @@ export function App() {
     sync();
     query.addEventListener('change', sync);
     return () => query.removeEventListener('change', sync);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const addToast = useCallback((message: string, kind?: string) => {
@@ -269,9 +279,20 @@ export function App() {
         setChatOpen(true);
         chatInputRef.current?.focus();
       }
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        setTabListOpen(true);
+      }
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'Tab') setTabListOpen(false);
     };
     window.addEventListener('keydown', onKeyDown, true);
-    return () => window.removeEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('keyup', onKeyUp, true);
+    };
   }, [closeMenu, exitChat, menu?.id, menuVisible, openInventory, openMenu]);
 
   if (!token || !player) {
@@ -301,6 +322,7 @@ export function App() {
         touchMode={touchMode}
         onOpenMenu={() => openMenu('skyblock')}
         onOpenInventory={openInventory}
+        onTabList={() => setTabListOpen((open) => !open)}
       />
 
       <header className="hud-top">
@@ -331,7 +353,9 @@ export function App() {
 
       <aside className="scoreboard">
         <h2>SKYBLOCK</h2>
-        <div><span>Profile</span><strong>{player.username}</strong></div>
+        <div><span>{formatSkyblockSidebar(clock).date}</span></div>
+        <div><span>{formatSkyblockSidebar(clock).time}</span><strong className="mc-aqua">{player.serverId ?? 'm1'}</strong></div>
+        <div><span>Profile</span><strong>{player.profileName ?? player.username}</strong></div>
         <div><span>Purse</span><strong className="mc-gold">{Math.floor(player.coins).toLocaleString()} ⛃</strong></div>
         <div><span>Bank</span><strong className="mc-gold">{Math.floor(player.bank.balance).toLocaleString()} ⛃</strong></div>
         <div><span>Location</span><strong className="mc-aqua">{zone?.name ?? player.zoneId}</strong></div>
@@ -365,6 +389,15 @@ export function App() {
 
       <div className="actionbar">
         {actionBar ? <div className="xp-actionbar">{actionBar}</div> : <div className="xp-actionbar xp-actionbar-spacer" />}
+        <div className="skyblock-actionbar">
+          <span className="mc-red">{Math.ceil(player.hp).toLocaleString()}/{Math.round(player.maxHp).toLocaleString()}❤</span>
+          <span className="mc-green">{Math.round(player.stats.defense).toLocaleString()}❈ Defense</span>
+          <span className="mc-aqua">{Math.floor(player.mana).toLocaleString()}/{Math.round(player.maxMana).toLocaleString()}✎ Mana</span>
+        </div>
+        <div className="mobile-ticker">
+          <span>{formatSkyblockSidebar(clock).date} · {formatSkyblockSidebar(clock).time}</span>
+          <span className="mc-aqua">{player.serverId ?? 'm1'}</span>
+        </div>
         <div className="stat-bars">
           <div className="stat-bar health-bar">
             <div className="stat-bar-fill" style={{ width: `${Math.max(0, Math.min(100, (player.hp / Math.max(1, player.maxHp)) * 100))}%` }} />
@@ -429,6 +462,25 @@ export function App() {
 
       {player.dungeonRun ? (
         <div className="dungeon-hud">
+          {dungeonPhase(player.dungeonRun) === 'boss' && player.dungeonRun.bossHp != null ? (
+            <div className="boss-bar">
+              <div className="boss-bar-label">{player.dungeonRun.bossPhaseName ?? 'Boss'}</div>
+              <div className="boss-bar-track">
+                {bossPhasesForFloor(player.dungeonRun.floorId).map((phase, i) => {
+                  const idx = player.dungeonRun?.bossPhaseIndex ?? 0;
+                  const total = dungeonFloor(player.dungeonRun?.floorId ?? '')?.boss.health ?? 1;
+                  const phaseMax = Math.max(1, Math.round(total * phase.hpShare));
+                  const hp = player.dungeonRun?.bossHp ?? 0;
+                  const fill = i < idx ? 0 : i > idx ? 100 : Math.max(0, Math.min(100, (hp / phaseMax) * 100));
+                  return (
+                    <div key={phase.name} className="boss-bar-segment">
+                      <div className="boss-bar-fill" style={{ width: `${fill}%` }} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
           <strong className="mc-gold">Catacombs {player.dungeonRun.floorId.toUpperCase()}</strong>
           <span>
             {dungeonPhase(player.dungeonRun) === 'starter' && 'Starter Room — open the Wither Door (E)'}
@@ -448,6 +500,33 @@ export function App() {
           </span>
           <span className="mc-yellow">Score: {player.dungeonRun.score} ({dungeonScoreGrade(player.dungeonRun.score)}) · Secrets: {player.dungeonRun.secretsFound ?? 0} · Deaths: {player.dungeonRun.deaths ?? 0}</span>
           <span className="mc-gray">Type /leave to abandon</span>
+        </div>
+      ) : null}
+
+      {tabListOpen ? (
+        <div className="tab-list" role="dialog" aria-label="Player list">
+          <div className="tab-list-head">
+            <strong>{player.serverId ?? 'm1'}</strong>
+            <span>{zonePlayers.length} online</span>
+          </div>
+          <div className="tab-list-party">
+            Party: {player.dungeonRun?.partyId ? 'dungeon party' : player.coopHostId ? 'co-op' : 'solo'}
+          </div>
+          <ul>
+            {zonePlayers.map((entry) => (
+              <li key={entry.id}>
+                <span>{entry.username}</span>
+                <span className="mc-red">{Math.ceil(entry.hp)}/{Math.round(entry.maxHp)}❤</span>
+              </li>
+            ))}
+          </ul>
+          <div className="tab-list-stats">
+            <span className="mc-red">❤ {Math.round(player.stats.health)}</span>
+            <span className="mc-green">❈ {Math.round(player.stats.defense)}</span>
+            <span className="mc-red">❁ {Math.round(player.stats.strength)}</span>
+            <span className="mc-aqua">✎ {Math.round(player.stats.intelligence)}</span>
+            <span>✦ {Math.round(player.stats.speed)}</span>
+          </div>
         </div>
       ) : null}
 

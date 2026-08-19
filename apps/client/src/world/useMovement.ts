@@ -3,6 +3,7 @@ import {
   MOVE_SPEED,
   canStand,
   isHoldingPlaceable,
+  moveSpeedTiles,
   type Facing,
   type IslandMap,
   type PlayerState,
@@ -168,7 +169,7 @@ export function useMovement(player: PlayerState, map: IslandMap, disabled: boole
         if (Math.abs(dx) > Math.abs(dy)) current.facing = dx < 0 ? 'left' : 'right';
         else current.facing = dy < 0 ? 'up' : 'down';
         const sprint = sprintRef.current || sprintHoldRef.current || analogMag > ANALOG_SPRINT;
-        const speed = MOVE_SPEED * (sprint ? 1.3 : 1);
+        const speed = moveSpeedTiles(playerRef.current.stats.speed ?? 100, MOVE_SPEED) * (sprint ? 1.3 : 1);
         const distance = speed * delta;
         const nextX = current.x + dx * distance;
         const nextY = current.y + dy * distance;

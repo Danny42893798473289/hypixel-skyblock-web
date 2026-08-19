@@ -13,6 +13,9 @@ export interface ItemStack {
   enchantments?: Record<string, number>;
   statBoosts?: Partial<StatBlock>;
   dungeonStars?: number;
+  hotPotatoCount?: number;
+  fumingCount?: number;
+  recombobulated?: boolean;
   drill?: {
     fuel: number;
     parts: {
