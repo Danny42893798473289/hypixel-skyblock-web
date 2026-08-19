@@ -47,7 +47,7 @@ export function ChestMenu({ menu, player, onMenuClick, onClose, onBack, onSearch
 
   const menuSlots = new Map(menu.slots.map((entry) => [entry.slot, entry]));
   return (
-    <div className="chest-overlay" role="dialog" aria-label={menu.title}>
+    <div className="chest-overlay chest-menu" role="dialog" aria-label={menu.title}>
       <HeldCursorGhost stack={cursor} />
       <div className={`chest-window rows-${menu.rows}`}>
         <div className="chest-title">

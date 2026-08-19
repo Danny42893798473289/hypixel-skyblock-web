@@ -60,6 +60,19 @@ export interface JacobMedals {
   gold: number;
 }
 
+export interface JacobContestEntry {
+  crop: ItemId;
+  score: number;
+  medal: 'bronze' | 'silver' | 'gold' | 'none';
+  timestamp: number;
+}
+
+export interface JacobLeaderboardEntry {
+  username: string;
+  score: number;
+  medal: 'bronze' | 'silver' | 'gold' | 'none';
+}
+
 export function emptyJacobMedals(): JacobMedals {
   return { bronze: 0, silver: 0, gold: 0 };
 }

@@ -188,3 +188,44 @@ export function applyReforgeStone(stack: ItemStack, stoneId: ItemId): string {
 export function reforgeCost(rarity: ItemRarity | undefined): number {
   return 250 * (rarityIndex(rarity) + 1);
 }
+
+export type GemstoneType = 'ruby' | 'jade' | 'amethyst' | 'sapphire' | 'amber' | 'topaz' | 'jasper';
+export type GemstoneQuality = 'rough' | 'flawless' | 'perfect';
+
+export interface GemstoneSlot {
+  type: GemstoneType | null;
+  quality: GemstoneQuality | null;
+}
+
+export const GEMSTONE_STAT_MAP: Record<GemstoneType, { stat: string; rough: number; flawless: number; perfect: number }> = {
+  ruby: { stat: 'health', rough: 5, flawless: 15, perfect: 30 },
+  jade: { stat: 'miningFortune', rough: 4, flawless: 12, perfect: 25 },
+  amethyst: { stat: 'defense', rough: 4, flawless: 12, perfect: 25 },
+  sapphire: { stat: 'intelligence', rough: 5, flawless: 15, perfect: 30 },
+  amber: { stat: 'miningSpeed', rough: 10, flawless: 30, perfect: 60 },
+  topaz: { stat: 'petLuck', rough: 2, flawless: 6, perfect: 12 },
+  jasper: { stat: 'strength', rough: 3, flawless: 10, perfect: 20 },
+};
+
+export function gemstoneStatBonus(slot: GemstoneSlot): { stat: string; amount: number } | null {
+  if (!slot.type || !slot.quality) return null;
+  const mapping = GEMSTONE_STAT_MAP[slot.type];
+  if (!mapping) return null;
+  return { stat: mapping.stat, amount: mapping[slot.quality] };
+}
+
+export function gemstoneApplyCost(quality: GemstoneQuality): number {
+  if (quality === 'perfect') return 100000;
+  if (quality === 'flawless') return 25000;
+  return 5000;
+}
+
+export function maxGemstoneSlots(rarity: string): number {
+  switch (rarity) {
+    case 'COMMON': case 'UNCOMMON': return 0;
+    case 'RARE': return 1;
+    case 'EPIC': return 2;
+    case 'LEGENDARY': case 'MYTHIC': case 'DIVINE': return 3;
+    default: return 0;
+  }
+}

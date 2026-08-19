@@ -32,14 +32,14 @@ export const FORGE_CATEGORIES: Array<{ id: ForgeCategory; name: string; icon: st
   { id: 'fuel', name: 'Fuel', icon: 'potion' },
 ];
 
-export const FORGE_GEMS: Array<{ rough: ItemId; flawless: ItemId; name: string; color: string }> = [
-  { rough: 'gemstone_ruby', flawless: 'flawless_ruby', name: 'Ruby', color: '#d81b45' },
-  { rough: 'gemstone_jade', flawless: 'flawless_jade', name: 'Jade', color: '#2ec27e' },
-  { rough: 'gemstone_amethyst', flawless: 'flawless_amethyst', name: 'Amethyst', color: '#aa55ff' },
-  { rough: 'gemstone_sapphire', flawless: 'flawless_sapphire', name: 'Sapphire', color: '#4488ff' },
-  { rough: 'gemstone_amber', flawless: 'flawless_amber', name: 'Amber', color: '#ff8800' },
-  { rough: 'gemstone_topaz', flawless: 'flawless_topaz', name: 'Topaz', color: '#ffcc00' },
-  { rough: 'gemstone_jasper', flawless: 'flawless_jasper', name: 'Jasper', color: '#cc6644' },
+export const FORGE_GEMS: Array<{ rough: ItemId; flawless: ItemId; perfect?: ItemId; name: string; color: string }> = [
+  { rough: 'gemstone_ruby', flawless: 'flawless_ruby', perfect: 'perfect_ruby', name: 'Ruby', color: '#d81b45' },
+  { rough: 'gemstone_jade', flawless: 'flawless_jade', perfect: 'perfect_jade', name: 'Jade', color: '#2ec27e' },
+  { rough: 'gemstone_amethyst', flawless: 'flawless_amethyst', perfect: 'perfect_amethyst', name: 'Amethyst', color: '#aa55ff' },
+  { rough: 'gemstone_sapphire', flawless: 'flawless_sapphire', perfect: 'perfect_sapphire', name: 'Sapphire', color: '#4488ff' },
+  { rough: 'gemstone_amber', flawless: 'flawless_amber', perfect: 'perfect_amber', name: 'Amber', color: '#ff8800' },
+  { rough: 'gemstone_topaz', flawless: 'flawless_topaz', perfect: 'perfect_topaz', name: 'Topaz', color: '#ffcc00' },
+  { rough: 'gemstone_jasper', flawless: 'flawless_jasper', perfect: 'perfect_jasper', name: 'Jasper', color: '#cc6644' },
   { rough: 'aquamarine', flawless: 'flawless_aquamarine', name: 'Aquamarine', color: '#44ccff' },
   { rough: 'citrine', flawless: 'flawless_citrine', name: 'Citrine', color: '#ffcc44' },
   { rough: 'peridot', flawless: 'flawless_peridot', name: 'Peridot', color: '#88cc44' },
@@ -218,6 +218,17 @@ export const FORGE_RECIPES: ForgeRecipe[] = [
     400,
     { skill: 'mining', level: 12 },
     { itemId: gem.rough, amount: 250 },
+  )),
+
+  ...FORGE_GEMS.filter((gem) => gem.perfect).map((gem) => recipe(
+    `forge_${gem.perfect!}`,
+    `Perfect ${gem.name} Gemstone`,
+    'gemstones',
+    gem.perfect!,
+    [{ itemId: gem.flawless, qty: 5 }],
+    2000,
+    { skill: 'mining', level: 20 },
+    { itemId: gem.flawless, amount: 50 },
   )),
 
   ...armorSet('sorrow', 'Sorrow', [

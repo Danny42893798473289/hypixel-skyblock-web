@@ -111,3 +111,88 @@ export function seaCreatureToMob(creature: SeaCreatureDef) {
 export const SEA_CREATURE_IDS = new Set(
   Object.values(SEA_CREATURE_ZONES).flatMap((pool) => pool.map((c) => c.id)),
 );
+
+export interface TrophyFishDef {
+  id: string;
+  name: string;
+  pool: string;
+  weight: number;
+  tiers: ('bronze' | 'silver' | 'gold' | 'diamond')[];
+}
+
+export const TROPHY_FISH: TrophyFishDef[] = [
+  { id: 'sulphur_skitter', name: 'Sulphur Skitter', pool: 'fish_crimson', weight: 15, tiers: ['bronze', 'silver', 'gold', 'diamond'] },
+  { id: 'obfuscated_fish_1', name: 'Obfuscated 1', pool: 'fish_crimson', weight: 10, tiers: ['bronze', 'silver', 'gold', 'diamond'] },
+  { id: 'steaming_hot_flounder', name: 'Steaming-Hot Flounder', pool: 'fish_crimson', weight: 8, tiers: ['bronze', 'silver', 'gold', 'diamond'] },
+  { id: 'gusher', name: 'Gusher', pool: 'fish_crimson', weight: 5, tiers: ['bronze', 'silver', 'gold', 'diamond'] },
+  { id: 'blobfish', name: 'Blobfish', pool: 'fish_crimson', weight: 4, tiers: ['bronze', 'silver', 'gold', 'diamond'] },
+  { id: 'slugfish', name: 'Slugfish', pool: 'fish_crimson', weight: 3, tiers: ['bronze', 'silver', 'gold', 'diamond'] },
+  { id: 'flyfish', name: 'Flyfish', pool: 'fish_crimson', weight: 2, tiers: ['bronze', 'silver', 'gold', 'diamond'] },
+  { id: 'golden_fish', name: 'Golden Fish', pool: 'fish_crimson', weight: 1, tiers: ['bronze', 'silver', 'gold', 'diamond'] },
+  { id: 'vanille', name: 'Vanille', pool: 'fish_hub', weight: 10, tiers: ['bronze', 'silver', 'gold', 'diamond'] },
+  { id: 'skeleton_fish', name: 'Skeleton Fish', pool: 'fish_hub', weight: 6, tiers: ['bronze', 'silver', 'gold', 'diamond'] },
+  { id: 'moldfin', name: 'Moldfin', pool: 'fish_spider', weight: 5, tiers: ['bronze', 'silver', 'gold', 'diamond'] },
+  { id: 'soul_fish', name: 'Soul Fish', pool: 'fish_lake', weight: 4, tiers: ['bronze', 'silver', 'gold', 'diamond'] },
+];
+
+export const TROPHY_FISH_BY_ID: Record<string, TrophyFishDef> = Object.fromEntries(
+  TROPHY_FISH.map((f) => [f.id, f]),
+);
+
+export function rollTrophyFish(pool: string, fishingLevel: number): { fish: TrophyFishDef; tier: string } | null {
+  const eligible = TROPHY_FISH.filter((f) => f.pool === pool);
+  if (!eligible.length) return null;
+  const baseChance = 0.03 + fishingLevel * 0.002;
+  if (Math.random() > baseChance) return null;
+  const totalWeight = eligible.reduce((sum, f) => sum + f.weight, 0);
+  let roll = Math.random() * totalWeight;
+  for (const fish of eligible) {
+    roll -= fish.weight;
+    if (roll <= 0) {
+      const tierRoll = Math.random();
+      const tier = tierRoll < 0.01 ? 'diamond' : tierRoll < 0.05 ? 'gold' : tierRoll < 0.2 ? 'silver' : 'bronze';
+      return { fish, tier };
+    }
+  }
+  return null;
+}
+
+export const FISHING_MINIBOSSES: SeaCreatureDef[] = [
+  {
+    id: 'thunder', name: 'Thunder', level: 30, health: 50000, damage: 500, defense: 100,
+    combatXp: 250, coins: 5000,     drops: [{ itemId: 'enchanted_diamond', chance: 1, min: 2, max: 2 }],
+    minFishing: 25, weight: 1,
+  },
+  {
+    id: 'lord_jawbus', name: 'Lord Jawbus', level: 35, health: 100000, damage: 800, defense: 150,
+    combatXp: 500, coins: 10000,     drops: [{ itemId: 'enchanted_diamond_block', chance: 0.5, min: 1, max: 1 }],
+    minFishing: 30, weight: 1,
+  },
+  {
+    id: 'plhlegblast', name: 'Plhlegblast', level: 25, health: 30000, damage: 400, defense: 80,
+    combatXp: 200, coins: 3000,     drops: [{ itemId: 'enchanted_iron', chance: 1, min: 3, max: 3 }],
+    minFishing: 20, weight: 1,
+  },
+];
+
+export const FISHING_MINIBOSS_IDS = new Set(FISHING_MINIBOSSES.map((b) => b.id));
+
+export function rollFishingMiniboss(fishingLevel: number, seaCreatureChance: number): SeaCreatureDef | null {
+  const chance = 0.005 + seaCreatureChance / 500;
+  if (Math.random() > chance) return null;
+  const eligible = FISHING_MINIBOSSES.filter((b) => fishingLevel >= b.minFishing);
+  if (!eligible.length) return null;
+  return eligible[Math.floor(Math.random() * eligible.length)]!;
+}
+
+export interface FishingFestival {
+  active: boolean;
+  startTime: number;
+  durationMs: number;
+  seaCreatureBonus: number;
+  xpMultiplier: number;
+}
+
+export function defaultFishingFestival(): FishingFestival {
+  return { active: false, startTime: 0, durationMs: 60 * 60 * 1000, seaCreatureBonus: 0.15, xpMultiplier: 1.5 };
+}

@@ -116,6 +116,16 @@ export const ENCHANTMENTS: EnchantmentDef[] = [
   e('dedication', 'Dedication', 4, farmTool, 'Bonus Farming XP and Fortune on crops.', 350),
   e('delicate', 'Delicate', 5, farmTool, 'Avoid trampling crops.', 250),
   e('sunder', 'Sunder', 6, farmTool, 'Increases damage to logs and crops.', 300),
+  e('turbo_wheat', 'Turbo-Wheat', 5, farmTool, 'Grants Farming Fortune for wheat.', 200),
+  e('turbo_cane', 'Turbo-Cane', 5, farmTool, 'Grants Farming Fortune for sugar cane.', 200),
+  e('turbo_cactus', 'Turbo-Cactus', 5, farmTool, 'Grants Farming Fortune for cactus.', 200),
+  e('turbo_potato', 'Turbo-Potato', 5, farmTool, 'Grants Farming Fortune for potatoes.', 200),
+  e('turbo_carrot', 'Turbo-Carrot', 5, farmTool, 'Grants Farming Fortune for carrots.', 200),
+  e('turbo_cocoa', 'Turbo-Cocoa Beans', 5, farmTool, 'Grants Farming Fortune for cocoa beans.', 200),
+  e('turbo_melon', 'Turbo-Melon', 5, farmTool, 'Grants Farming Fortune for melons.', 200),
+  e('turbo_pumpkin', 'Turbo-Pumpkin', 5, farmTool, 'Grants Farming Fortune for pumpkins.', 200),
+  e('turbo_mushroom', 'Turbo-Mushroom', 5, farmTool, 'Grants Farming Fortune for mushrooms.', 200),
+  e('turbo_wart', 'Turbo-Wart', 5, farmTool, 'Grants Farming Fortune for nether wart.', 200),
 
   // —— Fishing rods ——
   e('angler', 'Angler', 6, rod, 'Grants Sea Creature Chance.', 300),
@@ -172,6 +182,10 @@ export function enchantStatBonuses(enchantments: Record<string, number>): Partia
       case 'cultivating': add('farmingFortune', level * 4); break;
       case 'harvesting': add('farmingFortune', level * 6); break;
       case 'dedication': add('farmingFortune', level * 5); break;
+      case 'turbo_wheat': case 'turbo_cane': case 'turbo_cactus':
+      case 'turbo_potato': case 'turbo_carrot': case 'turbo_cocoa':
+      case 'turbo_melon': case 'turbo_pumpkin': case 'turbo_mushroom':
+      case 'turbo_wart': add('farmingFortune', level * 5); break;
       case 'lapidary': add('miningFortune', level * 8); add('miningSpeed', level * 10); break;
       case 'flowstate': add('miningSpeed', level * 15); break;
       case 'pristine': add('miningFortune', level * 5); break;

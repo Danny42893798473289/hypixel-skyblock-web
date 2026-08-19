@@ -16,6 +16,7 @@ export interface ItemStack {
   hotPotatoCount?: number;
   fumingCount?: number;
   recombobulated?: boolean;
+  gemstoneSlots?: Array<{ type: string | null; quality: string | null }>;
   drill?: {
     fuel: number;
     parts: {

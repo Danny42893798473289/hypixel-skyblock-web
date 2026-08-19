@@ -22,6 +22,8 @@ import {
   type ServerEvent,
 } from '@aether/shared';
 import { AuthScreen } from './ui/AuthScreen';
+import { SettingsMenu } from './ui/SettingsMenu';
+import { soundManager } from './audio/SoundManager';
 import { ChestMenu } from './ui/chest/ChestMenu';
 import { PlayerInventoryPanel } from './ui/inventory/PlayerInventoryPanel';
 import { BazaarProductPanel } from './ui/bazaar/BazaarProductPanel';
@@ -55,6 +57,7 @@ export function App() {
   const [chatFocused, setChatFocused] = useState(false);
   const [touchMode, setTouchMode] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [actionBar, setActionBar] = useState('');
   const [tabListOpen, setTabListOpen] = useState(false);
   const [clock, setClock] = useState(() => Date.now());
@@ -97,6 +100,7 @@ export function App() {
           setMenu(event.menu);
           setMenuPending(false);
           setMenuVisible(true);
+          soundManager.play('menu_open');
           if (event.menu.id === 'bazaar_item' && event.menu.context?.itemId) {
             gameSocket.send({ type: 'bazaarSubscribe', itemId: String(event.menu.context.itemId) });
           } else if (event.menu.id !== 'bazaar_orders' && event.menu.id !== 'bazaar') {
@@ -127,6 +131,7 @@ export function App() {
           break;
         case 'toast':
           addToast(event.message, event.kind);
+          soundManager.play(event.kind === 'error' ? 'error' : 'level_up');
           break;
         case 'actionBar':
           setActionBar(event.text);
@@ -135,6 +140,7 @@ export function App() {
           break;
         case 'chat':
           setChats((current) => [...current.slice(-60), event.message]);
+          soundManager.play('chat_message');
           break;
         case 'tradeOpen':
           break;
@@ -172,6 +178,7 @@ export function App() {
   const closeMenu = useCallback(() => {
     setMenuVisible(false);
     setMenuPending(false);
+    soundManager.play('menu_close');
     gameSocket.send({ type: 'closeMenu' });
     gameSocket.send({ type: 'bazaarSubscribe', itemId: null });
     setBazaarBook(null);
@@ -295,7 +302,7 @@ export function App() {
     };
   }, [closeMenu, exitChat, menu?.id, menuVisible, openInventory, openMenu]);
 
-  if (!token || !player) {
+  if (!token) {
     return (
       <AuthScreen
         onAuth={(nextToken, nextPlayer) => {
@@ -304,6 +311,27 @@ export function App() {
           setPlayer(nextPlayer);
         }}
       />
+    );
+  }
+
+  if (!player) {
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, background: '#0a0a1a',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        color: '#ffaa00', fontFamily: 'monospace',
+      }}>
+        <h1 style={{ fontSize: 32, marginBottom: 16 }}>Aether Isles</h1>
+        <div style={{ fontSize: 14, color: '#aaa' }}>Connecting to server...</div>
+        <div style={{
+          marginTop: 24, width: 200, height: 4, background: '#333', borderRadius: 2, overflow: 'hidden',
+        }}>
+          <div style={{
+            height: '100%', background: '#ffaa00', borderRadius: 2,
+            animation: 'loadingBar 1.5s ease-in-out infinite',
+          }} />
+        </div>
+      </div>
     );
   }
 
@@ -324,6 +352,13 @@ export function App() {
         onOpenInventory={openInventory}
         onTabList={() => setTabListOpen((open) => !open)}
       />
+
+      <button onClick={() => setShowSettings(true)} style={{
+        position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.5)',
+        border: '1px solid #555', borderRadius: 4, color: '#aaa', cursor: 'pointer',
+        padding: '4px 8px', fontFamily: 'monospace', fontSize: 12, zIndex: 100,
+      }}>⚙</button>
+      {showSettings && <SettingsMenu onClose={() => setShowSettings(false)} />}
 
       <header className="hud-top">
         <div className="hud-brand">SKYBLOCK</div>
