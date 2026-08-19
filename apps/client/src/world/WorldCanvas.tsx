@@ -42,6 +42,17 @@ interface RemotePosition {
   updatedAt: number;
 }
 
+interface FxParticle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  size: number;
+  color: string;
+}
+
 /** Fairy souls only fade in once you are almost standing on them. */
 const FAIRY_REVEAL_DISTANCE = 2.6;
 
@@ -101,10 +112,45 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, chatFocused, t
   const liveMapRef = useRef(liveMap);
   const foundFairiesRef = useRef(foundFairies);
   const usernameRef = useRef(player.username);
+  const transitionAlphaRef = useRef(0);
+  const transitionUntilRef = useRef(0);
+  const particlesRef = useRef<FxParticle[]>([]);
+  const prevZoneRef = useRef(player.zoneId);
+  const prevIslandRef = useRef(player.islandId);
+  const prevCoinsRef = useRef(player.coins);
+  const prevSkillRef = useRef<string>('');
   liveMapRef.current = liveMap;
   foundFairiesRef.current = foundFairies;
   usernameRef.current = player.username;
   nearbyRef.current = nearby;
+
+  useEffect(() => {
+    const islandChanged = prevIslandRef.current !== player.islandId;
+    const warped = islandChanged || Boolean(player.resetPosition);
+    if (warped) {
+      transitionUntilRef.current = performance.now() + 320;
+      transitionAlphaRef.current = 0.95;
+      spawnBurst(particlesRef.current, player.x, player.y, 18, '#d8a2ff', 0.6);
+    }
+    prevZoneRef.current = player.zoneId;
+    prevIslandRef.current = player.islandId;
+  }, [player.islandId, player.resetPosition, player.x, player.y, player.zoneId]);
+
+  useEffect(() => {
+    const coinGain = Math.floor(player.coins) - Math.floor(prevCoinsRef.current);
+    if (coinGain > 0) {
+      spawnBurst(particlesRef.current, player.x, player.y, Math.min(14, 4 + Math.floor(coinGain / 250)), '#ffd24a', 0.45);
+    }
+    prevCoinsRef.current = player.coins;
+  }, [player.coins, player.x, player.y]);
+
+  useEffect(() => {
+    const marker = player.lastSkillGain ? `${player.lastSkillGain.skillId}:${player.lastSkillGain.level}:${Math.floor(player.lastSkillGain.intoLevel)}` : '';
+    if (marker && marker !== prevSkillRef.current) {
+      spawnBurst(particlesRef.current, player.x, player.y - 0.5, 12, '#79d4ff', 0.5);
+    }
+    prevSkillRef.current = marker;
+  }, [player.lastSkillGain, player.x, player.y]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -175,6 +221,11 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, chatFocused, t
       const viewportHeight = cssHeight / scale;
       const map = liveMapRef.current;
       const local = positionRef.current;
+      if (transitionUntilRef.current > now) {
+        transitionAlphaRef.current = Math.min(0.95, transitionAlphaRef.current + 0.04);
+      } else {
+        transitionAlphaRef.current = Math.max(0, transitionAlphaRef.current - 0.05);
+      }
       const worldWidth = map.width * TILE;
       const worldHeight = map.height * TILE;
       const overscan = map.islandId === 'private_island' ? TILE * 6 : 0;
@@ -254,6 +305,16 @@ export function WorldCanvas({ player, zonePlayers, inputDisabled, chatFocused, t
 
       if (nearest && nearest.kind !== 'sign' && nearest.kind !== 'resource') {
         drawNameplate(ctx, nearest.label, nearest.x, nearest.y - 1.3, '#55ffff');
+      }
+
+      updateAndDrawParticles(ctx, particlesRef.current);
+
+      if (transitionAlphaRef.current > 0.01) {
+        ctx.save();
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.fillStyle = `rgba(0, 0, 0, ${transitionAlphaRef.current.toFixed(3)})`;
+        ctx.fillRect(0, 0, cssWidth, cssHeight);
+        ctx.restore();
       }
       animationFrame = requestAnimationFrame(render);
     };
@@ -384,4 +445,40 @@ function gatherPrompt(channel: NonNullable<PlayerState['gatherChannel']>): strin
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function spawnBurst(store: FxParticle[], x: number, y: number, count: number, color: string, speed = 0.4): void {
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i) / count + Math.random() * 0.6;
+    const magnitude = speed * (0.35 + Math.random());
+    store.push({
+      x,
+      y,
+      vx: Math.cos(angle) * magnitude,
+      vy: Math.sin(angle) * magnitude - 0.2,
+      life: 26 + Math.floor(Math.random() * 20),
+      maxLife: 42,
+      size: 1 + Math.floor(Math.random() * 2),
+      color,
+    });
+  }
+}
+
+function updateAndDrawParticles(ctx: CanvasRenderingContext2D, store: FxParticle[]): void {
+  for (let i = store.length - 1; i >= 0; i--) {
+    const p = store[i]!;
+    p.x += p.vx * 0.05;
+    p.y += p.vy * 0.05;
+    p.vy += 0.01;
+    p.life -= 1;
+    if (p.life <= 0) {
+      store.splice(i, 1);
+      continue;
+    }
+    const alpha = Math.max(0, Math.min(1, p.life / p.maxLife));
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = alpha;
+    ctx.fillRect(Math.round(p.x * TILE), Math.round(p.y * TILE), p.size, p.size);
+    ctx.globalAlpha = 1;
+  }
 }

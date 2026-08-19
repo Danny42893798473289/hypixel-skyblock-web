@@ -36,6 +36,7 @@ import {
   isGemstoneItem,
   loginRewardForStreak,
   normalizeBackpacks,
+  normalizeSacks,
   plotUnlockCost,
   removeItem,
   rollCommissions,
@@ -88,6 +89,7 @@ export function ensureMidgame(player: PlayerState): void {
   if (!player.museum) player.museum = emptyMuseum();
   if (!player.wardrobe || player.wardrobe.pages.length === 0) player.wardrobe = emptyWardrobe();
   player.backpacks = normalizeBackpacks(player.backpacks);
+  player.sacks = normalizeSacks(player.sacks);
   if (player.dragonFight === undefined) player.dragonFight = null;
   if (player.kuudraFight === undefined) player.kuudraFight = null;
   if (!player.hotm.commissions.length) player.hotm.commissions = rollCommissions();

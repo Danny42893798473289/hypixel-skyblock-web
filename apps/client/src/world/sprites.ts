@@ -27,6 +27,11 @@ export function drawTile(
       const offset = (tileY + (Math.floor(performance.now() / 350) % 4)) % 5;
       ctx.fillRect(x + 2, y + 4 + offset, 6, 1);
       ctx.fillRect(x + 10, y + 10 - offset, 4, 1);
+      const pulse = 0.08 + ((Math.sin((performance.now() + (tileX + tileY) * 24) / 260) + 1) * 0.06);
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = tile === 'water' ? '#9ae7ff' : '#ffd0a0';
+      ctx.fillRect(x, y, TILE, TILE);
+      ctx.globalAlpha = 1;
       break;
     }
     // Grass: tufts of blades, so it never reads as flat green.

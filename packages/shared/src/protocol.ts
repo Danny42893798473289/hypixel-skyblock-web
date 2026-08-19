@@ -163,6 +163,8 @@ export interface PlayerState extends PlayerPublic {
   kuudraFight: KuudraFightState | null;
   /** 10 double-chest backpacks (54 slots each). Always unlocked. */
   backpacks: Inventory[];
+  /** Auto-storage sacks for stackable commodities. */
+  sacks: import('./sacks.js').SacksState;
   /** Sparse private-island tile edits (`"x,y"` → tile). */
   islandBlocks?: Record<string, TileKind>;
   dungeonPartyId?: string | null;
@@ -261,6 +263,8 @@ export type MenuId =
   | 'dragons'
   | 'backpack'
   | 'backpack_page'
+  | 'sacks'
+  | 'sack_view'
   | 'profiles'
   | 'coop';
 

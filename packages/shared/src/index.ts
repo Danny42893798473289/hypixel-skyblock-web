@@ -34,6 +34,7 @@ export * from './economy.js';
 export * from './seaCreatures.js';
 export * from './gardenPlots.js';
 export * from './enchantProcs.js';
+export * from './sacks.js';
 import './registerCatalog.js';
 import './registerGear.js';
 import './registerSkyblockRecipes.js';

@@ -78,6 +78,7 @@ export interface StoredUser {
   dragonFight?: DragonFightState | null;
   kuudraFight?: KuudraFightState | null;
   backpacks?: Inventory[];
+  sacks?: import('@aether/shared').SacksState;
   islandBlocks?: Record<string, TileKind>;
   pendingDungeonChest?: import('@aether/shared').DungeonChestReward | null;
   x?: number;
@@ -133,6 +134,7 @@ export interface StoredProfile {
   dragonFight?: DragonFightState | null;
   kuudraFight?: KuudraFightState | null;
   backpacks?: Inventory[];
+  sacks?: import('@aether/shared').SacksState;
   islandBlocks?: Record<string, TileKind>;
   pendingDungeonChest?: import('@aether/shared').DungeonChestReward | null;
   x?: number;
@@ -187,6 +189,7 @@ export function profileFromUser(user: StoredUser, name = 'Main'): StoredProfile 
     dragonFight: user.dragonFight,
     kuudraFight: user.kuudraFight,
     backpacks: user.backpacks,
+    sacks: user.sacks,
     islandBlocks: user.islandBlocks,
     pendingDungeonChest: user.pendingDungeonChest,
     x: user.x,
@@ -238,6 +241,7 @@ export function applyProfileToUser(user: StoredUser, profile: StoredProfile): vo
   user.dragonFight = profile.dragonFight;
   user.kuudraFight = profile.kuudraFight;
   user.backpacks = profile.backpacks;
+  user.sacks = profile.sacks;
   user.islandBlocks = profile.islandBlocks;
   user.pendingDungeonChest = profile.pendingDungeonChest;
   user.x = profile.x;

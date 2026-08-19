@@ -6,6 +6,8 @@ import {
   currentRoomType,
   currentMayor,
   SKILLS,
+  TILES,
+  islandMap,
   skyblockLevelFromXp,
   skyblockXp,
   formatSkyblockSidebar,
@@ -58,6 +60,9 @@ export function App() {
   const [touchMode, setTouchMode] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHud, setShowHud] = useState(() => localStorage.getItem('aether_hide_hud') !== 'true');
+  const [tutorialStep, setTutorialStep] = useState(() => (localStorage.getItem('aether_tutorial_complete') === 'true' ? -1 : 0));
+  const [menuTrail, setMenuTrail] = useState<string[]>([]);
   const [actionBar, setActionBar] = useState('');
   const [tabListOpen, setTabListOpen] = useState(false);
   const [clock, setClock] = useState(() => Date.now());
@@ -86,6 +91,16 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const syncHud = () => setShowHud(localStorage.getItem('aether_hide_hud') !== 'true');
+    window.addEventListener('storage', syncHud);
+    const timer = window.setInterval(syncHud, 500);
+    return () => {
+      window.removeEventListener('storage', syncHud);
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!token) return;
     gameSocket.connect(token);
     const off = gameSocket.on((event: ServerEvent) => {
@@ -100,6 +115,11 @@ export function App() {
           setMenu(event.menu);
           setMenuPending(false);
           setMenuVisible(true);
+          setMenuTrail((prev) => {
+            if (!event.menu.parent || event.menu.parent === event.menu.id) return [event.menu.title];
+            const root = event.menu.parent === 'skyblock' ? ['SkyBlock'] : [labelForMenu(event.menu.parent)];
+            return [...root, event.menu.title];
+          });
           soundManager.play('menu_open');
           if (event.menu.id === 'bazaar_item' && event.menu.context?.itemId) {
             gameSocket.send({ type: 'bazaarSubscribe', itemId: String(event.menu.context.itemId) });
@@ -166,6 +186,7 @@ export function App() {
     setMenu(null);
     setMenuPending(true);
     setMenuVisible(true);
+    setMenuTrail((prev) => (id === 'skyblock' ? ['SkyBlock'] : prev));
   }, []);
 
   const openInventory = useCallback(() => {
@@ -261,6 +282,15 @@ export function App() {
         if (menuVisible) closeMenu();
         else openMenu('skyblock');
       }
+      if (event.key.toLowerCase() === 'b' && !menuVisible) {
+        event.preventDefault();
+        openMenu('bazaar');
+      }
+      if (event.key.toLowerCase() === 'h' && !menuVisible) {
+        event.preventDefault();
+        gameSocket.send({ type: 'chat', text: '/warp hub' });
+        addToast('Warping to Hub...', 'success');
+      }
       if (event.key.toLowerCase() === 'i') {
         event.preventDefault();
         if (menuVisible && menu?.id === 'inventory') closeMenu();
@@ -339,6 +369,7 @@ export function App() {
     ? { name: 'The Catacombs', description: 'Kill starred mobs, then open the Wither Door.' }
     : ZONES[player.zoneId];
   const parent = menu?.parent ?? 'skyblock';
+  const bossHud = currentBossHud(player, seaCreatureAlert);
 
   return (
     <main className={`game-screen${touchMode ? ' touch-mode' : ''}`}>
@@ -360,7 +391,16 @@ export function App() {
       }}>⚙</button>
       {showSettings && <SettingsMenu onClose={() => setShowSettings(false)} />}
 
-      <header className="hud-top">
+      {bossHud ? (
+        <div className="global-bossbar">
+          <div className="global-bossbar-label">{bossHud.label}</div>
+          <div className="global-bossbar-track">
+            <div className="global-bossbar-fill" style={{ width: `${Math.max(0, Math.min(100, bossHud.pct))}%` }} />
+          </div>
+        </div>
+      ) : null}
+
+      {showHud ? <header className="hud-top">
         <div className="hud-brand">SKYBLOCK</div>
         <div className="hud-location">
           <strong>{zone?.name ?? player.zoneId}</strong>
@@ -384,10 +424,11 @@ export function App() {
             Log out
           </button>
         </div>
-      </header>
+      </header> : null}
 
-      <aside className="scoreboard">
+      {showHud ? <aside className="scoreboard">
         <h2>SKYBLOCK</h2>
+        <div className="score-divider" />
         <div><span>{formatSkyblockSidebar(clock).date}</span></div>
         <div><span>{formatSkyblockSidebar(clock).time}</span><strong className="mc-aqua">{player.serverId ?? 'm1'}</strong></div>
         <div><span>Profile</span><strong>{player.profileName ?? player.username}</strong></div>
@@ -404,6 +445,7 @@ export function App() {
           bestiaryKills: Object.values(player.bestiary?.kills ?? {}).reduce((sum, n) => sum + n, 0),
         })).level}</strong></div>
         <div><span>Mayor</span><strong>{currentMayor().name}</strong></div>
+        <div className="score-divider" />
         {player.hotm && (player.hotm.tokens > 0 || player.hotm.mithrilPowder > 0 || player.hotm.commissions.length > 0) && (
           <>
             <div><span>HotM</span><strong className="mc-aqua">{player.hotm.tokens} token{player.hotm.tokens === 1 ? '' : 's'} · {player.hotm.mithrilPowder.toLocaleString()} mithril{(player.hotm.gemstonePowder ?? 0) > 0 ? ` · ${player.hotm.gemstonePowder.toLocaleString()} gem` : ''}</strong></div>
@@ -420,9 +462,11 @@ export function App() {
             ))}
           </>
         )}
-      </aside>
+      </aside> : null}
 
-      <div className="actionbar">
+      {showHud ? <MiniMap player={player} zonePlayers={zonePlayers} /> : null}
+
+      {showHud ? <div className="actionbar">
         {actionBar ? <div className="xp-actionbar">{actionBar}</div> : <div className="xp-actionbar xp-actionbar-spacer" />}
         <div className="skyblock-actionbar">
           <span className="mc-red">{Math.ceil(player.hp).toLocaleString()}/{Math.round(player.maxHp).toLocaleString()}❤</span>
@@ -453,7 +497,7 @@ export function App() {
             </div>
           ) : null}
         </div>
-      </div>
+      </div> : null}
 
       <HotbarHud
         player={player}
@@ -668,6 +712,23 @@ export function App() {
           <ChestMenu
             menu={menu}
             player={player}
+            breadcrumbs={menuTrail}
+            onBreadcrumb={(index) => {
+              if (index <= 0) {
+                openMenu('skyblock');
+                return;
+              }
+              if (index === menuTrail.length - 2) {
+                openMenu(parent, menu.context);
+              }
+            }}
+            onQuickOpen={(target) => {
+              if (target === 'hub') {
+                gameSocket.send({ type: 'chat', text: '/warp hub' });
+                return;
+              }
+              openMenu(target as MenuId);
+            }}
             onMenuClick={(slot, button, action) => {
               if (action === 'close') {
                 closeMenu();
@@ -714,6 +775,41 @@ export function App() {
       <div className="toast-stack">
         {toasts.map((toast) => <div key={toast.id} className={`toast ${toast.kind ?? ''}`}>{toast.message}</div>)}
       </div>
+
+      {tutorialStep >= 0 ? (
+        <div className="tutorial-overlay">
+          <div className="tutorial-card">
+            <h3>{TUTORIAL_STEPS[tutorialStep]?.title}</h3>
+            <p>{TUTORIAL_STEPS[tutorialStep]?.body}</p>
+            <div className="tutorial-actions">
+              <button
+                type="button"
+                className="mc-button"
+                onClick={() => {
+                  if (tutorialStep >= TUTORIAL_STEPS.length - 1) {
+                    localStorage.setItem('aether_tutorial_complete', 'true');
+                    setTutorialStep(-1);
+                    return;
+                  }
+                  setTutorialStep((step) => step + 1);
+                }}
+              >
+                {tutorialStep >= TUTORIAL_STEPS.length - 1 ? 'Finish' : 'Next'}
+              </button>
+              <button
+                type="button"
+                className="logout-button"
+                onClick={() => {
+                  localStorage.setItem('aether_tutorial_complete', 'true');
+                  setTutorialStep(-1);
+                }}
+              >
+                Skip
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
@@ -726,5 +822,68 @@ function mergeLivePlayer(prev: PlayerState | null, next: PlayerState): PlayerSta
     return shouldReset ? { ...rest, resetPosition: true } : rest;
   }
   return { ...rest, x: prev.x, y: prev.y, facing: prev.facing };
+}
+
+const TUTORIAL_STEPS = [
+  { title: 'Movement', body: 'Use WASD to move around. Hold Shift to sprint and explore faster.' },
+  { title: 'Interact', body: 'Press E near NPCs, portals, stations, and resources to interact.' },
+  { title: 'Menus', body: 'Press M for SkyBlock menu and I for inventory. B opens Bazaar quickly.' },
+  { title: 'Combat', body: 'Left click to attack mobs. Right click or R uses your held item ability.' },
+  { title: 'Chat & Commands', body: 'Press T to chat. Useful shortcuts: H to warp Hub, / for commands.' },
+];
+
+function labelForMenu(menuId: string): string {
+  return menuId.replaceAll('_', ' ').replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+function currentBossHud(player: PlayerState, seaCreatureAlert: string | null): { label: string; pct: number } | null {
+  if (player.dungeonRun?.bossHp && player.dungeonRun?.bossPhaseName) {
+    const total = dungeonFloor(player.dungeonRun.floorId)?.boss.health ?? player.dungeonRun.bossHp;
+    return { label: player.dungeonRun.bossPhaseName, pct: (player.dungeonRun.bossHp / Math.max(1, total)) * 100 };
+  }
+  if (player.activeSlayer?.bossHp) {
+    const maxHp = player.activeSlayer.tier * 250_000;
+    return { label: `${player.activeSlayer.slayerId} Slayer`, pct: (player.activeSlayer.bossHp / Math.max(1, maxHp)) * 100 };
+  }
+  if (player.dragonFight?.hp) {
+    return { label: player.dragonFight.type, pct: (player.dragonFight.hp / Math.max(1, player.dragonFight.maxHp)) * 100 };
+  }
+  if (player.kuudraFight?.hp) {
+    return { label: `Kuudra T${player.kuudraFight.tier}`, pct: (player.kuudraFight.hp / Math.max(1, player.kuudraFight.maxHp)) * 100 };
+  }
+  if (seaCreatureAlert) {
+    return { label: seaCreatureAlert, pct: 100 };
+  }
+  return null;
+}
+
+function MiniMap({ player, zonePlayers }: { player: PlayerState; zonePlayers: PlayerPublic[] }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const map = islandMap(player.islandId);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const size = 120;
+    canvas.width = size;
+    canvas.height = size;
+    const scaleX = size / map.width;
+    const scaleY = size / map.height;
+    for (let y = 0; y < map.height; y++) {
+      for (let x = 0; x < map.width; x++) {
+        ctx.fillStyle = TILES[map.tiles[y][x]].color;
+        ctx.fillRect(Math.floor(x * scaleX), Math.floor(y * scaleY), Math.ceil(scaleX), Math.ceil(scaleY));
+      }
+    }
+    ctx.fillStyle = '#ffff55';
+    ctx.fillRect(Math.floor(player.x * scaleX) - 1, Math.floor(player.y * scaleY) - 1, 3, 3);
+    ctx.fillStyle = '#ffffff';
+    for (const entry of zonePlayers) {
+      if (entry.id === player.id || entry.islandId !== player.islandId) continue;
+      ctx.fillRect(Math.floor(entry.x * scaleX), Math.floor(entry.y * scaleY), 2, 2);
+    }
+  }, [player.id, player.islandId, player.x, player.y, zonePlayers]);
+  return <canvas ref={ref} className="mini-map" aria-label="Minimap" />;
 }
 

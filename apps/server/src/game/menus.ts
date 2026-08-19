@@ -44,6 +44,14 @@ import {
   BACKPACK_SIZE,
   backpackSlotsUsed,
   normalizeBackpacks,
+  SACK_DEFS,
+  SACK_BY_ID,
+  sackCapacity,
+  sackUsed,
+  sackItemEntries,
+  bagOfBagsUpgradeCost,
+  MAX_BAG_OF_BAGS_LEVEL,
+  type SackId,
   type CollectionCategory,
   type IslandId,
   type ItemId,
@@ -252,6 +260,8 @@ export function buildMenu(
     case 'leaderboard': return leaderboardMenu(player);
     case 'backpack': return backpackHubMenu(player);
     case 'backpack_page': return backpackPageMenu(player, context);
+    case 'sacks': return sacksHubMenu(player);
+    case 'sack_view': return sackViewMenu(player, context);
     default: return skyblockMenu(player);
   }
 }
@@ -278,6 +288,11 @@ function skyblockMenu(player: PlayerState): MenuView {
         line(`${backpackSlotsUsedTotal(player)} / ${BACKPACK_PAGES * BACKPACK_SIZE} slots used`, 'aqua'),
         click(),
       ], 'open:backpack'),
+      slot(31, 'bundle', 'Sacks', [
+        line('Auto-storage for crops, potions, enchanted items, and more.', 'gray'),
+        line(`${sacksStoredTotal(player).toLocaleString()} items stored`, 'aqua'),
+        click(),
+      ], 'open:sacks'),
       slot(23, 'pet', 'Pets', [line(`${player.pets.length} pets`), click()], 'open:pets'),
       slot(24, 'chest', 'Inventory & Equipment', [line('Manage armor, weapons and carried items.'), click()], 'open:inventory'),
       slot(25, 'talisman', 'Accessory Bag', [line(`Magical Power: ${player.magicalPower}`, 'light_purple'), click()], 'open:accessories'),
@@ -1437,6 +1452,89 @@ function backpackPageMenu(player: PlayerState, context: Context): MenuView {
     slots,
     parent: 'backpack',
     context: { page },
+  };
+}
+
+function sacksStoredTotal(player: PlayerState): number {
+  return SACK_DEFS.reduce((sum, def) => sum + sackUsed(player.sacks.stores[def.id]), 0);
+}
+
+function sacksHubMenu(player: PlayerState): MenuView {
+  const cap = sackCapacity(player.sacks);
+  const positions = [10, 11, 12, 13, 14, 19, 20, 21, 22, 23];
+  const slots: MenuSlotView[] = [
+    slot(4, 'bundle', 'Your Sacks', [
+      line('Store stackable items without filling your inventory.', 'gray'),
+      line(`Bag of Bags Level ${player.sacks.bagOfBagsLevel} (+${player.sacks.bagOfBagsLevel * 512} capacity each)`, 'gold'),
+      line(`${sacksStoredTotal(player).toLocaleString()} items stored total`, 'aqua'),
+    ]),
+    slot(40, 'chest', 'Bag of Bags', [
+      line('Upgrade all sack capacities.', 'gray'),
+      player.sacks.bagOfBagsLevel >= MAX_BAG_OF_BAGS_LEVEL
+        ? line('Maximum level reached!', 'green')
+        : line(`Upgrade to Lvl ${player.sacks.bagOfBagsLevel + 1} for ${bagOfBagsUpgradeCost(player.sacks.bagOfBagsLevel).toLocaleString()} coins`, 'yellow'),
+      line('Click to upgrade!', 'yellow'),
+    ], player.sacks.bagOfBagsLevel >= MAX_BAG_OF_BAGS_LEVEL ? undefined : 'sack:upgradeBag'),
+  ];
+  SACK_DEFS.forEach((def, i) => {
+    const used = sackUsed(player.sacks.stores[def.id]);
+    slots.push(slot(positions[i] ?? 10 + i, def.icon, def.name, [
+      line(def.description, 'gray'),
+      line(`${used.toLocaleString()} / ${cap.toLocaleString()} stored`, used >= cap ? 'red' : 'aqua'),
+      line(''),
+      line('Click to open!', 'yellow'),
+    ], `sack:open:${def.id}`));
+  });
+  slots.push(back(), close());
+  return { id: 'sacks', title: 'Sacks', rows: 6, slots, parent: 'skyblock' };
+}
+
+function sackViewMenu(player: PlayerState, context: Context): MenuView {
+  const sackId = String(context.sackId ?? 'enchanted') as SackId;
+  const def = SACK_BY_ID[sackId] ?? SACK_DEFS[0];
+  const store = player.sacks.stores[def.id];
+  const cap = sackCapacity(player.sacks);
+  const used = sackUsed(store);
+  const entries = sackItemEntries(store);
+  const page = Math.max(0, Number(context.page ?? 0) || 0);
+  const pageSize = 28;
+  const pages = Math.max(1, Math.ceil(entries.length / pageSize));
+  const slice = entries.slice(page * pageSize, page * pageSize + pageSize);
+  const grid = [10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34, 37, 38, 39, 40, 41, 42, 43];
+  const slots: MenuSlotView[] = [
+    slot(4, def.icon, def.name, [
+      line(def.description, 'gray'),
+      line(`${used.toLocaleString()} / ${cap.toLocaleString()} stored`, used >= cap ? 'red' : 'aqua'),
+    ]),
+    slot(49, 'hopper', 'Deposit Inventory', [
+      line('Moves all matching items from your inventory into this sack.', 'gray'),
+      line('Click to deposit!', 'yellow'),
+    ], `sack:depositAll:${def.id}`),
+  ];
+  slice.forEach((entry, i) => {
+    const pos = grid[i];
+    if (pos == null) return;
+    const itemDef = ITEMS[entry.itemId];
+    slots.push(slot(pos, itemDef?.sprite ?? entry.itemId, itemDef?.name ?? entry.itemId, [
+      line(`Stored: ${entry.qty.toLocaleString()}`, 'aqua'),
+      line(''),
+      line('Click to withdraw 64', 'yellow'),
+      line('Shift-click to withdraw all', 'gray'),
+    ], `sack:withdraw:${def.id}:${entry.itemId}`, {
+      itemId: entry.itemId,
+      count: entry.qty,
+      rarity: itemDef?.rarity ?? 'COMMON',
+    }));
+  });
+  slots.push(...pageControls('sack_view', { sackId: def.id }, page, pages));
+  slots.push(back('sacks'), close());
+  return {
+    id: 'sack_view',
+    title: def.name,
+    rows: 6,
+    slots,
+    parent: 'sacks',
+    context: { sackId: def.id, page },
   };
 }
 

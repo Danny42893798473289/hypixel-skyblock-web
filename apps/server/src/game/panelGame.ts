@@ -65,6 +65,14 @@ import {
   insertStack,
   BACKPACK_PAGES,
   normalizeBackpacks,
+  normalizeSacks,
+  depositToSack,
+  withdrawFromSack,
+  depositInventoryToSack,
+  upgradeBagOfBags,
+  bagOfBagsUpgradeCost,
+  SACK_BY_ID,
+  type SackId,
   islandMap,
   islandMapForZone,
   districtAt,
@@ -461,7 +469,7 @@ function pushState(session: Session, opts?: { resetPosition?: boolean }): void {
       username: s.player.username,
       members: partyMemberIds(s.player.id, sessions).length,
     }));
-  const cursorMenus: MenuId[] = ['inventory', 'backpack', 'backpack_page'];
+  const cursorMenus: MenuId[] = ['inventory', 'backpack', 'backpack_page', 'sack_view'];
   const payload: PlayerState = session.menuOpen && cursorMenus.includes(session.currentMenu)
     ? { ...session.player, inventoryCursor: session.inventoryCursor }
     : { ...session.player };
@@ -486,7 +494,7 @@ function stashInventoryCursor(session: Session): boolean {
 }
 
 function keepsInventoryCursor(menu: MenuId): boolean {
-  return menu === 'inventory' || menu === 'backpack' || menu === 'backpack_page';
+  return menu === 'inventory' || menu === 'backpack' || menu === 'backpack_page' || menu === 'sack_view';
 }
 
 function backpackPageIndex(session: Session): number {
@@ -1314,6 +1322,10 @@ function handleSkyblockChat(session: Session, text: string): boolean {
       openMenu(session, 'bazaar', query ? { query, page: 0 } : {});
       return true;
     }
+    if (cmd === 'sacks' || cmd === 'sack') {
+      openMenu(session, 'sacks');
+      return true;
+    }
     if (cmd === 'leave' || cmd === 'quit') {
       if (session.player.visitingHostId) {
         session.player.visitingHostId = null;
@@ -1606,6 +1618,10 @@ function handleMenuClick(
     } else if (op === 'click') {
       handleBackpackClick(session, Number(arg), button);
     }
+    return;
+  }
+  if (kind === 'sack') {
+    handleSackAction(session, value, button);
     return;
   }
   if (kind === 'inventoryUseCursor') {
@@ -2237,6 +2253,23 @@ function handleInventoryClick(session: Session, slot: number, button: 'left' | '
     }
   }
 
+  if (session.currentMenu === 'sack_view' && button.startsWith('shift')) {
+    const stack = session.player.inventory[slot];
+    if (stack) {
+      session.player.sacks = normalizeSacks(session.player.sacks);
+      const sackId = String(session.menuContext.sackId ?? 'enchanted') as SackId;
+      const result = depositToSack(session.player.sacks, sackId, stack.itemId, stack.qty);
+      if (result.deposited > 0) {
+        session.player.sacks = result.state;
+        const remaining = stack.qty - result.deposited;
+        session.player.inventory[slot] = remaining > 0 ? { ...stack, qty: remaining } : null;
+        pushState(session);
+        pushMenu(session);
+        return;
+      }
+    }
+  }
+
   if (session.currentMenu === 'inventory' && button.startsWith('shift')) {
     useInventorySlot(session, slot, button);
     return;
@@ -2273,6 +2306,58 @@ function handleBackpackClick(session: Session, slot: number, button: 'left' | 'r
   session.player.backpacks[page] = result.inventory;
   session.inventoryCursor = result.cursor;
   pushState(session);
+}
+
+function handleSackAction(session: Session, value: string, button: 'left' | 'right' | 'shift_left' | 'shift_right'): void {
+  session.player.sacks = normalizeSacks(session.player.sacks);
+  const parts = value.split(':');
+  const op = parts[0];
+  if (op === 'open') {
+    openMenu(session, 'sack_view', { sackId: parts[1] ?? 'enchanted', page: 0 });
+    return;
+  }
+  if (op === 'upgradeBag') {
+    const cost = bagOfBagsUpgradeCost(session.player.sacks.bagOfBagsLevel);
+    if (session.player.coins < cost) throw new Error(`Need ${cost.toLocaleString()} coins`);
+    const upgraded = upgradeBagOfBags(session.player.sacks);
+    if (!upgraded) throw new Error('Bag of Bags is already max level');
+    session.player.coins -= cost;
+    session.player.sacks = upgraded;
+    pushState(session);
+    toast(session, `Bag of Bags upgraded to level ${upgraded.bagOfBagsLevel}!`, 'success');
+    openMenu(session, 'sacks');
+    return;
+  }
+  if (op === 'depositAll') {
+    const sackId = (parts[1] ?? 'enchanted') as SackId;
+    const result = depositInventoryToSack(session.player.inventory, session.player.sacks, sackId);
+    session.player.inventory = result.inventory;
+    session.player.sacks = result.state;
+    pushState(session);
+    toast(session, result.deposited > 0 ? `Deposited ${result.deposited.toLocaleString()} items.` : 'No matching items to deposit.', result.deposited > 0 ? 'success' : 'info');
+    openMenu(session, 'sack_view', { sackId, page: Number(session.menuContext.page ?? 0) || 0 });
+    return;
+  }
+  if (op === 'withdraw') {
+    const sackId = (parts[1] ?? 'enchanted') as SackId;
+    const itemId = parts.slice(2).join(':') as import('@aether/shared').ItemId;
+    const stored = session.player.sacks.stores[sackId]?.[itemId] ?? 0;
+    if (stored <= 0) return;
+    const takeAll = button.startsWith('shift');
+    const qty = takeAll ? stored : Math.min(64, stored);
+    const withdrawn = withdrawFromSack(session.player.sacks, sackId, itemId, qty);
+    if (withdrawn.withdrawn <= 0) return;
+    const next = addItem(session.player.inventory, itemId, withdrawn.withdrawn);
+    if (!next) {
+      const rollback = depositToSack(withdrawn.state, sackId, itemId, withdrawn.withdrawn);
+      session.player.sacks = rollback.state;
+      throw new Error('Inventory full');
+    }
+    session.player.sacks = withdrawn.state;
+    session.player.inventory = next;
+    pushState(session);
+    openMenu(session, 'sack_view', { sackId, page: Number(session.menuContext.page ?? 0) || 0 });
+  }
 }
 
 function useHeldItem(session: Session): void {
