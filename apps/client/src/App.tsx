@@ -368,9 +368,6 @@ export function App() {
           museumDonated: player.museum?.donated.length ?? 0,
           bestiaryKills: Object.values(player.bestiary?.kills ?? {}).reduce((sum, n) => sum + n, 0),
         })).level}</strong></div>
-        {player.nextSbUnlock && (
-          <div><span>Next</span><strong className="mc-yellow">{player.nextSbUnlock}</strong></div>
-        )}
         <div><span>Mayor</span><strong>{currentMayor().name}</strong></div>
         {player.hotm && (player.hotm.tokens > 0 || player.hotm.mithrilPowder > 0 || player.hotm.commissions.length > 0) && (
           <>

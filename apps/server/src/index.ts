@@ -21,7 +21,6 @@ import { listAuctions } from './auction/engine.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 initStore();
-await startHypixelSync();
 
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: true });
@@ -136,3 +135,7 @@ console.log(`Aether Isles server on port ${port}`);
 for (const url of localAddresses(port)) console.log(`  ${url}`);
 console.log(`Player saves: ${usersPath}`);
 console.log('For LAN or FRP access, forward this port and use npm start (recommended) so one URL serves everything.');
+
+void startHypixelSync().catch((err) => {
+  console.warn('[hypixel] sync failed:', err instanceof Error ? err.message : err);
+});

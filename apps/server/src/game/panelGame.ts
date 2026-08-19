@@ -143,10 +143,6 @@ import {
   petSkill,
   petXpMultiplier,
   isPetHeldItem,
-  nextSkyblockUnlock,
-  meetsSkyblockGate,
-  SB_GATES,
-  islandExtraGate,
 } from '@aether/shared';
 import { parseChatCommand, findTradePartnerId, getTrade, cancelTrade, setTradeCoins, setTradeItem } from '../trade/engine.js';
 import {
@@ -413,14 +409,6 @@ function playerSkyblockLevel(player: PlayerState): number {
   })).level;
 }
 
-function assertSkyblockGate(session: Session, gateId: keyof typeof SB_GATES): void {
-  const level = playerSkyblockLevel(session.player);
-  const gate = SB_GATES[gateId];
-  if (!meetsSkyblockGate(level, gate)) {
-    throw new Error(`Requires SkyBlock Level ${gate.minLevel} (${gate.label})`);
-  }
-}
-
 function syncCoopIslandFrom(session: Session): void {
   const hostId = session.player.coopHostId ?? session.player.id;
   const hostProfileId = session.player.coopHostId
@@ -455,10 +443,7 @@ function pushState(session: Session, opts?: { resetPosition?: boolean }): void {
   session.player.coins = Math.max(0, session.player.coins);
   session.player.serverId = SERVER_SHARD;
   enrichCoopFields(session.player, sessions);
-  const sbLevel = playerSkyblockLevel(session.player);
-  session.player.nextSbUnlock = nextSkyblockUnlock(sbLevel)?.label
-    ? `SB ${nextSkyblockUnlock(sbLevel)!.minLevel}: ${nextSkyblockUnlock(sbLevel)!.label}`
-    : null;
+  session.player.nextSbUnlock = null;
   const hostId = dungeonHostId(session);
   if (hostId) {
     const online = new Set([...sessions.values()].map((s) => s.player.id));
@@ -557,9 +542,6 @@ function pushMenu(session: Session): void {
 }
 
 function openMenu(session: Session, menu: MenuId, context: Record<string, string | number | boolean> = {}): void {
-  if (menu === 'auction') assertSkyblockGate(session, 'auctionHouse');
-  if (menu === 'reforge') assertSkyblockGate(session, 'reforgeAnvil');
-  if (menu === 'enchanting') assertSkyblockGate(session, 'enchantTable');
   if (keepsInventoryCursor(session.currentMenu) && !keepsInventoryCursor(menu)) {
     if (!stashInventoryCursor(session)) return;
   }
@@ -1099,7 +1081,6 @@ function handleEvent(session: Session, ev: ClientEvent): void {
       break;
     }
     case 'bazaarInstantSell': {
-      assertSkyblockGate(session, 'bazaarInstantSell');
       const r = bazaar.instantSell(session.player, ev.itemId, ev.qty, ev.minPrice);
       session.player = r.player;
       pushState(session);
@@ -1325,7 +1306,6 @@ function handleSkyblockChat(session: Session, text: string): boolean {
       return true;
     }
     if (cmd === 'ah' || cmd === 'auction') {
-      assertSkyblockGate(session, 'auctionHouse');
       openMenu(session, 'auction');
       return true;
     }
@@ -1773,7 +1753,6 @@ function handleMenuClick(
     return;
   }
   if (kind === 'bazaarSellInventory') {
-    assertSkyblockGate(session, 'bazaarInstantSell');
     const result = bazaar.instantSellInventory(session.player);
     session.player = result.player;
     pushState(session);
@@ -3173,10 +3152,6 @@ function doWarpIsland(session: Session, islandId: IslandId, zoneId?: string): vo
   if (islandId !== 'hub' && !island.warpFromHub) throw new Error('Cannot warp there');
   if (!meetsSkillReq(session.player, island.skillReq)) {
     throw new Error(`Requires ${island.skillReq!.skill} level ${island.skillReq!.level}`);
-  }
-  const extra = islandExtraGate(islandId);
-  if (extra && !meetsSkyblockGate(playerSkyblockLevel(session.player), extra)) {
-    throw new Error(`Requires SkyBlock Level ${extra.minLevel} (${extra.label})`);
   }
   const entry = (zoneId ? ZONES[zoneId] : undefined) ?? zonesOnIsland(islandId)[0];
   if (!entry || entry.islandId !== islandId) throw new Error('Island has no zones');

@@ -73,10 +73,6 @@ import {
   skyblockXp,
   skyblockLevelFromXp,
   REFORGES,
-  SB_GATES,
-  meetsSkyblockGate,
-  islandExtraGate,
-  type SkyblockGate,
 } from '@aether/shared';
 import { activeAuctions, auctionById, auctionsBySeller, durationOptions, expiredAuctionsFor, formatTimeLeft } from '../auction/engine.js';
 import { getData } from '../store/usersStore.js';
@@ -129,22 +125,6 @@ function pageControls(menu: MenuId, context: Context, page: number, pages: numbe
 
 function skillLevel(player: PlayerState, skill: keyof PlayerState['skills']): number {
   return levelFromXp(player.skills[skill] ?? 0).level;
-}
-
-function sbLevel(player: PlayerState): number {
-  return skyblockLevelFromXp(skyblockXp({
-    skills: player.skills,
-    collections: player.collections,
-    slayerXp: player.slayerXp,
-    fairySouls: player.fairySouls,
-    museumDonated: player.museum?.donated.length ?? 0,
-    bestiaryKills: Object.values(player.bestiary?.kills ?? {}).reduce((sum, n) => sum + n, 0),
-  })).level;
-}
-
-function gateLine(player: PlayerState, gate: SkyblockGate): LoreLine {
-  const unlocked = meetsSkyblockGate(sbLevel(player), gate);
-  return line(unlocked ? `SkyBlock ${gate.minLevel}+` : `Requires SkyBlock Level ${gate.minLevel}`, unlocked ? 'green' : 'red');
 }
 
 const line = (text: string, color: LoreLine['color'] = 'gray', bold = false): LoreLine => ({ text, color, bold });
@@ -314,7 +294,7 @@ function skyblockMenu(player: PlayerState): MenuView {
       ], 'open:daily'),
       slot(11, 'map', 'Fast Travel', [line(`Location: ${ISLANDS[islandForZone(player.zoneId)]?.name ?? player.islandId}`), click()], 'open:fast_travel'),
       slot(12, 'emerald', 'Bazaar', [line('Buy and sell stackable commodities.'), click()], 'open:bazaar'),
-      slot(13, 'gold_ingot', 'Auction House', [line('Trade unique weapons, armor and pets.'), gateLine(player, SB_GATES.auctionHouse), click()], 'open:auction'),
+      slot(13, 'gold_ingot', 'Auction House', [line('Trade unique weapons, armor and pets.'), click()], 'open:auction'),
       slot(14, 'coin', 'Bank', [line(`Purse: ${Math.floor(player.coins).toLocaleString()}`, 'gold'), line(`Bank: ${Math.floor(player.bank.balance).toLocaleString()}`, 'gold'), click()], 'open:bank'),
       slot(15, 'minion', 'Minions', [line(`${player.minions.length} deployed minions`), click()], 'open:minions'),
       slot(16, 'zombie_head', 'Slayer Quests', [line(player.activeSlayer ? `Active: ${player.activeSlayer.slayerId} Tier ${player.activeSlayer.tier}` : 'No active quest'), click()], 'open:slayers'),
@@ -331,7 +311,7 @@ function skyblockMenu(player: PlayerState): MenuView {
         line(`${(player.hotm?.gemstonePowder ?? 0).toLocaleString()} Gemstone Powder`, 'light_purple'),
         click(),
       ], 'open:forge'),
-      slot(37, 'anvil', 'Blacksmith', [line('Enchant and reforge your gear.'), gateLine(player, SB_GATES.reforgeAnvil), click()], 'open:reforge'),
+      slot(37, 'anvil', 'Blacksmith', [line('Enchant and reforge your gear.'), click()], 'open:reforge'),
       slot(38, 'potion', 'Alchemy', [line('Brew potions for Alchemy XP.'), click()], 'open:alchemy'),
       slot(39, 'book', 'Bestiary', [line('Track every mob you have slain.'), click()], 'open:bestiary'),
       slot(40, 'player_head', 'Mayor', [line('Weekly mayor perks.'), click()], 'open:mayor'),
@@ -386,9 +366,7 @@ function travelMenu(player: PlayerState): MenuView {
       ], undefined, { itemId: 'ender_pearl' }),
       ...islands.map((island, i) => {
         const requirement = island.skillReq;
-        const extra = islandExtraGate(island.id);
-        const sbOk = !extra || meetsSkyblockGate(sbLevel(player), extra);
-        const unlocked = (!requirement || skillLevel(player, requirement.skill) >= requirement.level) && sbOk;
+        const unlocked = !requirement || skillLevel(player, requirement.skill) >= requirement.level;
         const here = island.id === player.islandId;
         const warpItem = ISLAND_WARP_ITEM[island.id];
         return slot(GRID[i], `island_${island.id}`, `${here ? '▶ ' : ''}${island.name}`, [
@@ -397,7 +375,6 @@ function travelMenu(player: PlayerState): MenuView {
           requirement
             ? line(`Requires ${pretty(requirement.skill)} ${requirement.level} (you: ${skillLevel(player, requirement.skill)})`, skillLevel(player, requirement.skill) >= requirement.level ? 'green' : 'red')
             : line('Always unlocked', 'green'),
-          extra ? gateLine(player, extra) : line(''),
           here ? line('You are already here', 'gray') : line(unlocked ? 'Click to warp!' : 'Locked', unlocked ? 'yellow' : 'red'),
         ], unlocked && !here ? `warp:${island.id}` : undefined, {
           disabled: !unlocked || here,
@@ -820,8 +797,7 @@ function bazaarHubMenu(_player: PlayerState, bazaarOrders: BazaarOrder[]): MenuV
       ], 'bazaarSearch:'),
       slot(31, 'gold_ingot', 'Sell Inventory', [
         line('Instant-sell every bazaar item in your inventory.', 'gray'),
-        line('Keeps tools, armor, and anything not on the Bazaar.', 'dark_gray'),
-        gateLine(_player, SB_GATES.bazaarInstantSell),
+          line('Keeps tools, armor, and anything not on the Bazaar.', 'dark_gray'),
         line('1.125% bazaar tax applies.', 'dark_gray'),
         line('Click to sell all!', 'yellow'),
       ], 'bazaarSellInventory', { itemId: 'gold_ingot' }),
