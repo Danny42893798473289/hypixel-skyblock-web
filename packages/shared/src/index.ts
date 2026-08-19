@@ -26,6 +26,7 @@ export * from './drill.js';
 export * from './forge.js';
 export * from './gearUpgrade.js';
 export * from './skyblockTime.js';
+export * from './skyblockGates.js';
 export * from './pets.js';
 export * from './playerLocation.js';
 export * from './midgame.js';

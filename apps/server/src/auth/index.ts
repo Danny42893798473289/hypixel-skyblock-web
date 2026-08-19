@@ -156,14 +156,23 @@ function profileSummaries(user: StoredUser): PlayerState['profiles'] {
   });
 }
 
+function coopSharedProfile(host: StoredUser, profileId: string): StoredProfile | null {
+  ensureProfiles(host);
+  return host.profiles?.[profileId] ?? null;
+}
+
 function overlayCoop(player: PlayerState, profile: StoredProfile): void {
   player.coopHostId = profile.coopHostId ?? null;
+  player.coopHostProfileId = profile.coopHostProfileId ?? null;
+  player.unlockedWarps = profile.unlockedWarps ?? [];
+  player.collectionBonuses = profile.collectionBonuses;
   const hostId = profile.coopHostId;
   if (!hostId) return;
   const host = findUserById(hostId);
   if (!host) return;
-  ensureProfiles(host);
-  const shared = activeProfile(host);
+  const sharedProfileId = profile.coopHostProfileId ?? host.activeProfileId ?? 'main';
+  const shared = coopSharedProfile(host, sharedProfileId);
+  if (!shared) return;
   player.islandBlocks = shared.islandBlocks;
   player.bank = shared.bank ?? player.bank;
   player.minions = shared.minions;
@@ -240,6 +249,9 @@ function toPlayer(user: StoredUser): PlayerState {
     profileName: profile.name,
     profiles: profileSummaries(user),
     coopHostId: profile.coopHostId ?? null,
+    coopHostProfileId: profile.coopHostProfileId ?? null,
+    unlockedWarps: profile.unlockedWarps ?? [],
+    collectionBonuses: profile.collectionBonuses,
     activeEffects: [],
   };
   if (user.x != null && user.y != null && canStand(map, user.x, user.y)) {
@@ -307,11 +319,17 @@ function applyPlayer(user: StoredUser, player: PlayerState): StoredUser {
     y: player.y,
     facing: player.facing,
     coopHostId: player.coopHostId ?? existing?.coopHostId ?? null,
+    coopHostProfileId: player.coopHostProfileId ?? existing?.coopHostProfileId ?? null,
+    unlockedWarps: player.unlockedWarps ?? existing?.unlockedWarps ?? [],
+    collectionBonuses: player.collectionBonuses ?? existing?.collectionBonuses,
     updatedAt: Date.now(),
   };
   const saved = profileFromUser(next, existing?.name ?? player.profileName ?? 'Main');
   saved.coopHostId = next.coopHostId ?? null;
+  saved.coopHostProfileId = next.coopHostProfileId ?? null;
   saved.coopMembers = existing?.coopMembers ?? next.coopMembers ?? [];
+  saved.unlockedWarps = next.unlockedWarps ?? [];
+  saved.collectionBonuses = next.collectionBonuses;
   if (saved.coopHostId) {
     saved.islandBlocks = existing?.islandBlocks;
     saved.bank = existing?.bank;
@@ -319,15 +337,22 @@ function applyPlayer(user: StoredUser, player: PlayerState): StoredUser {
     const host = findUserById(saved.coopHostId);
     if (host && host.id !== user.id) {
       ensureProfiles(host);
-      const hostProfile = activeProfile(host);
-      hostProfile.islandBlocks = player.islandBlocks;
-      hostProfile.bank = player.bank;
-      hostProfile.minions = player.minions;
-      applyProfileToUser(host, hostProfile);
-      host.profiles![host.activeProfileId!] = hostProfile;
-      host.updatedAt = Date.now();
-      saveUser(host);
+      const hostProfileId = saved.coopHostProfileId ?? host.activeProfileId ?? 'main';
+      const hostProfile = host.profiles![hostProfileId];
+      if (hostProfile) {
+        hostProfile.islandBlocks = player.islandBlocks;
+        hostProfile.bank = player.bank;
+        hostProfile.minions = player.minions;
+        host.profiles![hostProfileId] = hostProfile;
+        applyProfileToUser(host, host.activeProfileId === hostProfileId ? hostProfile : activeProfile(host));
+        host.updatedAt = Date.now();
+        saveUser(host);
+      }
     }
+  } else if ((saved.coopMembers?.length ?? 0) > 0) {
+    saved.islandBlocks = player.islandBlocks;
+    saved.bank = player.bank;
+    saved.minions = player.minions;
   }
   next.profiles = { ...user.profiles, [profileId]: saved };
   next.activeProfileId = profileId;
@@ -476,7 +501,7 @@ export function createProfile(player: PlayerState, name: string): PlayerState {
   return next;
 }
 
-export function joinCoop(player: PlayerState, hostUsername: string): PlayerState {
+export function joinCoop(player: PlayerState, hostUsername: string, hostProfileId?: string): PlayerState {
   savePlayer(player);
   const user = findUserById(player.id);
   if (!user) throw new Error('Account not found');
@@ -486,11 +511,19 @@ export function joinCoop(player: PlayerState, hostUsername: string): PlayerState
   ensureProfiles(user);
   ensureProfiles(host);
   const guest = activeProfile(user);
-  const hostProfile = activeProfile(host);
+  if (guest.coopHostId) throw new Error('Leave your current co-op first (/coop leave)');
+  const profileId = hostProfileId ?? host.activeProfileId ?? 'main';
+  const hostProfile = host.profiles![profileId];
+  if (!hostProfile) throw new Error('Co-op profile not found');
+  const members = hostProfile.coopMembers ?? [];
+  if (members.length >= 4) throw new Error('That co-op is full (max 4 members)');
+  if (members.includes(player.id)) throw new Error('You are already in that co-op');
   guest.coopHostId = host.id;
-  hostProfile.coopMembers = [...new Set([...(hostProfile.coopMembers ?? []), player.id])];
+  guest.coopHostProfileId = profileId;
+  hostProfile.coopMembers = [...new Set([...members, player.id])];
   applyProfileToUser(user, guest);
-  applyProfileToUser(host, hostProfile);
+  host.profiles![profileId] = hostProfile;
+  if (host.activeProfileId === profileId) applyProfileToUser(host, hostProfile);
   saveUser(host);
   saveUser(user);
   const next = toPlayer(user);
@@ -509,14 +542,20 @@ export function leaveCoop(player: PlayerState): PlayerState {
   ensureProfiles(user);
   const guest = activeProfile(user);
   const hostId = guest.coopHostId;
+  const hostProfileId = guest.coopHostProfileId;
   guest.coopHostId = null;
+  guest.coopHostProfileId = null;
   if (hostId) {
     const host = findUserById(hostId);
     if (host) {
       ensureProfiles(host);
-      const hostProfile = activeProfile(host);
-      hostProfile.coopMembers = (hostProfile.coopMembers ?? []).filter((id) => id !== player.id);
-      applyProfileToUser(host, hostProfile);
+      const pid = hostProfileId ?? host.activeProfileId ?? 'main';
+      const hostProfile = host.profiles![pid];
+      if (hostProfile) {
+        hostProfile.coopMembers = (hostProfile.coopMembers ?? []).filter((id) => id !== player.id);
+        host.profiles![pid] = hostProfile;
+        if (host.activeProfileId === pid) applyProfileToUser(host, hostProfile);
+      }
       saveUser(host);
     }
   }
@@ -525,4 +564,92 @@ export function leaveCoop(player: PlayerState): PlayerState {
   const next = toPlayer(user);
   next.resetPosition = true;
   return next;
+}
+
+export function inviteCoop(hostPlayer: PlayerState, guestUsername: string): { guestId: string; guestUsername: string } {
+  savePlayer(hostPlayer);
+  const hostUser = findUserById(hostPlayer.id);
+  if (!hostUser) throw new Error('Account not found');
+  if (hostPlayer.coopHostId) throw new Error('Leave your co-op first before hosting');
+  const guest = findUserByUsername(guestUsername.trim());
+  if (!guest) throw new Error('Player not found');
+  if (guest.id === hostPlayer.id) throw new Error('You cannot invite yourself');
+  ensureProfiles(hostUser);
+  const hostProfile = activeProfile(hostUser);
+  const members = hostProfile.coopMembers ?? [];
+  if (members.length >= 4) throw new Error('Your co-op is full (max 4 members)');
+  if (members.includes(guest.id)) throw new Error(`${guest.username} is already in your co-op`);
+  const guestProfile = activeProfile(guest);
+  if (guestProfile.coopHostId) throw new Error(`${guest.username} is already in another co-op`);
+  return { guestId: guest.id, guestUsername: guest.username };
+}
+
+export function acceptCoopInvite(
+  player: PlayerState,
+  hostUsername: string,
+  hostProfileId?: string,
+): PlayerState {
+  return joinCoop(player, hostUsername, hostProfileId);
+}
+
+export function kickCoopMember(hostPlayer: PlayerState, memberUsername: string): PlayerState {
+  savePlayer(hostPlayer);
+  const hostUser = findUserById(hostPlayer.id);
+  if (!hostUser) throw new Error('Account not found');
+  if (hostPlayer.coopHostId) throw new Error('Only the island owner can kick members');
+  const member = findUserByUsername(memberUsername.trim());
+  if (!member) throw new Error('Player not found');
+  ensureProfiles(hostUser);
+  const hostProfile = activeProfile(hostUser);
+  const members = hostProfile.coopMembers ?? [];
+  if (!members.includes(member.id)) throw new Error(`${member.username} is not in your co-op`);
+  hostProfile.coopMembers = members.filter((id) => id !== member.id);
+  hostUser.profiles![hostUser.activeProfileId!] = hostProfile;
+  applyProfileToUser(hostUser, hostProfile);
+  saveUser(hostUser);
+  ensureProfiles(member);
+  const guestProfile = activeProfile(member);
+  if (guestProfile.coopHostId === hostPlayer.id) {
+    guestProfile.coopHostId = null;
+    guestProfile.coopHostProfileId = null;
+    applyProfileToUser(member, guestProfile);
+    saveUser(member);
+  }
+  return toPlayer(hostUser);
+}
+
+export function renameProfile(player: PlayerState, profileId: string, name: string): PlayerState {
+  savePlayer(player);
+  const user = findUserById(player.id);
+  if (!user) throw new Error('Account not found');
+  ensureProfiles(user);
+  const profile = user.profiles?.[profileId];
+  if (!profile) throw new Error('Profile not found');
+  const clean = name.trim().slice(0, 16);
+  if (clean.length < 1) throw new Error('Profile name must be 1-16 characters');
+  if (!/^[a-zA-Z0-9_ ]+$/.test(clean)) throw new Error('Name: letters, numbers, spaces, underscore only');
+  profile.name = clean;
+  user.profiles![profileId] = profile;
+  if (user.activeProfileId === profileId) applyProfileToUser(user, profile);
+  user.updatedAt = Date.now();
+  saveUser(user);
+  return toPlayer(user);
+}
+
+export function deleteProfile(player: PlayerState, profileId: string): PlayerState {
+  savePlayer(player);
+  const user = findUserById(player.id);
+  if (!user) throw new Error('Account not found');
+  ensureProfiles(user);
+  const ids = Object.keys(user.profiles ?? {});
+  if (ids.length <= 1) throw new Error('You cannot delete your only profile');
+  if (profileId === user.activeProfileId) throw new Error('Switch to another profile before deleting this one');
+  const profile = user.profiles?.[profileId];
+  if (!profile) throw new Error('Profile not found');
+  if (profile.coopHostId) throw new Error('Leave co-op before deleting this profile');
+  if ((profile.coopMembers?.length ?? 0) > 0) throw new Error('Remove all co-op members before deleting this profile');
+  delete user.profiles![profileId];
+  user.updatedAt = Date.now();
+  saveUser(user);
+  return toPlayer(user);
 }

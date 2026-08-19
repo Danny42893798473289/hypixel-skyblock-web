@@ -183,6 +183,7 @@ export function PlayerInventoryPanel({ player, touchMode = false, onMenuClick, o
                     lore={buildRecipeBookLore(recipe, player.collections, (itemId) => countItem(player.inventory, itemId), {
                       slayerXp: player.slayerXp,
                       unlockedRecipes: player.unlockedRecipes,
+                      skills: player.skills,
                     })}
                     onClick={() => {
                       setSelectedRecipeId(recipe.id);

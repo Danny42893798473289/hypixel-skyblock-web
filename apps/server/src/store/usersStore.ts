@@ -99,6 +99,9 @@ export interface StoredUser {
   profiles?: Record<string, StoredProfile>;
   coopHostId?: string | null;
   coopMembers?: string[];
+  coopHostProfileId?: string | null;
+  unlockedWarps?: string[];
+  collectionBonuses?: import('@aether/shared').CollectionBonuses;
 }
 
 export interface StoredProfile {
@@ -147,6 +150,9 @@ export interface StoredProfile {
   dailies?: import('@aether/shared').DailyState;
   coopHostId?: string | null;
   coopMembers?: string[];
+  coopHostProfileId?: string | null;
+  unlockedWarps?: string[];
+  collectionBonuses?: import('@aether/shared').CollectionBonuses;
 }
 
 export const MAX_PROFILES = 5;
@@ -198,6 +204,9 @@ export function profileFromUser(user: StoredUser, name = 'Main'): StoredProfile 
     dailies: user.dailies,
     coopHostId: user.coopHostId ?? null,
     coopMembers: user.coopMembers ?? [],
+    coopHostProfileId: user.coopHostProfileId ?? null,
+    unlockedWarps: user.unlockedWarps ?? [],
+    collectionBonuses: user.collectionBonuses,
   };
 }
 
@@ -246,6 +255,9 @@ export function applyProfileToUser(user: StoredUser, profile: StoredProfile): vo
   user.dailies = profile.dailies;
   user.coopHostId = profile.coopHostId ?? null;
   user.coopMembers = profile.coopMembers ?? [];
+  user.coopHostProfileId = profile.coopHostProfileId ?? null;
+  user.unlockedWarps = profile.unlockedWarps ?? [];
+  user.collectionBonuses = profile.collectionBonuses;
 }
 
 export function ensureProfiles(user: StoredUser): StoredUser {

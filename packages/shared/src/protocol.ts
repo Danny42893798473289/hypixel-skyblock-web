@@ -105,6 +105,18 @@ export interface ProfileSummary {
   skyblockLevel: number;
 }
 
+export interface CoopMemberInfo {
+  username: string;
+  online: boolean;
+}
+
+export interface CollectionBonuses {
+  miningFortune?: number;
+  farmingFortune?: number;
+  foragingFortune?: number;
+  strength?: number;
+}
+
 export interface PlayerState extends PlayerPublic {
   coins: number;
   inventory: Inventory;
@@ -154,6 +166,9 @@ export interface PlayerState extends PlayerPublic {
   /** Sparse private-island tile edits (`"x,y"` → tile). */
   islandBlocks?: Record<string, TileKind>;
   dungeonPartyId?: string | null;
+  /** Open dungeon parties in the hub (transient). */
+  openDungeonParties?: Array<{ hostId: string; username: string; members: number }>;
+  dungeonPartyRoster?: Array<{ username: string; online: boolean }>;
   /** Transient live world mobs — not persisted. */
   worldMobs?: WorldMobInstance[];
   /** Transient gathering channel — not persisted. */
@@ -171,6 +186,15 @@ export interface PlayerState extends PlayerPublic {
   profileName?: string;
   profiles?: ProfileSummary[];
   coopHostId?: string | null;
+  /** Host profile id that owns the shared co-op island (guest only). */
+  coopHostProfileId?: string | null;
+  coopMembers?: CoopMemberInfo[];
+  coopIsHost?: boolean;
+  /** Quest-granted warp keys (e.g. warp:dwarven_mines). */
+  unlockedWarps?: string[];
+  collectionBonuses?: CollectionBonuses;
+  /** Next SB level unlock hint for HUD. */
+  nextSbUnlock?: string | null;
   visitingHostId?: string | null;
   visitingIslandBlocks?: Record<string, TileKind>;
   serverId?: string;
@@ -237,7 +261,8 @@ export type MenuId =
   | 'dragons'
   | 'backpack'
   | 'backpack_page'
-  | 'profiles';
+  | 'profiles'
+  | 'coop';
 
 export interface MenuSlotView {
   slot: number;

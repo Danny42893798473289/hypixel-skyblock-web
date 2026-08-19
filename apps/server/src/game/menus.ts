@@ -73,6 +73,10 @@ import {
   skyblockXp,
   skyblockLevelFromXp,
   REFORGES,
+  SB_GATES,
+  meetsSkyblockGate,
+  islandExtraGate,
+  type SkyblockGate,
 } from '@aether/shared';
 import { activeAuctions, auctionById, auctionsBySeller, durationOptions, expiredAuctionsFor, formatTimeLeft } from '../auction/engine.js';
 import { getData } from '../store/usersStore.js';
@@ -125,6 +129,22 @@ function pageControls(menu: MenuId, context: Context, page: number, pages: numbe
 
 function skillLevel(player: PlayerState, skill: keyof PlayerState['skills']): number {
   return levelFromXp(player.skills[skill] ?? 0).level;
+}
+
+function sbLevel(player: PlayerState): number {
+  return skyblockLevelFromXp(skyblockXp({
+    skills: player.skills,
+    collections: player.collections,
+    slayerXp: player.slayerXp,
+    fairySouls: player.fairySouls,
+    museumDonated: player.museum?.donated.length ?? 0,
+    bestiaryKills: Object.values(player.bestiary?.kills ?? {}).reduce((sum, n) => sum + n, 0),
+  })).level;
+}
+
+function gateLine(player: PlayerState, gate: SkyblockGate): LoreLine {
+  const unlocked = meetsSkyblockGate(sbLevel(player), gate);
+  return line(unlocked ? `SkyBlock ${gate.minLevel}+` : `Requires SkyBlock Level ${gate.minLevel}`, unlocked ? 'green' : 'red');
 }
 
 const line = (text: string, color: LoreLine['color'] = 'gray', bold = false): LoreLine => ({ text, color, bold });
@@ -210,6 +230,7 @@ export function buildMenu(
     case 'inventory': return inventoryMenu(player);
     case 'profile': return profileMenu(player);
     case 'profiles': return profilesMenu(player);
+    case 'coop': return coopMenu(player);
     case 'skills': return skillsMenu(player);
     case 'collections': return collectionsMenu(player, context);
     case 'crafting': return craftingMenu(player, context);
@@ -293,7 +314,7 @@ function skyblockMenu(player: PlayerState): MenuView {
       ], 'open:daily'),
       slot(11, 'map', 'Fast Travel', [line(`Location: ${ISLANDS[islandForZone(player.zoneId)]?.name ?? player.islandId}`), click()], 'open:fast_travel'),
       slot(12, 'emerald', 'Bazaar', [line('Buy and sell stackable commodities.'), click()], 'open:bazaar'),
-      slot(13, 'gold_ingot', 'Auction House', [line('Trade unique weapons, armor and pets.'), click()], 'open:auction'),
+      slot(13, 'gold_ingot', 'Auction House', [line('Trade unique weapons, armor and pets.'), gateLine(player, SB_GATES.auctionHouse), click()], 'open:auction'),
       slot(14, 'coin', 'Bank', [line(`Purse: ${Math.floor(player.coins).toLocaleString()}`, 'gold'), line(`Bank: ${Math.floor(player.bank.balance).toLocaleString()}`, 'gold'), click()], 'open:bank'),
       slot(15, 'minion', 'Minions', [line(`${player.minions.length} deployed minions`), click()], 'open:minions'),
       slot(16, 'zombie_head', 'Slayer Quests', [line(player.activeSlayer ? `Active: ${player.activeSlayer.slayerId} Tier ${player.activeSlayer.tier}` : 'No active quest'), click()], 'open:slayers'),
@@ -310,12 +331,17 @@ function skyblockMenu(player: PlayerState): MenuView {
         line(`${(player.hotm?.gemstonePowder ?? 0).toLocaleString()} Gemstone Powder`, 'light_purple'),
         click(),
       ], 'open:forge'),
-      slot(37, 'anvil', 'Blacksmith', [line('Enchant and reforge your gear.'), click()], 'open:reforge'),
+      slot(37, 'anvil', 'Blacksmith', [line('Enchant and reforge your gear.'), gateLine(player, SB_GATES.reforgeAnvil), click()], 'open:reforge'),
       slot(38, 'potion', 'Alchemy', [line('Brew potions for Alchemy XP.'), click()], 'open:alchemy'),
       slot(39, 'book', 'Bestiary', [line('Track every mob you have slain.'), click()], 'open:bestiary'),
       slot(40, 'player_head', 'Mayor', [line('Weekly mayor perks.'), click()], 'open:mayor'),
       slot(41, 'painting', 'Museum', [line(`${player.museum?.donated.length ?? 0} donated`), click()], 'open:museum'),
       slot(42, 'emerald', 'Community Shop', [line(`${(player.bits ?? 0).toLocaleString()} bits`, 'green'), click()], 'open:community_shop'),
+      slot(43, 'player_head', 'Co-op', [
+        line(player.coopHostId ? 'Guest on a shared island' : player.coopIsHost ? 'Hosting a co-op island' : 'Invite friends to share this island', 'aqua'),
+        line(`${player.coopMembers?.length ?? 0} member(s)`, 'gray'),
+        click(),
+      ], 'open:coop'),
       close(),
     ],
   };
@@ -360,15 +386,18 @@ function travelMenu(player: PlayerState): MenuView {
       ], undefined, { itemId: 'ender_pearl' }),
       ...islands.map((island, i) => {
         const requirement = island.skillReq;
-        const unlocked = !requirement || skillLevel(player, requirement.skill) >= requirement.level;
+        const extra = islandExtraGate(island.id);
+        const sbOk = !extra || meetsSkyblockGate(sbLevel(player), extra);
+        const unlocked = (!requirement || skillLevel(player, requirement.skill) >= requirement.level) && sbOk;
         const here = island.id === player.islandId;
         const warpItem = ISLAND_WARP_ITEM[island.id];
         return slot(GRID[i], `island_${island.id}`, `${here ? '▶ ' : ''}${island.name}`, [
           line(island.description),
           line(`${zonesOnIsland(island.id).length} areas to explore`, 'gray'),
           requirement
-            ? line(`Requires ${pretty(requirement.skill)} ${requirement.level} (you: ${skillLevel(player, requirement.skill)})`, unlocked ? 'green' : 'red')
+            ? line(`Requires ${pretty(requirement.skill)} ${requirement.level} (you: ${skillLevel(player, requirement.skill)})`, skillLevel(player, requirement.skill) >= requirement.level ? 'green' : 'red')
             : line('Always unlocked', 'green'),
+          extra ? gateLine(player, extra) : line(''),
           here ? line('You are already here', 'gray') : line(unlocked ? 'Click to warp!' : 'Locked', unlocked ? 'yellow' : 'red'),
         ], unlocked && !here ? `warp:${island.id}` : undefined, {
           disabled: !unlocked || here,
@@ -419,22 +448,62 @@ function profilesMenu(player: PlayerState): MenuView {
       slot(4, 'player_head', player.profileName ?? 'Main', [
         line('Each profile has its own purse, inventory, skills and island.', 'gray'),
         line('Co-op shares island, bank and minions. Purse stays personal.', 'gray'),
-        line('/coop join <player>   /coop leave   /profile', 'yellow'),
+        line('/profile rename <name>   /coop invite <player>', 'yellow'),
         player.coopHostId ? line('Currently on a co-op island', 'green') : line('Solo island', 'aqua'),
-      ]),
+      ], 'open:coop'),
       ...list.slice(0, 14).map((entry, i) => slot(10 + (i % 7) + Math.floor(i / 7) * 9, 'player_head', entry.name, [
         line(`SkyBlock Level ${entry.skyblockLevel}`, 'gold'),
         line(`${Math.floor(entry.coins).toLocaleString()} coins`, 'yellow'),
-        line(entry.id === player.profileId ? 'Selected' : 'Click to switch', entry.id === player.profileId ? 'green' : 'aqua'),
+        line(entry.id === player.profileId ? 'Selected — /profile rename <name>' : 'Click to switch', entry.id === player.profileId ? 'green' : 'aqua'),
+        line(entry.id === player.profileId ? 'Active profile cannot be deleted' : 'Right-click to delete', 'gray'),
       ], entry.id === player.profileId ? undefined : `switchProfile:${entry.id}`, { glint: entry.id === player.profileId })),
+      slot(39, 'barrier', 'Delete Profile', [
+        line('Type /profile delete <id> after switching away.', 'gray'),
+        line('Cannot delete your last or active profile.', 'red'),
+      ]),
       slot(40, 'emerald', 'Create Profile', [
         line(`Up to 5 profiles (${list.length}/5)`, 'gray'),
-        line('Starts a fresh SkyBlock profile on this account.', 'yellow'),
+        line('Click, then type a name in chat.', 'yellow'),
       ], 'createProfile:new'),
+      slot(41, 'player_head', 'Co-op Island', [
+        line('Invite, kick, and view members.', 'gray'),
+        click(),
+      ], 'open:coop'),
       back(),
       close(),
     ],
     parent: 'profile',
+  };
+}
+
+function coopMenu(player: PlayerState): MenuView {
+  const members = player.coopMembers ?? [];
+  const pending = members.length === 0 && !player.coopHostId;
+  return {
+    id: 'coop',
+    title: 'Co-op Island',
+    rows: 6,
+    slots: [
+      slot(4, 'player_head', player.coopHostId ? 'Guest' : 'Island Owner', [
+        line('Shared: island blocks, bank, minions.', 'gray'),
+        line('Personal: purse, inventory, skills, pets.', 'gray'),
+        line('/coop invite <player>   /coop accept   /coop leave', 'yellow'),
+      ]),
+      ...members.slice(0, 14).map((member, i) => slot(10 + (i % 7) + Math.floor(i / 7) * 9, 'player_head', member.username, [
+        line(member.online ? 'Online' : 'Offline', member.online ? 'green' : 'gray'),
+        line(player.coopIsHost && member.username !== player.username ? 'Click to kick' : 'Co-op member', 'aqua'),
+      ], player.coopIsHost && member.username !== player.username ? `coopKick:${member.username}` : undefined, { glint: member.online })),
+      slot(38, 'emerald', 'Invite Player', [
+        line('Click, then type their username in chat.', 'yellow'),
+        line(pending ? 'They must /coop accept within 60s.' : 'Adds a member to this island.', 'gray'),
+      ], player.coopHostId ? undefined : 'coopInvite', { disabled: Boolean(player.coopHostId) }),
+      slot(40, 'barrier', player.coopHostId ? 'Leave Co-op' : 'No Co-op to Leave', [
+        line(player.coopHostId ? 'Return to your personal island.' : 'Invite someone first.', player.coopHostId ? 'red' : 'gray'),
+      ], player.coopHostId ? 'coopLeave' : undefined),
+      back('profiles'),
+      close(),
+    ],
+    parent: 'profiles',
   };
 }
 
@@ -590,6 +659,7 @@ function craftingMenu(player: PlayerState, context: Context): MenuView {
     view.lore = buildRecipeBookLore(recipe, player.collections, (itemId) => countItem(player.inventory, itemId), {
       slayerXp: player.slayerXp,
       unlockedRecipes: player.unlockedRecipes,
+      skills: player.skills,
     });
     return view;
   });
@@ -751,6 +821,7 @@ function bazaarHubMenu(_player: PlayerState, bazaarOrders: BazaarOrder[]): MenuV
       slot(31, 'gold_ingot', 'Sell Inventory', [
         line('Instant-sell every bazaar item in your inventory.', 'gray'),
         line('Keeps tools, armor, and anything not on the Bazaar.', 'dark_gray'),
+        gateLine(_player, SB_GATES.bazaarInstantSell),
         line('1.125% bazaar tax applies.', 'dark_gray'),
         line('Click to sell all!', 'yellow'),
       ], 'bazaarSellInventory', { itemId: 'gold_ingot' }),
@@ -1269,8 +1340,19 @@ function dungeonsMenu(player: PlayerState, context: Context = {}): MenuView {
           ], 'dungeon:continue')
         : slot(22, 'wither_skull', 'No Active Run', [line('Select a floor below to enter.', 'gray'), line('Walk to the Wither Door inside!', 'gray')]),
       ...(player.dungeonRun ? [slot(24, 'barrier', 'Leave Dungeon', [line('Abandon this run and return to the Dungeon Hub.', 'red'), line('Or type /leave in chat.', 'gray')], 'dungeon:leave')] : []),
-      slot(46, 'player_head', 'Host Party', [line('Invite players in the Dungeon Hub to your run.'), click()], 'dungeonParty'),
-      slot(47, 'emerald', 'Join Nearby Party', [line('Join the first hosted run in the Hub.'), click()], 'dungeonJoin:nearby'),
+      slot(46, 'player_head', player.dungeonPartyRoster?.length ? 'Party Roster' : 'Host Party', [
+        ...(player.dungeonPartyRoster?.length
+          ? player.dungeonPartyRoster.map((m) => line(`${m.username}${m.online ? '' : ' (offline)'}`, m.online ? 'green' : 'gray'))
+          : [line('Invite players in the Dungeon Hub to your run.', 'gray')]),
+        line('/dungeon invite <player>', 'yellow'),
+        click(),
+      ], 'dungeonParty'),
+      ...(player.openDungeonParties?.length
+        ? player.openDungeonParties.slice(0, 2).map((party, i) => slot(47 + i, 'emerald', `Join ${party.username}`, [
+          line(`${party.members} in party`, 'aqua'),
+          line('Click to join this dungeon run.', 'yellow'),
+        ], `dungeonJoin:${party.hostId}`))
+        : [slot(47, 'emerald', 'Join Nearby Party', [line('Join the first hosted run in the Hub.'), click()], 'dungeonJoin:nearby')]),
       back(),
       close(),
     ],

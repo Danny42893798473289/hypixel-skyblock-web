@@ -84,6 +84,7 @@ export function recomputeStats(player: Pick<PlayerState, 'skills' | 'equipment' 
   extraAccessorySlots?: number;
   islandId?: string;
   activeEffects?: PlayerState['activeEffects'];
+  collectionBonuses?: PlayerState['collectionBonuses'];
 }): StatBlock {
   const skillStats: Partial<StatBlock>[] = [];
   for (const skill of Object.values(SKILLS)) {
@@ -134,7 +135,7 @@ export function recomputeStats(player: Pick<PlayerState, 'skills' | 'equipment' 
   const effectStats = (player.activeEffects ?? [])
     .filter((effect) => effect.expiresAt > now)
     .map((effect) => effect.stats);
-  return addStats(BASE_STATS, ...skillStats, ...equipmentStats, ...accessoryStats, heldStats, petStats, soulStats, mpStats, hotmStats, ...effectStats);
+  return addStats(BASE_STATS, ...skillStats, ...equipmentStats, ...accessoryStats, heldStats, petStats, soulStats, mpStats, hotmStats, player.collectionBonuses, ...effectStats);
 }
 
 export function magicalPower(accessories: ItemStack[]): number {

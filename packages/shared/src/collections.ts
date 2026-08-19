@@ -2,10 +2,14 @@ import type { ItemId } from './items.js';
 import { ITEMS } from './items.js';
 import { ZONES } from './locations.js';
 import { MOBS, slayerLevelFromXp } from './content.js';
+import { levelFromXp, type SkillId } from './skills.js';
 
 export interface CollectionTier {
   amount: number;
   label: string;
+  unlockRecipeIds?: string[];
+  coins?: number;
+  statBonus?: Partial<import('./stats.js').StatBlock>;
 }
 
 export type CollectionCategory = 'farming' | 'mining' | 'combat' | 'foraging' | 'fishing';
@@ -31,7 +35,7 @@ export const COLLECTIONS: CollectionDef[] = [
     name: 'Cobble',
     category: 'mining',
     tiers: [
-      { amount: 50, label: 'Stone Pickaxe recipe' },
+      { amount: 50, label: 'Stone Pickaxe recipe', unlockRecipeIds: ['stone_pickaxe'] },
       { amount: 100, label: 'Cobble Minion recipe' },
     ],
   },
@@ -114,7 +118,7 @@ for (const [itemId, name, category] of EXTRA_COLLECTIONS) {
       { amount: 2500, label: `Greater ${name} upgrade` },
       { amount: 5000, label: `${name} mastery reward` },
       { amount: 10000, label: `Perfect ${name} recipe` },
-      { amount: 25000, label: `${name} fortune bonus` },
+      { amount: 25000, label: `${name} fortune bonus`, statBonus: { miningFortune: category === 'mining' ? 1 : 0, farmingFortune: category === 'farming' ? 1 : 0, foragingFortune: category === 'foraging' ? 1 : 0, strength: category === 'combat' ? 1 : 0 } },
       { amount: 50000, label: `Maximum ${name} collection` },
     ],
   });
@@ -157,17 +161,23 @@ export function recipeUnlockedFor(
     unlockAmount?: number;
     unlockSlayer?: string;
     unlockSlayerLevel?: number;
+    unlockSkill?: { skill: SkillId; level: number };
   },
   player: {
     collections: CollectionsState;
     slayerXp?: Record<string, number>;
     unlockedRecipes?: string[];
+    skills?: Partial<Record<SkillId, number>>;
   },
 ): boolean {
   if (recipe.id && player.unlockedRecipes?.includes(recipe.id)) return true;
   if (recipe.unlockSlayer) {
     const level = slayerLevelFromXp(player.slayerXp?.[recipe.unlockSlayer] ?? 0).level;
     if (level < (recipe.unlockSlayerLevel ?? 1)) return false;
+  }
+  if (recipe.unlockSkill && player.skills) {
+    const level = levelFromXp(player.skills[recipe.unlockSkill.skill] ?? 0).level;
+    if (level < recipe.unlockSkill.level) return false;
   }
   return isRecipeUnlocked(recipe.unlockCollection, recipe.unlockAmount, player.collections);
 }

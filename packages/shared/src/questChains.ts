@@ -21,6 +21,7 @@ export interface QuestChainStep {
   rewardCoins?: number;
   rewardItems?: Array<{ itemId: ItemId; qty: number }>;
   rewardBits?: number;
+  rewardUnlock?: string;
 }
 
 export interface QuestChainDef {
@@ -38,7 +39,7 @@ export const QUEST_CHAINS: QuestChainDef[] = [
     steps: [
       { id: 'mine_100', title: 'Stone Collector', detail: 'Collect 100 cobblestone.', require: { kind: 'collection', id: 'cobble', amount: 100 }, rewardCoins: 250 },
       { id: 'mine_iron', title: 'Iron Age', detail: 'Collect 50 iron ore.', require: { kind: 'collection', id: 'iron_ore', amount: 50 }, rewardCoins: 400 },
-      { id: 'mining_12', title: 'Dwarven Permit', detail: 'Reach Mining 12 to enter the Dwarven Mines.', require: { kind: 'skill', id: 'mining', amount: 12 }, rewardCoins: 800, rewardItems: [{ itemId: 'mithril_pickaxe', qty: 1 }] },
+      { id: 'mining_12', title: 'Dwarven Permit', detail: 'Reach Mining 12 to enter the Dwarven Mines.', require: { kind: 'skill', id: 'mining', amount: 12 }, rewardCoins: 800, rewardItems: [{ itemId: 'mithril_pickaxe', qty: 1 }], rewardUnlock: 'warp:dwarven_mines' },
       { id: 'mithril_50', title: 'Mithril Miner', detail: 'Collect 50 mithril.', require: { kind: 'collection', id: 'mithril', amount: 50 }, rewardCoins: 1200, rewardBits: 40 },
       { id: 'hotm_token', title: 'Heart of the Mountain', detail: 'Earn 1 HotM token from commissions.', require: { kind: 'hotmTokens', amount: 1 }, rewardCoins: 1500, rewardBits: 50 },
     ],
@@ -72,7 +73,7 @@ export const QUEST_CHAINS: QuestChainDef[] = [
     name: 'Catacombs',
     icon: 'wither_skull',
     steps: [
-      { id: 'cata_enter', title: 'Mort', detail: 'Reach Combat 12 so the Dungeon Hub opens.', require: { kind: 'skill', id: 'combat', amount: 12 }, rewardCoins: 500 },
+      { id: 'cata_enter', title: 'Mort', detail: 'Reach Combat 12 so the Dungeon Hub opens.', require: { kind: 'skill', id: 'combat', amount: 12 }, rewardCoins: 500, rewardUnlock: 'warp:dungeon_hub' },
       { id: 'cata_1', title: 'The Entrance', detail: 'Clear any dungeon floor.', require: { kind: 'dungeonClears', amount: 1 }, rewardCoins: 1500, rewardBits: 50 },
       { id: 'cata_5', title: 'Floor Regular', detail: 'Clear 5 dungeon floors.', require: { kind: 'dungeonClears', amount: 5 }, rewardCoins: 4000, rewardBits: 80 },
       { id: 'cata_lvl5', title: 'Catacombs V', detail: 'Reach Catacombs 5.', require: { kind: 'skill', id: 'dungeoneering', amount: 5 }, rewardCoins: 5000, rewardItems: [{ itemId: 'adaptive_helmet', qty: 1 }] },

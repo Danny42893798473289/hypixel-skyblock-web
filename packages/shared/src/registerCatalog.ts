@@ -181,11 +181,20 @@ export function applySkyblockCollections(): void {
       tiers: COLLECTION_TIER_AMOUNTS.map((amount, index) => ({
         amount,
         label: tierLabel(entry, index),
+        ...(amount === 25000 ? { statBonus: fortuneBonus(entry.collection) } : {}),
       })),
     });
   }
 
   COLLECTIONS.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function fortuneBonus(category: CatalogEntry['collection']): { miningFortune?: number; farmingFortune?: number; foragingFortune?: number; strength?: number } {
+  if (category === 'mining') return { miningFortune: 1 };
+  if (category === 'farming') return { farmingFortune: 1 };
+  if (category === 'foraging') return { foragingFortune: 1 };
+  if (category === 'combat') return { strength: 1 };
+  return {};
 }
 
 function tierLabel(entry: CatalogEntry, index: number): string {
@@ -241,7 +250,7 @@ export function applySkyblockRecipes(): void {
           { itemId: MINION_TOOL_BY_COLLECTION[entry.collection], qty: 1 },
         ],
         unlockCollection: entry.id,
-        unlockAmount: 1000,
+        unlockAmount: 250,
       });
     }
   }

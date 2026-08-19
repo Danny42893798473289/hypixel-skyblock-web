@@ -260,6 +260,9 @@ export function claimChainStep(player: PlayerState, chainId: string, stepId: str
     if (!next) throw new Error('Inventory full');
     player.inventory = next;
   }
+  if (step.rewardUnlock) {
+    player.unlockedWarps = [...new Set([...(player.unlockedWarps ?? []), step.rewardUnlock])];
+  }
   return `Quest complete: ${step.title}!`;
 }
 

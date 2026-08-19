@@ -79,11 +79,14 @@ export function grantShield(session: AbilitySessionState, defense: number, durat
 }
 
 /** Classify ability behaviour from its display name. */
-export function abilityKind(name: string): 'teleport' | 'wither_impact' | 'aoe' | 'projectile' | 'shadow' | 'unknown' {
+export function abilityKind(name: string): 'teleport' | 'wither_impact' | 'aoe' | 'projectile' | 'shadow' | 'salvation' | 'soulcry' | 'throw' | 'unknown' {
   const lower = name.toLowerCase();
   if (lower.includes('wither impact')) return 'wither_impact';
   if (lower.includes('instant transmission')) return 'teleport';
   if (lower.includes('shadow fury')) return 'shadow';
+  if (lower.includes('salvation')) return 'salvation';
+  if (lower.includes('soulcry')) return 'soulcry';
+  if (lower.includes('throw')) return 'throw';
   if (lower.includes('dragon rage') || lower.includes('giant slam') || lower.includes('leap') || lower.includes('flail')) return 'aoe';
   if (lower.includes('rose') || lower.includes('showtime') || lower.includes('bat') || lower.includes('balloon')) return 'projectile';
   return 'unknown';

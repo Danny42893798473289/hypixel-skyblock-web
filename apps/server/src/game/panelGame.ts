@@ -143,9 +143,27 @@ import {
   petSkill,
   petXpMultiplier,
   isPetHeldItem,
+  nextSkyblockUnlock,
+  meetsSkyblockGate,
+  SB_GATES,
+  islandExtraGate,
 } from '@aether/shared';
 import { parseChatCommand, findTradePartnerId, getTrade, cancelTrade, setTradeCoins, setTradeItem } from '../trade/engine.js';
-import { loadPlayer, savePlayer, takeOfflineInterest, verifyToken, switchProfile, createProfile, joinCoop, leaveCoop } from '../auth/index.js';
+import {
+  loadPlayer,
+  savePlayer,
+  takeOfflineInterest,
+  verifyToken,
+  switchProfile,
+  createProfile,
+  joinCoop,
+  leaveCoop,
+  inviteCoop,
+  acceptCoopInvite,
+  kickCoopMember,
+  renameProfile,
+  deleteProfile,
+} from '../auth/index.js';
 import { BANK_TIERS, accrueBankInterest, bankTier, depositLimit, nextBankTier } from './bank.js';
 import * as bazaar from '../bazaar/engine.js';
 import { registerLivePlayer, unregisterLivePlayer } from './livePlayers.js';
@@ -165,7 +183,6 @@ import {
   grantEssenceOnDungeonComplete,
   handleFeatureChat,
   handleFeatureEvent,
-  onCraft as grantCarpentryXp,
   onDungeonPartyJoin,
   onDungeonStart,
 } from './featureHandlers.js';
@@ -175,7 +192,20 @@ import {
   partyMemberIds,
   setSharedRun,
   syncMemberRun,
+  clearSharedRun,
+  setDungeonInvite,
+  getDungeonInvite,
+  clearDungeonInvite,
+  DUNGEON_INVITE_MS,
 } from './dungeonPartySync.js';
+import {
+  enrichCoopFields,
+  broadcastCoopIslandSync,
+  getPendingInvite,
+  setPendingInvite,
+  clearPendingInvite,
+  COOP_INVITE_MS,
+} from './coopSync.js';
 import {
   abilityDamage,
   abilityKey,
@@ -227,6 +257,8 @@ interface Session {
   currentMenu: MenuId;
   menuContext: Record<string, string | number | boolean>;
   awaitingBazaarSearch: boolean;
+  awaitingCoopInvite: boolean;
+  awaitingProfileName: boolean;
   selectedInventorySlot: number | null;
   lastMoveAt: number;
   /** How far the player may still move — absorbs burst packets after lag spikes. */
@@ -322,17 +354,6 @@ function rollDropTable(
   return won;
 }
 
-function playerSkyblockLevel(player: PlayerState): number {
-  return skyblockLevelFromXp(skyblockXp({
-    skills: player.skills,
-    collections: player.collections,
-    slayerXp: player.slayerXp,
-    fairySouls: player.fairySouls,
-    museumDonated: player.museum?.donated.length ?? 0,
-    bestiaryKills: Object.values(player.bestiary?.kills ?? {}).reduce((sum, n) => sum + n, 0),
-  })).level;
-}
-
 function markStatsDirty(session: Session): void {
   session.statsDirty = true;
 }
@@ -381,6 +402,44 @@ function beginPositionSnap(session: Session): void {
   session.lastMoveAt = Date.now();
 }
 
+function playerSkyblockLevel(player: PlayerState): number {
+  return skyblockLevelFromXp(skyblockXp({
+    skills: player.skills,
+    collections: player.collections,
+    slayerXp: player.slayerXp,
+    fairySouls: player.fairySouls,
+    museumDonated: player.museum?.donated.length ?? 0,
+    bestiaryKills: Object.values(player.bestiary?.kills ?? {}).reduce((sum, n) => sum + n, 0),
+  })).level;
+}
+
+function assertSkyblockGate(session: Session, gateId: keyof typeof SB_GATES): void {
+  const level = playerSkyblockLevel(session.player);
+  const gate = SB_GATES[gateId];
+  if (!meetsSkyblockGate(level, gate)) {
+    throw new Error(`Requires SkyBlock Level ${gate.minLevel} (${gate.label})`);
+  }
+}
+
+function syncCoopIslandFrom(session: Session): void {
+  const hostId = session.player.coopHostId ?? session.player.id;
+  const hostProfileId = session.player.coopHostId
+    ? (session.player.coopHostProfileId ?? 'main')
+    : (session.player.profileId ?? 'main');
+  broadcastCoopIslandSync(
+    hostId,
+    hostProfileId,
+    {
+      islandBlocks: session.player.islandBlocks,
+      bank: session.player.bank,
+      minions: session.player.minions,
+    },
+    sessions,
+    (s) => pushState(s as Session),
+    session.player.id,
+  );
+}
+
 function pushState(session: Session, opts?: { resetPosition?: boolean }): void {
   session.player.islandId = islandForZone(session.player.zoneId);
   if (session.statsDirty) {
@@ -395,6 +454,28 @@ function pushState(session: Session, opts?: { resetPosition?: boolean }): void {
   }
   session.player.coins = Math.max(0, session.player.coins);
   session.player.serverId = SERVER_SHARD;
+  enrichCoopFields(session.player, sessions);
+  const sbLevel = playerSkyblockLevel(session.player);
+  session.player.nextSbUnlock = nextSkyblockUnlock(sbLevel)?.label
+    ? `SB ${nextSkyblockUnlock(sbLevel)!.minLevel}: ${nextSkyblockUnlock(sbLevel)!.label}`
+    : null;
+  const hostId = dungeonHostId(session);
+  if (hostId) {
+    const online = new Set([...sessions.values()].map((s) => s.player.id));
+    session.player.dungeonPartyRoster = partyMemberIds(hostId, sessions).map((id) => ({
+      username: [...sessions.values()].find((s) => s.player.id === id)?.player.username ?? 'Unknown',
+      online: online.has(id),
+    }));
+  } else {
+    session.player.dungeonPartyRoster = [];
+  }
+  session.player.openDungeonParties = [...sessions.values()]
+    .filter((s) => s.player.dungeonPartyId === s.player.id && s.player.dungeonRun)
+    .map((s) => ({
+      hostId: s.player.id,
+      username: s.player.username,
+      members: partyMemberIds(s.player.id, sessions).length,
+    }));
   const cursorMenus: MenuId[] = ['inventory', 'backpack', 'backpack_page'];
   const payload: PlayerState = session.menuOpen && cursorMenus.includes(session.currentMenu)
     ? { ...session.player, inventoryCursor: session.inventoryCursor }
@@ -476,6 +557,9 @@ function pushMenu(session: Session): void {
 }
 
 function openMenu(session: Session, menu: MenuId, context: Record<string, string | number | boolean> = {}): void {
+  if (menu === 'auction') assertSkyblockGate(session, 'auctionHouse');
+  if (menu === 'reforge') assertSkyblockGate(session, 'reforgeAnvil');
+  if (menu === 'enchanting') assertSkyblockGate(session, 'enchantTable');
   if (keepsInventoryCursor(session.currentMenu) && !keepsInventoryCursor(menu)) {
     if (!stashInventoryCursor(session)) return;
   }
@@ -740,6 +824,30 @@ function playerWeaponDamage(player: PlayerState): number {
   return bestTool(player, 'sword').damage ?? 5;
 }
 
+function hotbarItemId(player: PlayerState): string | undefined {
+  return hotbarStack(player.inventory, player.hotbarSlot)?.itemId;
+}
+
+function applyWeaponHitMods(
+  player: PlayerState,
+  damage: number,
+  mobId: string,
+  px: number,
+  py: number,
+  tx?: number,
+  ty?: number,
+): number {
+  let dmg = damage;
+  const id = hotbarItemId(player);
+  if (id === 'livid_dagger' && tx != null && ty != null && py < ty) dmg *= 2;
+  if (id === 'juju_shortbow') dmg = Math.round(dmg * 1.2);
+  if (id === 'runaans_bow') dmg *= 3;
+  if ((id === 'voidedge_katana' || id === 'voidedge') && (mobId.includes('enderman') || mobId === 'enderman')) {
+    dmg = Math.round(dmg * 1.6);
+  }
+  return Math.round(dmg);
+}
+
 function swapInventoryWithHotbar(session: Session, inventoryIndex: number, hotbarSlot = session.player.hotbarSlot): void {
   const hbIndex = hotbarInventoryIndex(hotbarSlot);
   const inv = [...session.player.inventory];
@@ -805,6 +913,8 @@ export function initGame(serverIo: SocketServer): void {
       currentMenu: 'skyblock',
       menuContext: {},
       awaitingBazaarSearch: false,
+      awaitingCoopInvite: false,
+      awaitingProfileName: false,
       selectedInventorySlot: null,
       lastMoveAt: Date.now(),
       moveCredit: MOVE_SPEED * 0.25,
@@ -865,6 +975,8 @@ export function initGame(serverIo: SocketServer): void {
 
     socket.on('disconnect', () => {
       if (sessions.get(userId)?.socket === socket) {
+        const hostId = session.player.dungeonPartyId ?? session.player.dungeonRun?.partyId;
+        if (hostId === session.player.id) clearSharedRun(session.player.id);
         savePlayer(session.player);
         sessions.delete(userId);
         unregisterLivePlayer(userId);
@@ -987,6 +1099,7 @@ function handleEvent(session: Session, ev: ClientEvent): void {
       break;
     }
     case 'bazaarInstantSell': {
+      assertSkyblockGate(session, 'bazaarInstantSell');
       const r = bazaar.instantSell(session.player, ev.itemId, ev.qty, ev.minPrice);
       session.player = r.player;
       pushState(session);
@@ -1019,6 +1132,20 @@ function handleEvent(session: Session, ev: ClientEvent): void {
         session.awaitingBazaarSearch = false;
         openMenu(session, 'bazaar', { query: text, page: 0 });
         toast(session, `Searching Bazaar for "${text}"`, 'info');
+        break;
+      }
+      if (session.awaitingCoopInvite && !text.startsWith('/')) {
+        session.awaitingCoopInvite = false;
+        handleSkyblockChat(session, `/coop invite ${text}`);
+        break;
+      }
+      if (session.awaitingProfileName && !text.startsWith('/')) {
+        session.awaitingProfileName = false;
+        session.player = createProfile(session.player, text);
+        beginPositionSnap(session);
+        pushState(session, { resetPosition: true });
+        openMenu(session, 'profiles');
+        toast(session, `Created ${session.player.profileName}`, 'success');
         break;
       }
       if (handleSkyblockChat(session, text)) break;
@@ -1198,6 +1325,7 @@ function handleSkyblockChat(session: Session, text: string): boolean {
       return true;
     }
     if (cmd === 'ah' || cmd === 'auction') {
+      assertSkyblockGate(session, 'auctionHouse');
       openMenu(session, 'auction');
       return true;
     }
@@ -1217,17 +1345,74 @@ function handleSkyblockChat(session: Session, text: string): boolean {
       leaveActiveRun(session);
       return true;
     }
-    if (cmd === 'profile' || cmd === 'profiles') {
-      openMenu(session, 'profiles');
-      return true;
-    }
     if (cmd === 'coop') {
       const sub = (args[0] ?? '').toLowerCase();
-      if (sub === 'join' && args[1]) {
-        session.player = joinCoop(session.player, args.slice(1).join(' '));
+      if (sub === 'invite' && args[1]) {
+        const target = args.slice(1).join(' ');
+        const { guestId, guestUsername } = inviteCoop(session.player, target);
+        const hostProfileId = session.player.profileId ?? 'main';
+        setPendingInvite({
+          hostId: session.player.id,
+          hostProfileId,
+          hostUsername: session.player.username,
+          guestId,
+          expiresAt: Date.now() + COOP_INVITE_MS,
+        });
+        const guestSession = sessions.get(guestId);
+        if (guestSession) {
+          toast(guestSession, `${session.player.username} invited you to co-op! /coop accept ${session.player.username}`, 'info');
+        }
+        toast(session, `Invited ${guestUsername} to co-op.`, 'success');
+        return true;
+      }
+      if (sub === 'accept' && args[1]) {
+        const hostName = args.slice(1).join(' ');
+        const invite = getPendingInvite(session.player.id);
+        if (!invite || invite.hostUsername.toLowerCase() !== hostName.toLowerCase()) {
+          throw new Error(`No pending invite from ${hostName}`);
+        }
+        clearPendingInvite(session.player.id);
+        session.player = acceptCoopInvite(session.player, hostName, invite.hostProfileId);
         beginPositionSnap(session);
         pushState(session, { resetPosition: true });
-        toast(session, `Joined ${args.slice(1).join(' ')}'s co-op island.`, 'success');
+        syncCoopIslandFrom(session);
+        toast(session, `Joined ${hostName}'s co-op island.`, 'success');
+        const hostSession = sessions.get(invite.hostId);
+        if (hostSession) toast(hostSession, `${session.player.username} joined your co-op!`, 'success');
+        return true;
+      }
+      if (sub === 'decline') {
+        clearPendingInvite(session.player.id);
+        toast(session, 'Co-op invite declined.', 'info');
+        return true;
+      }
+      if (sub === 'kick' && args[1]) {
+        const name = args.slice(1).join(' ');
+        session.player = kickCoopMember(session.player, name);
+        pushState(session);
+        const kicked = [...sessions.values()].find((s) => s.player.username.toLowerCase() === name.toLowerCase());
+        if (kicked) {
+          const reloaded = loadPlayer(kicked.player.id);
+          if (reloaded) kicked.player = reloaded;
+          beginPositionSnap(kicked);
+          pushState(kicked, { resetPosition: true });
+          toast(kicked, `You were removed from ${session.player.username}'s co-op.`, 'error');
+        }
+        toast(session, `Removed ${name} from co-op.`, 'success');
+        return true;
+      }
+      if (sub === 'join' && args[1]) {
+        const hostName = args.slice(1).join(' ');
+        const invite = getPendingInvite(session.player.id);
+        if (!invite || invite.hostUsername.toLowerCase() !== hostName.toLowerCase()) {
+          throw new Error(`No pending invite from ${hostName}. Ask them to /coop invite you.`);
+        }
+        clearPendingInvite(session.player.id);
+        session.player = joinCoop(session.player, hostName, invite.hostProfileId);
+        beginPositionSnap(session);
+        pushState(session, { resetPosition: true });
+        syncCoopIslandFrom(session);
+        toast(session, `Joined ${hostName}'s co-op island.`, 'success');
         return true;
       }
       if (sub === 'leave') {
@@ -1237,7 +1422,57 @@ function handleSkyblockChat(session: Session, text: string): boolean {
         toast(session, 'Left co-op. Your personal island is restored.', 'success');
         return true;
       }
-      toast(session, 'Usage: /coop join <player>  or  /coop leave', 'info');
+      openMenu(session, 'coop');
+      return true;
+    }
+    if (cmd === 'dungeon' || cmd === 'party') {
+      const sub = (args[0] ?? '').toLowerCase();
+      if (sub === 'invite' && args[1]) {
+        const targetName = args.slice(1).join(' ');
+        const guest = [...sessions.values()].find((s) => s.player.username.toLowerCase() === targetName.toLowerCase());
+        if (!guest) throw new Error('Player not found or offline');
+        if (guest.player.id === session.player.id) throw new Error('You cannot invite yourself');
+        if (!session.player.dungeonRun) throw new Error('Enter a floor first, then invite');
+        session.player.dungeonPartyId = session.player.id;
+        session.player.dungeonRun.partyId = session.player.id;
+        setSharedRun(session.player.id, session.player.dungeonRun);
+        setDungeonInvite({
+          hostId: session.player.id,
+          hostUsername: session.player.username,
+          guestId: guest.player.id,
+          expiresAt: Date.now() + DUNGEON_INVITE_MS,
+        });
+        toast(guest, `${session.player.username} invited you to their dungeon — Dungeons menu → Join, or /dungeon accept`, 'info');
+        toast(session, `Invited ${guest.player.username} to your dungeon party.`, 'success');
+        pushState(session);
+        return true;
+      }
+      if (sub === 'accept') {
+        const invite = getDungeonInvite(session.player.id);
+        if (!invite) throw new Error('No dungeon party invite');
+        clearDungeonInvite(session.player.id);
+        joinDungeonParty(session, invite.hostId);
+        return true;
+      }
+      toast(session, 'Usage: /dungeon invite <player>  or  /dungeon accept', 'info');
+      return true;
+    }
+    if (cmd === 'profile') {
+      const sub = (args[0] ?? '').toLowerCase();
+      if (sub === 'rename' && args[1]) {
+        const name = args.slice(1).join(' ');
+        session.player = renameProfile(session.player, session.player.profileId ?? 'main', name);
+        pushState(session);
+        toast(session, `Profile renamed to ${session.player.profileName}.`, 'success');
+        return true;
+      }
+      if (sub === 'delete' && args[1]) {
+        session.player = deleteProfile(session.player, args[1]);
+        pushState(session);
+        toast(session, 'Profile deleted.', 'success');
+        return true;
+      }
+      openMenu(session, 'profiles');
       return true;
     }
   } catch (err) {
@@ -1271,7 +1506,9 @@ function combatEntity(session: Session, entity: { kind: string; actionId?: strin
 
 function handleAttack(session: Session): void {
   const now = Date.now();
-  const cooldown = attackCooldownMs(session.player.stats.attackSpeed ?? 0);
+  let cooldown = attackCooldownMs(session.player.stats.attackSpeed ?? 0);
+  const weaponId = hotbarItemId(session.player);
+  if (weaponId === 'juju_shortbow' || weaponId === 'shortbow') cooldown = Math.round(cooldown * 0.55);
   if (now - session.lastAttackAt < cooldown) return;
   session.lastAttackAt = now;
   const map = mapFor(session);
@@ -1452,6 +1689,13 @@ function handleMenuClick(
     return;
   }
   if (kind === 'switchProfile') {
+    if (button === 'right') {
+      session.player = deleteProfile(session.player, value);
+      pushState(session);
+      openMenu(session, 'profiles');
+      toast(session, 'Profile deleted.', 'success');
+      return;
+    }
     session.player = switchProfile(session.player, value);
     beginPositionSnap(session);
     pushState(session, { resetPosition: true });
@@ -1460,11 +1704,43 @@ function handleMenuClick(
     return;
   }
   if (kind === 'createProfile') {
-    session.player = createProfile(session.player, `Profile ${(session.player.profiles?.length ?? 0) + 1}`);
+    session.awaitingProfileName = true;
+    toast(session, 'Type a profile name in chat (1-16 characters).', 'info');
+    return;
+  }
+  if (kind === 'deleteProfile') {
+    session.player = deleteProfile(session.player, value);
+    pushState(session);
+    openMenu(session, 'profiles');
+    toast(session, 'Profile deleted.', 'success');
+    return;
+  }
+  if (kind === 'coopInvite') {
+    session.awaitingCoopInvite = true;
+    toast(session, 'Type a username in chat to invite them to co-op.', 'info');
+    return;
+  }
+  if (kind === 'coopLeave') {
+    session.player = leaveCoop(session.player);
     beginPositionSnap(session);
     pushState(session, { resetPosition: true });
-    openMenu(session, 'profiles');
-    toast(session, `Created ${session.player.profileName}`, 'success');
+    openMenu(session, 'coop');
+    toast(session, 'Left co-op. Your personal island is restored.', 'success');
+    return;
+  }
+  if (kind === 'coopKick') {
+    session.player = kickCoopMember(session.player, value);
+    const kicked = [...sessions.values()].find((s) => s.player.username.toLowerCase() === value.toLowerCase());
+    if (kicked) {
+      const reloaded = loadPlayer(kicked.player.id);
+      if (reloaded) kicked.player = reloaded;
+      beginPositionSnap(kicked);
+      pushState(kicked, { resetPosition: true });
+      toast(kicked, `You were removed from ${session.player.username}'s co-op.`, 'error');
+    }
+    pushState(session);
+    openMenu(session, 'coop');
+    toast(session, `Removed ${value} from co-op.`, 'success');
     return;
   }
   if (kind === 'reforge') {
@@ -1497,6 +1773,7 @@ function handleMenuClick(
     return;
   }
   if (kind === 'bazaarSellInventory') {
+    assertSkyblockGate(session, 'bazaarInstantSell');
     const result = bazaar.instantSellInventory(session.player);
     session.player = result.player;
     pushState(session);
@@ -2279,6 +2556,7 @@ function doBankAction(session: Session, value: string): void {
     session.player.coins -= next.upgradeCost;
     bank.tier = next.id;
     pushState(session);
+    syncCoopIslandFrom(session);
     toast(session, `Upgraded to ${next.name}!`, 'success');
     return;
   }
@@ -2299,6 +2577,7 @@ function doBankAction(session: Session, value: string): void {
     session.player.coins += amount;
   }
   pushState(session);
+  syncCoopIslandFrom(session);
   toast(session, `${operation === 'deposit' ? 'Deposited' : 'Withdrew'} ${amount.toLocaleString()} coins.`, 'success');
 }
 
@@ -2520,6 +2799,19 @@ function resumeDungeon(session: Session): void {
 }
 
 function leaveDungeon(session: Session): void {
+  const hostId = dungeonHostId(session);
+  if (hostId === session.player.id) {
+    for (const other of sessions.values()) {
+      if (other === session) continue;
+      if (other.player.dungeonPartyId !== hostId) continue;
+      other.player.dungeonRun = null;
+      other.player.dungeonPartyId = null;
+      toast(other, `${session.player.username} left — the dungeon party ended.`, 'info');
+    }
+    clearSharedRun(hostId);
+  } else if (hostId) {
+    session.player.dungeonPartyId = null;
+  }
   session.player.dungeonRun = null;
   session.player.dungeonPartyId = null;
   doTravel(session, 'dungeon_hub');
@@ -2590,28 +2882,37 @@ function completeDungeon(session: Session): void {
     ...drop,
     chance: Math.min(1, drop.chance * (grade === 'S+' ? 1.8 : grade === 'S' ? 1.4 : grade === 'A' ? 1.15 : grade === 'D' ? 0.5 : 1)),
   }));
-  const rolled = rollDropTable(session, scaledDrops);
   const stars = Math.min(5, Math.round(
     (1 + Math.floor(Math.random() * 2) + (currentMayor().id === 'paul' ? 1 : 0) + Math.min(2, Math.floor((run.secretsFound ?? 0) / 2)))
     * (grade === 'S+' ? 1.5 : grade === 'S' ? 1.25 : grade === 'D' ? 0.5 : 1),
   ));
-  session.player.dungeonRun = null;
-  session.player.dailies.dungeonsCleared = (session.player.dailies?.dungeonsCleared ?? 0) + 1;
-  session.player.quests.counters.dungeon_clears = (session.player.quests.counters.dungeon_clears ?? 0) + 1;
-  session.player.pendingDungeonChest = {
-    floorName: floor.shortName ?? floor.name,
-    floorId: floor.id,
-    coins,
-    xp,
-    stars,
-    grade,
-    chestRarity: rarity,
-    drops: rolled,
-    rewardsGranted: false,
-  };
-  doTravel(session, 'dungeon_hub');
-  toast(session, `Dungeon complete! ${grade} · ${rarity} chest · Score ${run.score} — open the chest to claim.`, 'success');
-  openMenu(session, 'dungeon_chest');
+  const hostId = dungeonHostId(session);
+  const memberIds = hostId ? partyMemberIds(hostId, sessions) : [session.player.id];
+  const uniqueIds = [...new Set(memberIds)];
+  for (const id of uniqueIds) {
+    const member = [...sessions.values()].find((entry) => entry.player.id === id);
+    if (!member) continue;
+    ensureMidgame(member.player);
+    member.player.dungeonRun = null;
+    member.player.dungeonPartyId = null;
+    member.player.dailies.dungeonsCleared = (member.player.dailies?.dungeonsCleared ?? 0) + 1;
+    member.player.quests.counters.dungeon_clears = (member.player.quests.counters.dungeon_clears ?? 0) + 1;
+    member.player.pendingDungeonChest = {
+      floorName: floor.shortName ?? floor.name,
+      floorId: floor.id,
+      coins,
+      xp,
+      stars,
+      grade,
+      chestRarity: rarity,
+      drops: rollDropTable(member, scaledDrops),
+      rewardsGranted: false,
+    };
+    doTravel(member, 'dungeon_hub');
+    toast(member, `Dungeon complete! ${grade} · ${rarity} chest · Score ${run.score} — open the chest to claim.`, 'success');
+    openMenu(member, 'dungeon_chest');
+  }
+  if (hostId) clearSharedRun(hostId);
 }
 
 function allDungeonMobsDead(run: NonNullable<PlayerState['dungeonRun']>): boolean {
@@ -2695,7 +2996,7 @@ function handleDungeonDoor(session: Session): void {
   }
 }
 
-function dungeonPlayerHit(session: Session): { damage: number; critical: boolean; receivedMult: number } {
+function dungeonPlayerHit(session: Session, targetX?: number, targetY?: number, mobId = 'dungeon_mob'): { damage: number; critical: boolean; receivedMult: number } {
   const run = session.player.dungeonRun!;
   const bow = holdingBow(session.player);
   const rules = classAutoAttackRules(run.dungeonClass, bow);
@@ -2705,14 +3006,19 @@ function dungeonPlayerHit(session: Session): { damage: number; critical: boolean
     else session.player.mana -= rules.manaCost;
   }
   const critical = rollCrit(session.player.stats.critChance);
-  const damage = Math.round(meleeDamage(
+  const facingOk = hotbarItemId(session.player) === 'juju_shortbow' || targetX == null
+    || facingToward(session.player.x, session.player.y, targetX, targetY ?? session.player.y, session.player.facing);
+  const facingMult = facingOk ? 1 : 0.55;
+  const raw = Math.round(meleeDamage(
     playerWeaponDamage(session.player),
     session.player.stats.strength,
     session.player.stats.critDamage,
     critical,
     combatDamageBonus(skillLevel(session.player, 'combat')),
-  ) * rules.damageMult * manaNote);
-  return { damage, critical, receivedMult: run.dungeonClass === 'tank' ? 0.85 : 1 };
+  ) * rules.damageMult * manaNote * facingMult);
+  const proc = procCombatDamage(session.player, raw, mobId, 10_000);
+  const damage = applyWeaponHitMods(session.player, proc.damage, mobId, session.player.x, session.player.y, targetX, targetY);
+  return { damage, critical: proc.critical || critical, receivedMult: run.dungeonClass === 'tank' ? 0.85 : 1 };
 }
 
 function doDungeonMobCombat(session: Session, mobEntityId: string): void {
@@ -2743,7 +3049,7 @@ function doDungeonMobCombat(session: Session, mobEntityId: string): void {
     return;
   }
 
-  const { damage: playerDmg, critical, receivedMult } = dungeonPlayerHit(session);
+  const { damage: playerDmg, critical, receivedMult } = dungeonPlayerHit(session, pos?.x, pos?.y, mobEntityId);
   applyDungeonMobDamage(session, mobEntityId, playerDmg);
   emitDamageNumber(session, playerDmg, critical, pos?.x, pos?.y);
 
@@ -2790,12 +3096,18 @@ function doDungeonBossCombat(session: Session): void {
   if (phase.mechanic === 'golems' && bossAddsAlive(run)) {
     throw new Error('Kill the Giants first');
   }
+  if (phase.mechanic === 'crystals' && bossAddsAlive(run)) {
+    throw new Error('Destroy the Storm crystals first');
+  }
   if (run.bossHp == null) initBossPhaseHp(run, floor.boss.health);
 
-  const { damage: rawDamage, critical, receivedMult } = dungeonPlayerHit(session);
+  const { damage: rawDamage, critical, receivedMult } = dungeonPlayerHit(session, 13, 8, 'dungeon_boss');
   let damage = rawDamage;
-  if ((phase.mechanic === 'adds' || phase.mechanic === 'crystals') && bossAddsAlive(run)) {
+  if (phase.mechanic === 'adds' && bossAddsAlive(run)) {
     damage = Math.round(damage * 0.5);
+  }
+  if (phase.mechanic === 'two_bar' && run.bossHp != null) {
+    damage = Math.min(damage, run.bossHp);
   }
   if (phase.mechanic === 'ranged' && !holdingBow(session.player) && run.dungeonClass !== 'archer') {
     const reflect = Math.round(damage * 0.35);
@@ -2861,6 +3173,10 @@ function doWarpIsland(session: Session, islandId: IslandId, zoneId?: string): vo
   if (islandId !== 'hub' && !island.warpFromHub) throw new Error('Cannot warp there');
   if (!meetsSkillReq(session.player, island.skillReq)) {
     throw new Error(`Requires ${island.skillReq!.skill} level ${island.skillReq!.level}`);
+  }
+  const extra = islandExtraGate(islandId);
+  if (extra && !meetsSkyblockGate(playerSkyblockLevel(session.player), extra)) {
+    throw new Error(`Requires SkyBlock Level ${extra.minLevel} (${extra.label})`);
   }
   const entry = (zoneId ? ZONES[zoneId] : undefined) ?? zonesOnIsland(islandId)[0];
   if (!entry || entry.islandId !== islandId) throw new Error('Island has no zones');
@@ -3253,7 +3569,32 @@ function doUseAbility(session: Session): void {
       }
     }
   } else if (kind === 'teleport') {
-    // message already set
+    const until = Date.now() + 3000;
+    session.player.activeEffects = [
+      ...(session.player.activeEffects ?? []).filter((effect) => effect.id !== 'instant_transmission'),
+      { id: 'instant_transmission', name: 'Instant Transmission', stats: { speed: 50 }, expiresAt: until },
+    ];
+    markStatsDirty(session);
+    message += ' +50 Speed for 3s.';
+  } else if (kind === 'salvation' || kind === 'throw' || kind === 'soulcry') {
+    const beam = kind === 'salvation' ? dmg * 3 : kind === 'soulcry' ? Math.round(dmg * 1.75) : Math.round(dmg * 1.4);
+    const hits = damageAllDungeonMobs(session, beam);
+    const run = session.player.dungeonRun;
+    if (run && dungeonPhase(run) === 'boss' && run.bossHp != null && run.bossHp > 0) {
+      applyDungeonBossHp(session, beam);
+      message = `${ability.name}! ${beam.toLocaleString()} damage to the boss!`;
+    } else if (session.player.activeSlayer?.bossHp) {
+      const worldHits = damageNearbyWorldMobs(session, beam, kind === 'throw' ? 6 : 3.2);
+      if (worldHits === 0) session.player.activeSlayer.bossHp = Math.max(0, session.player.activeSlayer.bossHp - beam);
+      message = `${ability.name}! ${beam.toLocaleString()} damage!`;
+    } else if (hits > 0) {
+      message = `${ability.name}! ${beam.toLocaleString()} damage to ${hits} target${hits === 1 ? '' : 's'}!`;
+    } else {
+      const worldHits = damageNearbyWorldMobs(session, beam, kind === 'throw' ? 6 : 3.2);
+      message = worldHits > 0
+        ? `${ability.name}! ${beam.toLocaleString()} damage to ${worldHits} mob${worldHits === 1 ? '' : 's'}!`
+        : `${ability.name}! ${beam.toLocaleString()} damage — no targets nearby.`;
+    }
   } else if (ability.damage) {
     const hits = damageAllDungeonMobs(session, dmg);
     message = hits > 0
@@ -3300,7 +3641,9 @@ function useDungeonClassAbility(session: Session): void {
       if (classAbilityHitsMob(run.dungeonClass, session.player.x, session.player.y, bossPos.x, bossPos.y, session.player.facing)) {
         let dealt = dmg;
         const mechanic = currentBossPhase(run).mechanic;
-        if ((mechanic === 'adds' || mechanic === 'crystals') && bossAddsAlive(run)) dealt = Math.round(dealt * 0.5);
+        if (mechanic === 'crystals' && bossAddsAlive(run)) dealt = 0;
+        else if (mechanic === 'adds' && bossAddsAlive(run)) dealt = Math.round(dealt * 0.5);
+        if (mechanic === 'two_bar' && run.bossHp != null) dealt = Math.min(dealt, run.bossHp);
         applyDungeonBossHp(session, dealt);
         emitDamageNumber(session, dealt, false, bossPos.x, bossPos.y);
         message = `${ability.name}! ${dealt.toLocaleString()} damage to ${run.bossPhaseName ?? 'boss'}!`;
@@ -3384,6 +3727,7 @@ function doPlaceBlock(session: Session): void {
   session.player.islandBlocks = blocks;
   session.lastAttackAt = now;
   pushState(session);
+  syncCoopIslandFrom(session);
 }
 
 function doBreakBlock(session: Session): void {
@@ -3417,6 +3761,7 @@ function doBreakBlock(session: Session): void {
   session.player.islandBlocks = blocks;
   session.lastAttackAt = now;
   pushState(session);
+  syncCoopIslandFrom(session);
 }
 
 function doDropHotbar(session: Session, all: boolean): void {
@@ -3506,7 +3851,7 @@ function doCraft(session: Session, recipeId: string): void {
   session.player.inventory = added;
   addCollection(session, recipe.result.itemId, recipe.result.qty);
   flagQuest(session, 'craft_item');
-  grantCarpentryXp(session, recipe.ingredients.length);
+  gainSkillXp(session, 'carpentry', Math.max(4, recipe.ingredients.length * 8));
   pushState(session);
   toast(session, `Crafted ${recipe.name}`, 'success');
 }
@@ -3535,6 +3880,7 @@ function doPlaceMinion(session: Session, minionType: string): void {
   });
   flagQuest(session, 'place_minion');
   pushState(session);
+  syncCoopIslandFrom(session);
   toast(session, `Placed ${def.name}`, 'success');
 }
 
@@ -3549,6 +3895,7 @@ function doCollectMinion(session: Session, minionId: string): void {
   session.player.inventory = next;
   m.storage = 0;
   pushState(session);
+  syncCoopIslandFrom(session);
   toast(session, 'Collected minion storage', 'success');
 }
 
@@ -3563,6 +3910,7 @@ function doUpgradeMinion(session: Session, minionId: string): void {
   session.player.inventory = removed;
   m.tier++;
   pushState(session);
+  syncCoopIslandFrom(session);
   toast(session, `Minion upgraded to tier ${m.tier}`, 'success');
 }
 
@@ -3577,6 +3925,7 @@ function doPickupMinion(session: Session, minionId: string): void {
   session.player.inventory = next;
   session.player.minions.splice(idx, 1);
   pushState(session);
+  syncCoopIslandFrom(session);
 }
 
 function doNpcBuy(session: Session, itemId: ItemId, qty: number): void {
@@ -3716,6 +4065,30 @@ function worldMobTick(): void {
       }
     }
     if (dungeonHazardTick(session)) changed = true;
+    const quest = session.player.activeSlayer;
+    if (quest?.slayerId === 'inferno' && (quest.bossPhase ?? 0) >= 1) {
+      const trail = (session.player.worldMobs ?? []).find((mob) => mob.id === 'inferno-trail');
+      if (trail && Math.hypot(trail.x - session.player.x, trail.y - session.player.y) < 1.1) {
+        const burn = Math.round(incomingDamage(session.player.maxHp * 0.04, 0, session.player.stats.trueDefense ?? 0));
+        session.player.hp -= burn;
+        changed = true;
+        if (now - (session.lastActionAt.infernoTrail ?? 0) > 1800) {
+          session.lastActionAt.infernoTrail = now;
+          toast(session, 'Fire trail burns you!', 'error');
+        }
+        if (session.player.hp <= 0) {
+          handlePlayerDeath(session, 'The Inferno Demonlord burned you!');
+          continue;
+        }
+      }
+    }
+    if (quest?.slayerId === 'voidgloom' && (quest.bossPhase ?? 0) >= 2) {
+      // Yang Glyph — skip natural regen this tick.
+    } else if (session.player.hp < session.player.maxHp) {
+      const regen = 1 + (session.player.stats.healthRegen ?? 0) * 0.15 + session.player.maxHp * 0.002;
+      session.player.hp = Math.min(session.player.maxHp, session.player.hp + regen);
+      changed = true;
+    }
     const nowEffects = session.player.activeEffects ?? [];
     if (nowEffects.length) {
       const kept = nowEffects.filter((effect) => effect.expiresAt > now);
@@ -3724,11 +4097,6 @@ function worldMobTick(): void {
         markStatsDirty(session);
         changed = true;
       }
-    }
-    if (session.player.hp < session.player.maxHp) {
-      const regen = 1 + (session.player.stats.healthRegen ?? 0) * 0.15 + session.player.maxHp * 0.002;
-      session.player.hp = Math.min(session.player.maxHp, session.player.hp + regen);
-      changed = true;
     }
     const channel = session.player.gatherChannel;
     if (channel?.fishPhase === 'waiting' && now - channel.startedAt >= channel.durationMs && !channel.biteUntil) {
@@ -3792,9 +4160,10 @@ function dungeonHazardTick(session: Session): boolean {
   return true;
 }
 
-function playerMelee(session: Session, mobId = 'zombie', mobMaxHp = 100, facingOk = true): { damage: number; critical: boolean; thunderBonus: number } {
+function playerMelee(session: Session, mobId = 'zombie', mobMaxHp = 100, facingOk = true, tx?: number, ty?: number): { damage: number; critical: boolean; thunderBonus: number } {
   const baseCrit = rollCrit(session.player.stats.critChance);
-  const facingMult = facingOk ? 1 : 0.55;
+  const ignoreDef = hotbarItemId(session.player) === 'juju_shortbow';
+  const facingMult = ignoreDef || facingOk ? 1 : 0.55;
   const base = Math.round(meleeDamage(
     playerWeaponDamage(session.player),
     session.player.stats.strength,
@@ -3803,9 +4172,10 @@ function playerMelee(session: Session, mobId = 'zombie', mobMaxHp = 100, facingO
     combatDamageBonus(skillLevel(session.player, 'combat')),
   ) * facingMult);
   const proc = procCombatDamage(session.player, base, mobId, mobMaxHp);
-  emitDamageNumber(session, proc.damage, proc.critical);
+  const damage = applyWeaponHitMods(session.player, proc.damage, mobId, session.player.x, session.player.y, tx, ty);
+  emitDamageNumber(session, damage, proc.critical);
   if (proc.thunderBonus > 0) toast(session, `THUNDERLORD! +${proc.thunderBonus} dmg`, 'loot');
-  return { damage: proc.damage, critical: proc.critical || baseCrit, thunderBonus: proc.thunderBonus };
+  return { damage, critical: proc.critical || baseCrit, thunderBonus: proc.thunderBonus };
 }
 
 function grantMobRewards(session: Session, mobId: string, elite = false): void {
@@ -3945,14 +4315,32 @@ function applySlayerPhase(session: Session, slayerId: string, phase: number, bos
       if (canStand(map, x, y)) {
         boss.x = x;
         boss.y = y;
-        toast(session, 'The Enderman teleported!', 'info');
+        toast(session, phase >= 2 ? 'Yang Glyph! Healing is blocked.' : 'The Enderman teleported!', 'info');
         return;
       }
     }
   }
   if (slayerId === 'revenant') toast(session, 'Revenant explosion — keep moving!', 'info');
   else if (slayerId === 'tarantula') toast(session, 'Webbed! Hits sting harder.', 'info');
-  else if (slayerId === 'inferno') toast(session, 'Inferno fire trail!', 'info');
+  else if (slayerId === 'inferno') {
+    session.player.worldMobs = [
+      ...(session.player.worldMobs ?? []).filter((mob) => mob.id !== 'inferno-trail'),
+      {
+        id: 'inferno-trail',
+        mobId: 'blaze',
+        zoneId: session.player.zoneId,
+        x: session.player.x,
+        y: session.player.y,
+        hp: 1,
+        maxHp: 1,
+        label: 'Fire Trail',
+        sprite: 'blaze',
+        homeX: session.player.x,
+        homeY: session.player.y,
+      },
+    ];
+    toast(session, 'Inferno fire trail — keep moving!', 'info');
+  }
 }
 
 function attackWorldMob(session: Session, mobId: string): void {
@@ -3962,7 +4350,7 @@ function attackWorldMob(session: Session, mobId: string): void {
   const range = overworldAttackRange(holdingBow(session.player));
   if (Math.hypot(mob.x - session.player.x, mob.y - session.player.y) > range) throw new Error('Get closer to attack');
   const facingOk = facingToward(session.player.x, session.player.y, mob.x, mob.y, session.player.facing);
-  const { damage, critical } = playerMelee(session, mob.mobId, mob.maxHp, facingOk);
+  const { damage, critical } = playerMelee(session, mob.mobId, mob.maxHp, facingOk, mob.x, mob.y);
   mob.hp = Math.max(0, mob.hp - damage);
   const quest = session.player.activeSlayer;
   if (mob.slayerBoss && quest) {
@@ -4126,12 +4514,24 @@ function noteCollectionMilestone(session: Session, itemId: ItemId, before: numbe
   const next = collectionProgress(collection, after).tier;
   if (next <= prev) return;
   const reward = collection.tiers[next - 1];
-  const coins = 25 * next;
+  const coins = reward?.coins ?? 25 * next;
   session.player.coins += coins;
   if (!session.player.unlockedRecipes) session.player.unlockedRecipes = [];
   const recipeFlag = `collection:${itemId}:t${next}`;
   if (!session.player.unlockedRecipes.includes(recipeFlag)) {
     session.player.unlockedRecipes.push(recipeFlag);
+  }
+  for (const recipeId of reward?.unlockRecipeIds ?? []) {
+    if (!session.player.unlockedRecipes.includes(recipeId)) session.player.unlockedRecipes.push(recipeId);
+  }
+  if (reward?.statBonus) {
+    session.player.collectionBonuses = {
+      miningFortune: (session.player.collectionBonuses?.miningFortune ?? 0) + (reward.statBonus.miningFortune ?? 0),
+      farmingFortune: (session.player.collectionBonuses?.farmingFortune ?? 0) + (reward.statBonus.farmingFortune ?? 0),
+      foragingFortune: (session.player.collectionBonuses?.foragingFortune ?? 0) + (reward.statBonus.foragingFortune ?? 0),
+      strength: (session.player.collectionBonuses?.strength ?? 0) + (reward.statBonus.strength ?? 0),
+    };
+    markStatsDirty(session);
   }
   toast(session, `Collection: ${reward?.label ?? collection.name}  (+${coins} coins)`, 'success');
   playerChat(session, `COLLECTION LEVEL UP! ${collection.name} ${next}: ${reward?.label ?? collection.name} (+${coins} coins)`);

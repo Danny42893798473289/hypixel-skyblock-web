@@ -66,7 +66,7 @@ export function registerDungeonGear(): void {
     gear('terminator', 'Terminator', 'MYTHIC', 'BOW', {
       damage: 310, color: '#ffaa00',
       stats: { strength: 50, critDamage: 250, attackSpeed: 40 },
-      ability: { name: 'Salvation', description: 'Shoot 3 arrows at once. Right-click to charge a powerful beam.' },
+      ability: { name: 'Salvation', description: 'Fire three arrows at once and charge a powerful beam.', manaCost: 150, damage: 1200, scaling: 0.25, cooldownSec: 8 },
       description: 'A legendary bow from the Catacombs.',
     }),
     gear('dark_claymore', 'Dark Claymore', 'LEGENDARY', 'SWORD', {
@@ -127,14 +127,14 @@ export function registerDungeonGear(): void {
     gear('aspect_of_the_void', 'Aspect of the Void', 'RARE', 'SWORD', {
       damage: 120, color: '#220044',
       stats: { strength: 80, intelligence: 50 },
-      ability: { name: 'Instant Transmission', description: 'Teleport 8 blocks ahead.', manaCost: 50 },
+      ability: { name: 'Instant Transmission', description: 'Teleport 8 blocks ahead and gain +50 Speed for 3 seconds.', manaCost: 50 },
     }),
     gear('spirit_bow', 'Spirit Bow', 'LEGENDARY', 'BOW', {
       damage: 200, stats: { strength: 40, critDamage: 120 },
     }),
     gear('juju_shortbow', 'Juju Shortbow', 'LEGENDARY', 'BOW', {
-      damage: 310, stats: { strength: 40, critDamage: 110 },
-      description: 'A shortbow that ignores mob defense.',
+      damage: 310, stats: { strength: 40, critDamage: 110, attackSpeed: 50 },
+      description: 'A shortbow that ignores mob defense and fires faster.',
     }),
     gear('bone_reaver', 'Bone Reaver', 'LEGENDARY', 'SWORD', {
       damage: 280, stats: { strength: 120, critDamage: 40 },

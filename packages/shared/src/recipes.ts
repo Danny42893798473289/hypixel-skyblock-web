@@ -12,6 +12,7 @@ export interface Recipe {
   unlockAmount?: number;
   unlockSlayer?: string;
   unlockSlayerLevel?: number;
+  unlockSkill?: { skill: import('./skills.js').SkillId; level: number };
 }
 
 export const RECIPES: Recipe[] = [
@@ -243,7 +244,7 @@ RECIPES.push(
   { id: 'enchanted_string', name: 'Enchanted String', result: { itemId: 'enchanted_string', qty: 1 }, ingredients: [{ itemId: 'string', qty: 160 }], unlockCollection: 'string', unlockAmount: 100 },
   { id: 'enchanted_rotten_flesh', name: 'Enchanted Rotten Flesh', result: { itemId: 'enchanted_rotten_flesh', qty: 1 }, ingredients: [{ itemId: 'rotten_flesh', qty: 160 }], unlockCollection: 'rotten_flesh', unlockAmount: 100 },
   { id: 'diamond_pickaxe', name: 'Diamond Pickaxe', result: { itemId: 'diamond_pickaxe', qty: 1 }, ingredients: [{ itemId: 'diamond', qty: 3 }, { itemId: 'stick', qty: 2 }], unlockCollection: 'diamond', unlockAmount: 100 },
-  { id: 'jungle_axe', name: 'Jungle Axe', result: { itemId: 'jungle_axe', qty: 1 }, ingredients: [{ itemId: 'jungle_log', qty: 64 }, { itemId: 'stick', qty: 2 }], unlockCollection: 'jungle_log', unlockAmount: 500 },
+  { id: 'jungle_axe', name: 'Jungle Axe', result: { itemId: 'jungle_axe', qty: 1 }, ingredients: [{ itemId: 'jungle_log', qty: 64 }, { itemId: 'stick', qty: 2 }], unlockCollection: 'jungle_log', unlockAmount: 500, unlockSkill: { skill: 'foraging', level: 12 } },
   { id: 'speed_talisman', name: 'Speed Talisman', result: { itemId: 'speed_talisman', qty: 1 }, ingredients: [{ itemId: 'sugar_cane', qty: 108 }], unlockCollection: 'sugar_cane', unlockAmount: 100 },
   { id: 'enchanted_redstone', name: 'Enchanted Redstone', result: { itemId: 'enchanted_redstone', qty: 1 }, ingredients: [{ itemId: 'redstone', qty: 160 }], unlockCollection: 'redstone', unlockAmount: 100 },
   { id: 'compactor', name: 'Compactor', result: { itemId: 'compactor', qty: 1 }, ingredients: [{ itemId: 'enchanted_cobble', qty: 7 }, { itemId: 'redstone', qty: 1 }], unlockCollection: 'cobble', unlockAmount: 2500 },
@@ -288,14 +289,20 @@ export function buildRecipeBookLore(
   recipe: Recipe,
   collections: CollectionsState,
   inventoryCount: (itemId: ItemId) => number,
-  extra?: { slayerXp?: Record<string, number>; unlockedRecipes?: string[] },
+  extra?: { slayerXp?: Record<string, number>; unlockedRecipes?: string[]; skills?: Partial<Record<import('./skills.js').SkillId, number>> },
 ): LoreLine[] {
-  const unlocked = recipeUnlockedFor(recipe, { collections, slayerXp: extra?.slayerXp, unlockedRecipes: extra?.unlockedRecipes });
+  const unlocked = recipeUnlockedFor(recipe, { collections, slayerXp: extra?.slayerXp, unlockedRecipes: extra?.unlockedRecipes, skills: extra?.skills });
   const lines: LoreLine[] = [];
   if (!unlocked && recipe.unlockSlayer) {
     lines.push(
       { text: 'LOCKED', color: 'red', bold: true },
       { text: `Requires ${recipe.unlockSlayer} Slayer ${recipe.unlockSlayerLevel ?? 1}`, color: 'red' },
+      { text: '' },
+    );
+  } else if (!unlocked && recipe.unlockSkill) {
+    lines.push(
+      { text: 'LOCKED', color: 'red', bold: true },
+      { text: `Requires ${recipe.unlockSkill.skill} ${recipe.unlockSkill.level}`, color: 'red' },
       { text: '' },
     );
   } else if (!unlocked && recipe.unlockCollection) {
